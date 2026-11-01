@@ -252,6 +252,12 @@ pub fn fighting_reach(guns: &mut [(f32, f32)]) -> f32 {
     0.0
 }
 
+/// How far most of its fire reaches: where half its guns bear or, for a ship
+/// with no guns, its launchers.
+fn main_battery(me: &Hull) -> f32 {
+    if me.fighting() > 0.0 { me.fighting() } else { me.any_reach() }
+}
+
 /// What a target is worth shooting: the firepower killing it takes off the
 /// board for the damage that costs. Whatever's in reach, hurting this ship,
 /// or called by its fleet counts for more; a hull already disarmed counts for
@@ -263,8 +269,11 @@ pub fn target_worth(me: &Hull, them: &Hull, shooting_me: bool, called: bool, all
     if them.disarmed() {
         worth *= 0.2;
     }
+    // Measured against its main battery, not its longest gun: a ship with one
+    // railgun and nine cannons locked onto a capital only the railgun reached,
+    // and sat nearly silent with an escort in cannon range.
     let gap = (me.pos.distance(them.pos) - them.radius).max(1.0);
-    let reach = me.any_reach().max(1.0);
+    let reach = main_battery(me).max(1.0);
     if gap > reach {
         worth *= (reach / gap).powi(2);
     }
@@ -820,6 +829,25 @@ mod tests {
         // Out of reach is worth much less than in it.
         let far = Hull { pos: Vec2::new(20000.0, 0.0), ..glass_cannon };
         assert!(target_worth(&me, &far, false, false, 0, false, &mind) < target_worth(&me, &glass_cannon, false, false, 0, false, &mind) * 0.3);
+    }
+
+    #[test]
+    fn it_shoots_what_its_main_battery_reaches() {
+        let mind = Mind::default();
+        // One long gun, a main battery a third as long.
+        let me = Hull { firing_reach: 6000.0, ..hull(18000.0) };
+        let near = Hull { pos: Vec2::new(5000.0, 0.0), firepower: 100.0, blocks: 500, peak_blocks: 500, ..hull(7000.0) };
+        // Three times the prize, but only the long gun gets there.
+        let far = Hull { pos: Vec2::new(15000.0, 0.0), firepower: 300.0, ..near };
+        assert!(target_worth(&me, &near, false, false, 0, false, &mind) > target_worth(&me, &far, false, false, 0, false, &mind));
+        // With nothing in battery range it still takes the best of what's there.
+        let further = Hull { pos: Vec2::new(17000.0, 0.0), ..near };
+        assert!(target_worth(&me, &far, false, false, 0, false, &mind) > target_worth(&me, &further, false, false, 0, false, &mind));
+        // A missile boat counts its launchers: no guns doesn't mean no reach.
+        let boat = Hull { reach: 0.0, firing_reach: 0.0, missile_reach: 20000.0, ..hull(0.0) };
+        assert_eq!(main_battery(&boat), 20000.0);
+        let in_reach = target_worth(&boat, &near, false, false, 0, false, &mind);
+        assert!(in_reach > target_worth(&boat, &Hull { pos: Vec2::new(40000.0, 0.0), ..near }, false, false, 0, false, &mind));
     }
 
     #[test]
