@@ -97,7 +97,7 @@ fn toggle_radar_display(
     mut commands: Commands,
     existing_display: Query<Entity, With<RadarDisplay>>,
     radar_query: Query<(&Radar, &Module)>,
-    // On the map Tab is its own (ui::toggle_galaxy_view).
+    // On the map Tab is its own (ui::map).
     map_open: Query<(), With<crate::ui::MapOverlay>>,
 ) {
     // Tab toggles radar display (Z is for ping)

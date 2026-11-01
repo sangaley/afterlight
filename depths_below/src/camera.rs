@@ -471,13 +471,16 @@ fn free_look_input(
     ship_query: Query<&Transform, (With<Ship>, Without<MainCamera>)>,
     windows_query: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    // On Live the ship keeps flying behind the map, and the cursor is on the
+    // map, not aiming.
+    map_open: Query<(), With<crate::ui::MapOverlay>>,
 ) {
     // Exploring-only: while docked, T cycles build templates (see
     // building/templates.rs) — forcing the target to zero here (rather than
     // skipping the system outright) still lets any in-progress pan ease
     // back to centered instead of getting stuck if the player docks mid-hold.
     let held = *game_state.get() == GameState::Exploring && keyboard.pressed(KeyCode::KeyT);
-    camera_state.free_look_active = held;
+    camera_state.free_look_active = held || !map_open.is_empty();
 
     let mut target_offset = Vec2::ZERO;
     if held {

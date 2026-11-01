@@ -42,8 +42,8 @@ use super::galaxy;
 /// `ui::warp_pacing_tests` pins that ordering.
 const INTERSTELLAR_BASE_CHARGE: f32 = 4.0; // seconds
 const INTERSTELLAR_MAX_EXTRA_CHARGE: f32 = 14.0;
-const INTERSTELLAR_BASE_FUEL: f32 = 80.0;
-const INTERSTELLAR_MAX_EXTRA_FUEL: f32 = 1600.0;
+pub(crate) const INTERSTELLAR_BASE_FUEL: f32 = 80.0;
+pub(crate) const INTERSTELLAR_MAX_EXTRA_FUEL: f32 = 1600.0;
 
 // pub(crate): reused by ui/mod.rs for the galaxy map's cost/charge preview
 // so the sidebar shows the exact numbers the jump will actually use.
