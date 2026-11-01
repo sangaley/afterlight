@@ -47,7 +47,7 @@ const SUBSAMPLES: usize = 1;
 const MIP_SIDE: u32 = 32;
 /// Over a ship's blocks (0-1) and its weapons raised over the roof (0.75),
 /// under its turrets (1.2), which carry pictures of their own.
-const SHIP_ART_Z: f32 = 1.15;
+pub(crate) const SHIP_ART_Z: f32 = 1.15;
 /// Over everything on a turret: plates, parts, gun house roof (0.5).
 const TURRET_ART_Z: f32 = 0.9;
 /// The rim round the hull: near-black, mostly solid.
@@ -368,6 +368,9 @@ type Pictured<'w, 's> = Query<
     ),
 >;
 
+/// How bright a wreck's far picture stays.
+const WRECK_SHADE: f32 = 0.42;
+
 /// The glow of a wound in the far picture.
 const EMBER: (f32, f32, f32) = (1.0, 0.22, 0.03);
 
@@ -518,16 +521,23 @@ pub fn bake_far_art(
 pub fn show_far_art(
     mut commands: Commands,
     camera: Res<CameraState>,
-    owners: Query<(&FarArt, Option<&Children>)>,
+    owners: Query<(&FarArt, Option<&Children>, Option<&crate::ai_ship::components::AiShipState>)>,
     pictured: Pictured,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
     hidden: Query<Entity, With<FarHidden>>,
     mut was_full: Local<bool>,
 ) {
     let alpha = art_alpha(camera.zoom);
-    for (art, _) in owners.iter() {
+    for (art, _, state) in owners.iter() {
         let Ok((mut sprite, mut vis)) = sprites.get_mut(art.sprite) else { continue };
         let want = alpha;
+        // A wreck goes dark: from 20 km its name-plate was the only sign that
+        // a ship had died.
+        let shade = if state.is_some_and(|s| s.is_destroyed) { WRECK_SHADE } else { 1.0 };
+        let shaded = Color::srgba(shade, shade, shade, sprite.color.alpha());
+        if sprite.color != shaded {
+            sprite.color = shaded;
+        }
         // Not shown until it's been baked once.
         let want_vis = if want > 0.0 && art.baked_at.is_finite() { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != want_vis {
@@ -546,7 +556,7 @@ pub fn show_far_art(
         info!("FAR ART {} at zoom {:.1}", if full { "stands in" } else { "steps back" }, camera.zoom);
     }
     if full {
-        for (art, children) in owners.iter() {
+        for (art, children, _) in owners.iter() {
             if !art.baked_at.is_finite() {
                 continue;
             }

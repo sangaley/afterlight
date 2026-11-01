@@ -139,6 +139,10 @@ pub(crate) fn spawn_muzzle_flash(
     ));
 }
 
+/// Where blasts draw: over the ship's far picture (vfx::far_art), which would
+/// otherwise hide every explosion on a hull once the camera is well back.
+const BLAST_Z: f32 = 1.6;
+
 /// A warhead going off: expanding fireball, shock ring, radial spray, smoke.
 ///
 /// `spawn_hit_effect` is a static square sized to the blast radius, which
@@ -191,11 +195,11 @@ pub(crate) fn spawn_explosion(
     };
 
     // Fireball: near-white core cooling to the event's own colour.
-    core(commands, Some(fx.fireball.clone()), radius * 0.5, radius * 2.2, 0.42, 0.62,
+    core(commands, Some(fx.fireball.clone()), radius * 0.5, radius * 2.2, 0.42, BLAST_Z + 0.02,
          hot_of(0.82, 1.0), cool_of(0.55, 0.7));
     // Shock ring: an actual annulus, so it reads as a front travelling
     // outward rather than as a second fireball behind the first.
-    core(commands, Some(fx.ring.clone()), radius * 0.8, radius * 3.4, 0.30, 0.61,
+    core(commands, Some(fx.ring.clone()), radius * 0.8, radius * 3.4, 0.30, BLAST_Z + 0.01,
          hot_of(0.45, 0.55), cool_of(0.5, 0.0));
 
     // Radial spray. Unlike an impact fan this is symmetric: a detonation has
@@ -217,7 +221,7 @@ pub(crate) fn spawn_explosion(
                 ..default()
             },
             Transform {
-                translation: position.extend(0.63),
+                translation: position.extend(BLAST_Z + 0.03),
                 rotation: Quat::from_rotation_z(angle),
                 ..default()
             },
@@ -654,5 +658,13 @@ mod firing_arc_tests {
     fn clamping_pulls_aim_back_inside_the_cone_around_the_facing() {
         let out = clamp_to_firing_arc(0.0, &Rotation::East, &fixed(20.0), Vec2::Y);
         assert!(out.x > 0.9, "clamped toward +x, the way it faces: {out:?}");
+    }
+}
+
+#[cfg(test)]
+mod blast_depth_tests {
+    #[test]
+    fn blasts_draw_over_the_far_picture() {
+        assert!(super::BLAST_Z > crate::vfx::far_art::SHIP_ART_Z);
     }
 }

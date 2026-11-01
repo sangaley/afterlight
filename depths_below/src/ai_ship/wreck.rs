@@ -52,6 +52,14 @@ pub fn roll_wreck_loot(ship_type: AiShipType, intact_frac: f32, rng: &mut impl R
     table[0].0
 }
 
+/// Fights happen 20 km off now, with the camera well back, where a blast sized
+/// in world units was a couple of pixels and a ship could die unseen. Radius
+/// for a blast that peaks at least `min_px` from its centre on screen (the
+/// fireball reaches 2.2 radii, see spawn_explosion); close up, `radius` as is.
+fn readable_blast(radius: f32, min_px: f32, camera_zoom: f32) -> f32 {
+    radius.max(min_px * camera_zoom / 2.2)
+}
+
 /// Secondary explosions marching across a fresh wreck for a second or two
 /// after the kill, ending in one final boom. Pure spectacle — pops don't
 /// deal damage (the ship is already dead), they sell the death.
@@ -66,6 +74,7 @@ pub fn update_death_rattle(
     time: Res<Time>,
     mut commands: Commands,
     fx: Res<crate::vfx::effect_textures::EffectTextures>,
+    camera: Res<crate::camera::CameraState>,
     mut rattle_query: Query<(Entity, &mut DeathRattle, Option<&Velocity>)>,
     children_query: Query<&Children>,
     block_pos_query: Query<(&GlobalTransform, &Sprite), Or<(With<Module>, With<HullSegment>)>>,
@@ -95,7 +104,8 @@ pub fn update_death_rattle(
 
         if rattle.remaining > 1 {
             // Secondary pop: flash + chunk spray + attenuated crunch
-            crate::combat::spawn_explosion(&mut commands, &fx, pos, rng.gen_range(14.0..26.0), Color::srgb(1.0, 0.6, 0.15));
+            let radius = readable_blast(rng.gen_range(14.0..26.0), 10.0, camera.zoom);
+            crate::combat::spawn_explosion(&mut commands, &fx, pos, radius, Color::srgb(1.0, 0.6, 0.15));
             crate::vfx::debris::spawn_chunks(&mut commands, &fx, &mut rng, pos, color, inherited);
             boom_events.write(AiModuleExploded { position: pos, blast_damage: 20.0 });
             rattle.remaining -= 1;
@@ -103,7 +113,7 @@ pub fn update_death_rattle(
         } else {
             // Final boom — big flash, big spray, deep audio layer
             // The climax of every ship kill. Was one flat 140-unit square.
-            crate::combat::spawn_explosion(&mut commands, &fx, pos, 62.0, Color::srgb(1.0, 0.5, 0.1));
+            crate::combat::spawn_explosion(&mut commands, &fx, pos, readable_blast(62.0, 34.0, camera.zoom), Color::srgb(1.0, 0.5, 0.1));
             for _ in 0..3 {
                 crate::vfx::debris::spawn_chunks(&mut commands, &fx, &mut rng, pos, color, inherited);
             }
@@ -326,5 +336,18 @@ pub fn wreck_fire_consumes_loot(
                 ));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod blast_tests {
+    use super::*;
+
+    #[test]
+    fn a_death_blast_reads_from_far_off_and_is_unchanged_close_up() {
+        assert_eq!(readable_blast(62.0, 34.0, 1.8), 62.0);
+        let far = readable_blast(62.0, 34.0, 38.0);
+        // peaks 2.2 radii out: 34 px on screen at this zoom
+        assert!((far * 2.2 / 38.0 - 34.0).abs() < 1e-3, "{far}");
     }
 }
