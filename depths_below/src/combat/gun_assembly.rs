@@ -585,6 +585,18 @@ pub fn run_gun_racks(
     }
 }
 
+/// How fast a faction works its main guns, of what the parts allow. The Broken
+/// Choir's 60 mm autocannons ran at 172 rpm a turret, and a ship of theirs landed
+/// about 25 rounds a second: they'd take you apart before you'd turned round.
+/// Point defence is left alone (20 mm, under the 60 mm this applies from): how
+/// well they stop missiles was never the trouble.
+pub fn faction_gun_pace(faction: crate::ai_ship::components::AiShipType) -> f32 {
+    match faction {
+        crate::ai_ship::components::AiShipType::BrokenChoir => 0.6,
+        _ => 1.0,
+    }
+}
+
 /// A firing piece that has never been assembled still carries the registry's
 /// placeholder magazine; the first assembly fills it to the real size.
 fn newly_spawned(weapon: &crate::components::Weapon) -> bool {
@@ -612,6 +624,7 @@ pub fn assemble_guns(
     epoch: Res<LayoutEpoch>,
     mut seen_epoch: Local<Option<LayoutEpoch>>,
     mut built: Local<BuiltFrom>,
+    factions: Query<&crate::ai_ship::components::AiShipType>,
 ) {
     // The ships (or turrets) whose shells changed since last frame.
     let redo: HashSet<Entity> = redesigned.iter().map(|p| p.parent()).chain(refitted.iter()).collect();
@@ -671,8 +684,12 @@ pub fn assemble_guns(
             continue;
         }
         share_magazines(&mut guns);
+        let pace = factions.get(ship).map_or(1.0, |f| faction_gun_pace(*f));
         for (fp, mut assembly) in guns {
             assembly.ship = Some(ship);
+            if assembly.stats.gauge_mm >= super::gun_math::BASE_GAUGE_MM {
+                assembly.stats.rpm *= pace;
+            }
             if let Ok((mut base, mut mount, mut weapon)) = firing.get_mut(fp) {
                 base.damage = assembly.stats.damage * built_damage_scale();
                 base.range = range_for(&assembly.stats);
@@ -791,6 +808,17 @@ mod gun_assembly_tests {
             (ShellFeeder, -3, 0, East),
             (Magazine, -4, 0, East),
         ])
+    }
+
+    /// Only the Choir work their guns slower, and not to a crawl.
+    #[test]
+    fn the_broken_choir_fire_slower_than_their_guns_allow() {
+        use crate::ai_ship::components::AiShipType::*;
+        let pace = faction_gun_pace(BrokenChoir);
+        assert!(pace < 1.0 && pace >= 0.5, "{pace}");
+        for other in [CorpseStars, TerranHegemony, RecursiveKingdom, MerchantPrinces] {
+            assert_eq!(faction_gun_pace(other), 1.0);
+        }
     }
 
     #[test]
