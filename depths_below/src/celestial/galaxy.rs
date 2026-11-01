@@ -15,14 +15,15 @@ pub const WARM_NEIGHBOR_COUNT: usize = 3;
 /// Passive discovery range: any Unknown system within this distance of
 /// wherever you're currently Hot quietly reveals as Located (a dim pip, no
 /// details) — no scanning action needed, just proximity, Cosmoteer-style.
-pub const SENSOR_RANGE: f32 = 900_000.0;
+pub const SENSOR_RANGE: f32 = 2_000_000.0;
 
 /// Active scan range: pressing the radar ping (Z) with an active detection
 /// module sweeps interstellar space and reveals any Unknown system within this
 /// distance as Located — much longer reach than passive proximity, so a scan
 /// actually surfaces systems you couldn't see just by sitting still. Half the
-/// galaxy radius: a scan lights up a big neighbourhood but never the whole map.
-pub const GALAXY_SCAN_RANGE: f32 = 2_500_000.0;
+/// galaxy radius and a bit: a scan lights up a big neighbourhood, with the
+/// systems this far apart, but never the whole map.
+pub const GALAXY_SCAN_RANGE: f32 = 3_200_000.0;
 
 /// How close a blind-warp target has to land to an actual system's
 /// galaxy_pos to snap to arriving AT that system (revealing it fully)
@@ -139,27 +140,28 @@ pub const GALAXY_RADIUS: f32 = 5_000_000.0;
 /// Closest two systems may sit on the galaxy map. Must stay above twice
 /// `SNAP_TOLERANCE` (150,000), or one blind-warp click falls inside two
 /// systems at once and which one you arrive at stops being predictable.
-/// Tighter than the old 400,000 so a constellation reads as a group rather
-/// than as more evenly-spread dots.
-const MIN_SYSTEM_SEPARATION: f32 = 320_000.0;
+/// Was 320,000, which packed a constellation so tightly it looked like a bunch
+/// of grapes, not stars with empty space between them, and made every jump
+/// to a neighbour cost next to nothing.
+const MIN_SYSTEM_SEPARATION: f32 = 1_000_000.0;
 
 /// How many constellations the systems are grouped into. Thirty systems over
 /// seven groups averages four or five each — enough to read as a cluster,
 /// few enough that the gaps between them are the dominant feature.
 const CONSTELLATION_COUNT: usize = 7;
 
-/// Smallest distance between two constellation centres. Comfortably more
-/// than twice `CONSTELLATION_SPREAD` so neighbouring groups stay visibly
-/// separate instead of smearing into one band.
-const CONSTELLATION_SEPARATION: f32 = 1_500_000.0;
+/// Smallest distance between two constellation centres. Not much under twice
+/// `CONSTELLATION_SPREAD`: groups still read as groups, but seven of them have
+/// to fit in the galaxy.
+const CONSTELLATION_SEPARATION: f32 = 2_400_000.0;
 
 /// How far from its constellation's centre a system may sit.
-const CONSTELLATION_SPREAD: f32 = 520_000.0;
+const CONSTELLATION_SPREAD: f32 = 1_400_000.0;
 
 /// Fraction of the galaxy radius the constellation centres are allowed to
 /// reach, leaving the rim as genuine emptiness rather than a ring of systems
 /// pressed against the edge of the map.
-const CONSTELLATION_REACH: f32 = 0.82;
+const CONSTELLATION_REACH: f32 = 0.72;
 const MAX_PLACEMENT_ATTEMPTS: u32 = 200;
 
 /// Generates the persistent galaxy layout. System 0 is always Haven's home
@@ -219,6 +221,20 @@ pub fn generate_galaxy_map(galaxy_seed: u64) -> GalaxyMap {
             if positions.iter().all(|existing| existing.distance(p) >= MIN_SYSTEM_SEPARATION) {
                 candidate = Some(p);
                 break;
+            }
+        }
+        // A full constellation: anywhere in the galaxy with room will do,
+        // rather than crowding a neighbour.
+        if candidate.is_none() {
+            for _ in 0..MAX_PLACEMENT_ATTEMPTS {
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                let r = GALAXY_RADIUS * 0.97 * rng.gen_range(0.0f32..1.0).sqrt();
+                let p = Vec2::new(angle.cos() * r, angle.sin() * r);
+                last = p;
+                if positions.iter().all(|existing| existing.distance(p) >= MIN_SYSTEM_SEPARATION) {
+                    candidate = Some(p);
+                    break;
+                }
             }
         }
         // Fall back to the last candidate tried, never to the origin.
@@ -807,14 +823,43 @@ mod asteroid_placement_tests {
 mod galaxy_layout_tests {
     use super::*;
 
+    /// The galaxy is rolled fresh each game, so room for everyone has to hold
+    /// for any seed, not just the handful the other tests look at. And nobody
+    /// is stranded: every system has a neighbour within sensible reach, and
+    /// Haven's sensors find somewhere to go on the first day.
+    #[test]
+    fn every_seed_spreads_the_systems_out() {
+        let mut nearest_sum = 0.0;
+        let mut pairs = 0;
+        for seed in 0..300u64 {
+            let map = generate_galaxy_map(seed * 7_919 + 3);
+            assert_eq!(map.systems.len(), SYSTEM_COUNT + 1);
+            for a in &map.systems {
+                let nearest = map.systems.iter()
+                    .filter(|b| b.id != a.id)
+                    .map(|b| a.galaxy_pos.distance(b.galaxy_pos))
+                    .fold(f32::MAX, f32::min);
+                assert!(nearest >= MIN_SYSTEM_SEPARATION, "seed {seed}: {} is only {nearest} from its neighbour", a.name);
+                assert!(nearest <= 2_600_000.0, "seed {seed}: {} is stranded, {nearest} from anyone", a.name);
+                assert!(a.galaxy_pos.length() <= GALAXY_RADIUS, "seed {seed}: {} is off the map", a.name);
+                nearest_sum += nearest;
+                pairs += 1;
+            }
+            let from_home = map.systems.iter()
+                .filter(|s| s.id != 0 && s.galaxy_pos.length() <= SENSOR_RANGE)
+                .count();
+            assert!(from_home >= 2, "seed {seed}: Haven's sensors find only {from_home} systems");
+        }
+        println!("average nearest neighbour: {}", nearest_sum / pairs as f32);
+    }
+
     const SEEDS: [u64; 6] = [1, 42, 7_777, 123_456, u64::MAX / 3, 9_999_999];
 
     /// Two systems closer than twice the snap tolerance means one click on the
     /// map lands inside both, and which one you warp to stops being
     /// predictable. This is a static relationship between two constants, so it
     /// holds for every seed and is the first thing to check after retuning
-    /// either -- MIN_SYSTEM_SEPARATION was tightened from 400,000 to 320,000
-    /// to let constellations read as groups.
+    /// either.
     #[test]
     fn systems_stay_far_enough_apart_to_click() {
         assert!(
@@ -878,11 +923,10 @@ mod galaxy_layout_tests {
     /// neighbour should be much closer than the average system, which is true
     /// of clusters and false of an even scatter.
     ///
-    /// Both numbers here were measured, not guessed. The old uniform-area
-    /// sampler scores 0.230; constellations score 0.114, a clean factor of
-    /// two. The threshold sits between them rather than just under the old
-    /// value, so this fails if the grouping is lost AND if it is quietly
-    /// weakened partway back toward an even spread.
+    /// Spreading the systems far apart (a request: they looked crammed) made
+    /// the groups much looser than they were, 0.114 up to about 0.28. An even
+    /// scatter at this separation is what this still guards against: past 0.36
+    /// there's no neighbourhood left to recognise.
     #[test]
     fn systems_are_grouped_into_constellations() {
         for seed in SEEDS {
@@ -905,7 +949,7 @@ mod galaxy_layout_tests {
             }
             let ratio = (nearest_sum / pts.len() as f32) / (all_sum / all_count);
             assert!(
-                ratio < 0.17,
+                ratio < 0.36,
                 "seed {seed}: nearest-neighbour/mean ratio {ratio:.3} -- systems are \
                  spread evenly rather than gathered into constellations"
             );
