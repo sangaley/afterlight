@@ -263,7 +263,13 @@ fn camera_zoom_input(
     // Same for the scrolling lists in windows (diplomacy).
     scroll_lists: Query<(&ComputedNode, &bevy::ui::UiGlobalTransform), With<crate::ui::windows::framework::ScrollsOnWheel>>,
     windows: Query<&Window>,
+    // The wheel moves the map while it's open (ui::map_scroll_system).
+    map_open: Query<(), With<crate::ui::MapOverlay>>,
 ) {
+    if !map_open.is_empty() {
+        scroll_events.clear();
+        return;
+    }
     let cursor = windows.single().ok()
         .and_then(|w| w.cursor_position().map(|p| p * w.scale_factor()));
     let over_build_panel = build_panel.iter().any(|(node, transform)| {

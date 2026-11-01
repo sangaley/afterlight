@@ -183,6 +183,12 @@ impl FactionStanding {
         self.tier(faction) == StandingTier::Hostile
     }
 
+    /// Would you be shot at for being in this system? Its owner decides, and
+    /// so does a boss haunting it, whoever holds the place.
+    pub fn system_hostile(&self, system: &crate::celestial::resources::StarSystemDef) -> bool {
+        system.faction.into_iter().chain(system.haunt).any(|f| self.attacks_player(f))
+    }
+
     /// Move standing and say why. An alliance that falls below its floor ends.
     pub fn change(&mut self, faction: AiShipType, delta: f32, reason: impl Into<String>) {
         if delta == 0.0 {

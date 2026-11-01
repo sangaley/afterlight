@@ -97,9 +97,11 @@ fn toggle_radar_display(
     mut commands: Commands,
     existing_display: Query<Entity, With<RadarDisplay>>,
     radar_query: Query<(&Radar, &Module)>,
+    // On the map Tab is its own (ui::toggle_galaxy_view).
+    map_open: Query<(), With<crate::ui::MapOverlay>>,
 ) {
     // Tab toggles radar display (Z is for ping)
-    if keyboard.just_pressed(KeyCode::Tab) {
+    if map_open.is_empty() && keyboard.just_pressed(KeyCode::Tab) {
         let has_radar = radar_query.iter().any(|(_, m)| m.is_active);
         if !has_radar {
             return;

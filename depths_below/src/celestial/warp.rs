@@ -203,6 +203,7 @@ pub fn execute_warp_jump(
     spawn_assets: (Res<crate::vfx::procedural_textures::CelestialTextures>, Res<AssetServer>, Res<LootedPois>),
     time: Res<Time>,
     mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
+    standing: Res<crate::diplomacy::FactionStanding>,
 ) {
     let (mut pending, mut dash_target) = pending;
     let (textures, asset_server, looted) = spawn_assets;
@@ -333,10 +334,21 @@ pub fn execute_warp_jump(
 
         completed_events.write(WarpJumpCompleted { system_id: streaming.loaded_system });
 
-        notifications.write(ShowNotification {
-            message: format!("Warp complete! Arrived at {}", arrival_name),
-            notification_type: NotificationType::Success,
-            duration: 4.0,
+        let hostile = streaming.loaded_system
+            .and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id))
+            .is_some_and(|s| standing.system_hostile(s));
+        notifications.write(if hostile {
+            ShowNotification {
+                message: format!("Arrived at {arrival_name} - HOSTILE SPACE, they attack on sight"),
+                notification_type: NotificationType::Danger,
+                duration: 6.0,
+            }
+        } else {
+            ShowNotification {
+                message: format!("Warp complete! Arrived at {}", arrival_name),
+                notification_type: NotificationType::Success,
+                duration: 4.0,
+            }
         });
     }
 }
