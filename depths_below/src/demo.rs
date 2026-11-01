@@ -510,6 +510,8 @@ impl Plugin for DemoPlugin {
                 cam.max_zoom = cam.max_zoom.max(z);
                 cam.zoom = z.clamp(cam.min_zoom, cam.max_zoom);
                 cam.user_zoomed = true;
+                // A held zoom is a zoom by hand: frame_the_fight leaves it alone.
+                cam.fight_framing_off = true;
             });
         }
         // DEPTHS_ZOOM_RAMP=<from>:<to>:<secs>[:<delay>] -- a pull-back or
@@ -591,13 +593,14 @@ impl Plugin for DemoPlugin {
                 .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             );
         }
-        // DEPTHS_KEY_BG=1 -- empty space drawn pure green and the starfield
-        // hidden, so footage can be keyed cleanly and given its own backdrop.
+        // DEPTHS_KEY_BG=1 -- empty space drawn pure green, the starfield, stars
+        // and planets hidden, so footage can be keyed cleanly and given its own
+        // backdrop.
         if std::env::var("DEPTHS_KEY_BG").ok().as_deref() == Some("1") {
             app.add_systems(
                 PostUpdate,
                 (|mut clear: ResMut<ClearColor>,
-                  mut stars: Query<&mut Visibility, Or<(With<crate::vfx::starfield::StarfieldStar>, With<crate::vfx::starfield::BackgroundPlanet>)>>| {
+                  mut stars: Query<&mut Visibility, Or<(With<crate::vfx::starfield::StarfieldStar>, With<crate::vfx::starfield::BackgroundPlanet>, With<crate::celestial::components::Star>, With<crate::celestial::components::Planet>)>>| {
                     clear.0 = Color::srgb(0.0, 1.0, 0.0);
                     for mut v in &mut stars {
                         *v = Visibility::Hidden;
@@ -610,8 +613,21 @@ impl Plugin for DemoPlugin {
         if std::env::var("DEPTHS_HIDE_UI").ok().as_deref() == Some("1") {
             app.add_systems(
                 PostUpdate,
-                (|mut roots: Query<&mut Visibility, (With<Node>, Without<ChildOf>)>| {
-                    for mut v in &mut roots {
+                (|mut roots: Query<&mut Visibility, (With<Node>, Without<ChildOf>)>,
+                  // Labels in the world are the HUD too: ship names, damage
+                  // read-outs and station plates drawn over the footage.
+                  mut labels: Query<
+                    &mut Visibility,
+                    (
+                        Or<(
+                            With<crate::vfx::far_view::FarLabel>,
+                            With<crate::vfx::far_view::FarLabelShadow>,
+                            With<crate::camera::ZoomInvariantText>,
+                        )>,
+                        Without<Node>,
+                    ),
+                >| {
+                    for mut v in roots.iter_mut().chain(labels.iter_mut()) {
                         *v = Visibility::Hidden;
                     }
                 })
@@ -1323,6 +1339,7 @@ fn doom(
     time: Res<Time<Real>>,
     mut doom: ResMut<Doom>,
     pin: Option<Res<crate::camera::CameraPin>>,
+    camera: Query<&Projection, With<crate::camera::MainCamera>>,
     ships: Query<(Entity, &GlobalTransform, &crate::ai_ship::components::AiShipType, &crate::ai_ship::components::AiShipState, &Children), (With<AiShip>, Without<crate::diplomacy::FactionStation>)>,
     blocks: Query<&GlobalTransform, Or<(With<crate::components::Module>, With<crate::components::HullSegment>)>>,
     mut hits: MessageWriter<crate::events::AiShipDamaged>,
@@ -1335,8 +1352,17 @@ fn doom(
         let alive = || ships.iter().filter(|(e, _, _, st, _)| !st.is_destroyed && !taken.contains(e));
         // The ship in shot that's under fire and worst hurt, so the kill
         // lands where the rounds have been landing; else the nearest one.
+        // In shot: inside a 1280x720 frame at this zoom, with a margin.
+        let zoom = match camera.single() {
+            Ok(Projection::Orthographic(o)) => o.scale,
+            _ => 10.0,
+        };
+        let in_shot = |at: Vec2| {
+            let off = (at - focus).abs();
+            off.x < 540.0 * zoom && off.y < 290.0 * zoom
+        };
         let victim = alive()
-            .filter(|(_, gt, _, st, _)| st.last_hit_timer < 2.0 && gt.translation().truncate().distance(focus) < 9_000.0)
+            .filter(|(_, gt, _, st, _)| st.last_hit_timer < 2.0 && in_shot(gt.translation().truncate()))
             .min_by(|a, b| a.3.hull_integrity.total_cmp(&b.3.hull_integrity))
             .or_else(|| alive().min_by(|a, b| a.1.translation().truncate().distance(focus).total_cmp(&b.1.translation().truncate().distance(focus))));
         if let Some((v, vt, vty, vst, _)) = victim {
