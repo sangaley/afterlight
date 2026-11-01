@@ -338,8 +338,7 @@ fn break_off(
         commands
             .entity(*block)
             .try_insert((SeveredBlock, ChildOf(root)))
-            // Drawn again if the far view had it hidden behind the ship's
-            // picture.
+            // Drawn again if the far view had it hidden behind its copy.
             .remove::<(bevy::camera::visibility::RenderLayers, crate::vfx::far_art::FarHidden)>()
             .entry::<Transform>()
             .and_modify(move |mut t| {

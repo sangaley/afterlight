@@ -1,378 +1,146 @@
-//! Ships seen from very far out: one small picture each, not a thousand blocks.
+//! Ships seen from very far out: a plain copy of every block, not its art.
 //!
 //! Past the Cosmoteer roof (vfx::ship_roof) the camera keeps going -- out to
-//! zoom 20, where a block is three pixels across. Drawn block by block a ship
-//! there is a shimmer of sprites far smaller than their art, and a big fleet
-//! is tens of thousands of them. So from `ART_FROM` each ship and each turret
-//! is baked into one picture of itself: the very sprites on screen, painted
-//! in their own order into a few pixels a block, with a dark rim round the
-//! hull so it reads against space. Parts keep their colours -- a reactor's
-//! glow, an engine, a painted chevron -- because the bake is made from them,
-//! not from a flat silhouette (the slab look ship_roof moved away from).
+//! zoom 90, where a block is a pixel across. Its real art there is a shimmer
+//! of detail far too small to see. So from `ART_FROM` each block gets a flat
+//! copy of itself in the average colour of its art, as a child of the block.
 //!
-//! Fully out, the blocks the picture stands in for stop drawing (moved to a
-//! render layer no camera looks at); zoom back in and they're back. A ship
-//! is baked again when it changes -- a block shot off opens a hole in the
-//! picture too -- and every few seconds while it's in view, for paint and
-//! damage tint that change without a block going. Close in nothing is baked
-//! at all.
+//! Being a child is the point. There used to be one picture per ship, baked
+//! from its blocks and rebaked every few seconds at best, so from far out your
+//! own ship and the enemy's looked untouched while they were being taken
+//! apart. A copy can't fall behind: a hit darkens that block's copy the same
+//! frame, a block that dies or is hidden takes its copy with it, and a block
+//! that's built, moved, or blown off with a severed section brings its own.
 //!
+//! Fully out, the real sprites stop drawing (moved to a render layer no camera
+//! looks at) and every copy batches as one plain white square, so it's cheaper
+//! than the art it stands in for. Zoom back in and they're back. Close in no
+//! copies are made at all; a ship nobody ever zooms out on never pays for them.
 
-use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
-use bevy::image::ImageSampler;
-use bevy::platform::collections::HashMap;
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::ai_ship::components::AiShip;
-use crate::building::layout::LayoutVersion;
 use crate::camera::CameraState;
-use crate::combat::turret_deck::TurretBody;
-use crate::components::{HullSegment, Module, Ship};
+use crate::components::{HullSegment, Module};
 
-/// Zoom where the picture starts to show over the blocks...
+/// Zoom where the copies start to show over the blocks...
 pub const ART_FROM: f32 = 8.0;
-/// ...and where it stands in for them.
+/// ...and where they stand in for them.
 pub const ART_SOLID: f32 = 10.5;
 
-/// Pixels per block. At zoom 11 a block is six screen pixels: one to one.
-const PX_PER_CELL: f32 = 6.0;
-/// Ship-local units per baked pixel.
-const UNITS_PER_PX: f32 = crate::building::GRID_SIZE / PX_PER_CELL;
-/// Samples per baked pixel, each way.
-const SUBSAMPLES: usize = 1;
-/// Source art is shrunk to this many pixels on its long side before it's
-/// sampled, so a sample stands for an area of the art, not one stray texel.
-const MIP_SIDE: u32 = 32;
+/// Over the block it copies, and nothing else: the blocks' own order stands.
+const COPY_Z: f32 = 0.001;
 /// Over a ship's blocks (0-1) and its weapons raised over the roof (0.75),
-/// under its turrets (1.2), which carry pictures of their own.
-const SHIP_ART_Z: f32 = 1.15;
-/// Over everything on a turret: plates, parts, gun house roof (0.5).
-const TURRET_ART_Z: f32 = 0.9;
-/// The rim round the hull: near-black, mostly solid.
-const RIM: LinearRgba = LinearRgba { red: 0.004, green: 0.005, blue: 0.009, alpha: 0.8 };
-/// How often a ship in view is baked again with nothing changed.
-const REFRESH_S: f32 = 3.0;
-/// Soonest a changed ship is baked again. A ship under fire changes nearly
-/// every frame, and a capital's bake takes the best part of a frame: baked
-/// on every change, a fight seen from far out stuttered.
-const REBAKE_S: f32 = 1.5;
-/// Sprites a bake costs about a millisecond for; big pictures are refreshed
-/// (for paint and damage tint alone) that much less often.
-const SPRITES_PER_MS: f32 = 1500.0;
-/// Bakes per frame: a fleet coming into view spreads over a few frames.
-const BAKES_PER_FRAME: usize = 1;
+/// under its turrets (1.2).
+const EMBER_Z: f32 = 1.15;
+/// Copies made a frame, so a fleet coming into view spreads over a few frames.
+/// A block keeps drawing its real art until it has one.
+const COPIES_PER_FRAME: usize = 5000;
+/// Copies overlap this much so a ship at an angle doesn't show hairlines of
+/// space between its blocks.
+const COPY_OVERLAP: f32 = 1.04;
+/// How much brighter a copy is than the art it averages.
+const COPY_GAIN: f32 = 1.5;
+/// Pixels looked at each way when averaging a block's art.
+const SAMPLES: u32 = 16;
 /// No camera draws this layer.
 const HIDDEN_LAYER: usize = 29;
-/// Biggest picture side, in pixels (a 680-block-long ship).
-const MAX_SIDE: u32 = 4096;
+/// The glow of a wound.
+const EMBER: (f32, f32, f32) = (1.0, 0.22, 0.03);
 
-/// How much of the picture shows at a zoom: 0 close in, 1 far out.
 pub fn art_alpha(zoom: f32) -> f32 {
     let t = ((zoom - ART_FROM) / (ART_SOLID - ART_FROM)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
-/// On a ship or turret: its picture, and what it was baked from.
+/// On a block: its copy.
 #[derive(Component)]
-pub struct FarArt {
-    sprite: Entity,
-    image: Handle<Image>,
-    baked: Option<LayoutVersion>,
-    baked_at: f32,
-    /// Sprites the last bake painted, for how often it's worth repeating.
-    sprites: usize,
+pub struct FarCopyOf(Entity);
+
+/// The copy itself, a child of the block it copies. `solid` is its alpha at
+/// full strength, which the zoom fades.
+#[derive(Component)]
+pub struct FarCopy {
+    solid: f32,
 }
 
-/// The picture itself, a child of what it pictures.
+/// A wound glowing on a far ship: a child of the ship.
 #[derive(Component)]
-pub struct FarArtSprite;
+pub struct FarEmber;
 
-/// A block not drawn while its ship's picture stands in for it.
+/// How solid an ember is at full strength.
+const EMBER_SOLID: f32 = 0.95;
+
+/// A block not drawn while its copy stands in for it.
 #[derive(Component)]
 pub struct FarHidden;
 
-/// Source art shrunk for sampling: premultiplied linear colour, rows top down.
-pub struct Mip {
-    w: u32,
-    h: u32,
-    /// Source pixels per mip pixel.
-    step: f32,
-    px: Vec<LinearRgba>,
-}
+/// How far faded in the copies are now. Negative when they need setting
+/// again whatever the zoom.
+#[derive(Resource)]
+pub struct FarFade(f32);
 
-impl Mip {
-    /// Box-filter `width x height` straight-alpha linear pixels down to
-    /// `MIP_SIDE` on the long side.
-    pub fn build(width: u32, height: u32, at: impl Fn(u32, u32) -> LinearRgba) -> Self {
-        let step = width.max(height).div_ceil(MIP_SIDE).max(1);
-        let (w, h) = (width.div_ceil(step), height.div_ceil(step));
-        let mut px = Vec::with_capacity((w * h) as usize);
-        for my in 0..h {
-            for mx in 0..w {
-                let mut sum = LinearRgba::NONE;
-                let mut n = 0.0;
-                for y in my * step..((my + 1) * step).min(height) {
-                    for x in mx * step..((mx + 1) * step).min(width) {
-                        let c = at(x, y);
-                        sum.red += c.red * c.alpha;
-                        sum.green += c.green * c.alpha;
-                        sum.blue += c.blue * c.alpha;
-                        sum.alpha += c.alpha;
-                        n += 1.0;
-                    }
-                }
-                px.push(if n > 0.0 { sum * (1.0 / n) } else { LinearRgba::NONE });
-            }
-        }
-        Self { w, h, step: step as f32, px }
-    }
-
-    /// A plain white square: a sprite with no art is its colour.
-    pub fn white() -> Self {
-        Self { w: 1, h: 1, step: 1.0, px: vec![LinearRgba::WHITE] }
-    }
-
-    /// The pixel under source-art coordinate `(x, y)` (pixels, top down).
-    fn at(&self, x: f32, y: f32) -> LinearRgba {
-        let mx = ((x / self.step) as i64).clamp(0, self.w as i64 - 1) as usize;
-        let my = ((y / self.step) as i64).clamp(0, self.h as i64 - 1) as usize;
-        self.px[my * self.w as usize + mx]
+impl Default for FarFade {
+    fn default() -> Self {
+        Self(-1.0)
     }
 }
 
-/// One sprite, as the bake sees it: where it sits in its parent and what of
-/// its art shows.
-pub struct Stamp<'a> {
-    pub at: Vec2,
-    pub angle: f32,
-    pub size: Vec2,
-    /// The part of the art drawn, in source pixels (x, y, w, h), top down.
-    pub rect: Rect,
-    pub flip_x: bool,
-    pub flip_y: bool,
-    pub tint: LinearRgba,
-    pub art: &'a Mip,
-}
-
-impl Stamp<'_> {
-    /// Ship-local corners' bounding box.
-    fn bounds(&self) -> Rect {
-        let (s, c) = self.angle.sin_cos();
-        let h = self.size * 0.5;
-        let ext = Vec2::new((h.x * c).abs() + (h.y * s).abs(), (h.x * s).abs() + (h.y * c).abs());
-        Rect::from_center_half_size(self.at, ext)
-    }
-
-    /// Premultiplied colour at a ship-local point, or nothing off the sprite.
-    fn sample(&self, p: Vec2) -> Option<LinearRgba> {
-        let (s, c) = self.angle.sin_cos();
-        let d = p - self.at;
-        let q = Vec2::new(d.x * c + d.y * s, -d.x * s + d.y * c);
-        let mut u = q.x / self.size.x + 0.5;
-        let mut v = q.y / self.size.y + 0.5;
-        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
-            return None;
-        }
-        if self.flip_x {
-            u = 1.0 - u;
-        }
-        if self.flip_y {
-            v = 1.0 - v;
-        }
-        // Art rows run top down; v runs up.
-        let texel = self.art.at(self.rect.min.x + u * self.rect.width(), self.rect.min.y + (1.0 - v) * self.rect.height());
-        let t = self.tint;
-        Some(LinearRgba::new(texel.red * t.red * t.alpha, texel.green * t.green * t.alpha, texel.blue * t.blue * t.alpha, texel.alpha * t.alpha))
-    }
-}
-
-/// A picture being painted: premultiplied linear pixels, rows bottom up.
-pub struct Canvas {
-    pub origin: Vec2,
-    pub w: u32,
-    pub h: u32,
-    pub px: Vec<LinearRgba>,
-}
-
-impl Canvas {
-    /// A clear canvas over `bounds` (ship-local), with room for the rim.
-    pub fn over(bounds: Rect) -> Option<Self> {
-        let pad = 2.0 * UNITS_PER_PX;
-        let lo = ((bounds.min - pad) / UNITS_PER_PX).floor() * UNITS_PER_PX;
-        let hi = ((bounds.max + pad) / UNITS_PER_PX).ceil() * UNITS_PER_PX;
-        let w = ((hi.x - lo.x) / UNITS_PER_PX).round() as u32;
-        let h = ((hi.y - lo.y) / UNITS_PER_PX).round() as u32;
-        if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
-            return None;
-        }
-        Some(Self { origin: lo, w, h, px: vec![LinearRgba::NONE; (w * h) as usize] })
-    }
-
-    /// Paint one sprite over what's there.
-    pub fn paint(&mut self, stamp: &Stamp) {
-        let b = stamp.bounds();
-        let x0 = (((b.min.x - self.origin.x) / UNITS_PER_PX).floor().max(0.0)) as u32;
-        let y0 = (((b.min.y - self.origin.y) / UNITS_PER_PX).floor().max(0.0)) as u32;
-        let x1 = (((b.max.x - self.origin.x) / UNITS_PER_PX).ceil() as u32).min(self.w);
-        let y1 = (((b.max.y - self.origin.y) / UNITS_PER_PX).ceil() as u32).min(self.h);
-        let share = 1.0 / (SUBSAMPLES * SUBSAMPLES) as f32;
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let mut src = LinearRgba::NONE;
-                for sy in 0..SUBSAMPLES {
-                    for sx in 0..SUBSAMPLES {
-                        let p = self.origin
-                            + Vec2::new(
-                                x as f32 + (sx as f32 + 0.5) / SUBSAMPLES as f32,
-                                y as f32 + (sy as f32 + 0.5) / SUBSAMPLES as f32,
-                            ) * UNITS_PER_PX;
-                        if let Some(c) = stamp.sample(p) {
-                            src = src + c * share;
-                        }
-                    }
-                }
-                if src.alpha <= 0.0 {
-                    continue;
-                }
-                let dst = &mut self.px[(y * self.w + x) as usize];
-                *dst = src + *dst * (1.0 - src.alpha);
-            }
-        }
-    }
-
-    /// A dark rim on the clear pixels touching the picture.
-    pub fn rim(&mut self) {
-        let solid = |c: &LinearRgba| c.alpha > 0.5;
-        let mask: Vec<bool> = self.px.iter().map(solid).collect();
-        let (w, h) = (self.w as i32, self.h as i32);
-        for y in 0..h {
-            for x in 0..w {
-                let i = (y * w + x) as usize;
-                if self.px[i].alpha > 0.05 {
-                    continue;
-                }
-                let touches = (-1..=1).any(|dy| {
-                    (-1..=1).any(|dx| {
-                        let (nx, ny) = (x + dx, y + dy);
-                        nx >= 0 && ny >= 0 && nx < w && ny < h && mask[(ny * w + nx) as usize]
-                    })
-                });
-                if touches {
-                    self.px[i] = LinearRgba::new(RIM.red * RIM.alpha, RIM.green * RIM.alpha, RIM.blue * RIM.alpha, RIM.alpha);
-                }
-            }
-        }
-    }
-
-    /// The picture as an sRGB image, rows top down.
-    pub fn into_image(self) -> Image {
-        let mut data = Vec::with_capacity((self.w * self.h * 4) as usize);
-        for y in (0..self.h).rev() {
-            for x in 0..self.w {
-                let c = self.px[(y * self.w + x) as usize];
-                let straight = if c.alpha > 0.0 {
-                    LinearRgba::new(c.red / c.alpha, c.green / c.alpha, c.blue / c.alpha, c.alpha.min(1.0))
-                } else {
-                    LinearRgba::NONE
-                };
-                data.extend_from_slice(&Color::LinearRgba(straight).to_srgba().to_u8_array());
-            }
-        }
-        let mut image = Image::new(
-            Extent3d { width: self.w, height: self.h, depth_or_array_layers: 1 },
-            TextureDimension::D2,
-            data,
-            TextureFormat::Rgba8UnormSrgb,
-            RenderAssetUsages::RENDER_WORLD,
-        );
-        image.sampler = ImageSampler::linear();
-        image
-    }
-
-    /// Ship-local centre and size of the picture.
-    pub fn placement(&self) -> (Vec2, Vec2) {
-        let size = Vec2::new(self.w as f32, self.h as f32) * UNITS_PER_PX;
-        (self.origin + size * 0.5, size)
-    }
-}
-
-/// Shrunk copies of the art that's been baked from, by image.
+/// The average colour of some art, by image and the part of it in use.
 #[derive(Default)]
-pub struct MipCache(HashMap<AssetId<Image>, Mip>);
+pub struct AverageCache(HashMap<(AssetId<Image>, [i32; 4]), LinearRgba>);
 
-impl MipCache {
-    /// The shrunk art for a sprite, made the first time it's asked for. None
-    /// while the art is still loading or can't be read back.
-    fn get(&mut self, images: &Assets<Image>, handle: &Handle<Image>) -> Option<&Mip> {
-        let id = handle.id();
+impl AverageCache {
+    /// None while the art is still loading.
+    fn get(&mut self, images: &Assets<Image>, sprite: &Sprite) -> Option<LinearRgba> {
+        let id = sprite.image.id();
         if id == Handle::<Image>::default().id() {
-            return None;
+            return Some(LinearRgba::WHITE);
         }
-        if !self.0.contains_key(&id) {
-            let image = images.get(id)?;
-            image.data.as_ref()?;
-            let (w, h) = (image.width(), image.height());
-            let mip = Mip::build(w, h, |x, y| image.get_color_at(x, y).map(|c| c.to_linear()).unwrap_or(LinearRgba::NONE));
-            self.0.insert(id, mip);
+        let key = sprite.rect.map_or([0, 0, -1, -1], |r| [r.min.x as i32, r.min.y as i32, r.max.x as i32, r.max.y as i32]);
+        if let Some(found) = self.0.get(&(id, key)) {
+            return Some(*found);
         }
-        self.0.get(&id)
+        let image = images.get(id)?;
+        // Art that can't be read back (kept on the GPU only) is a mid grey,
+        // not a block that never gets a copy and so never updates.
+        let average = if image.data.is_none() {
+            LinearRgba::gray(0.3)
+        } else {
+            let (w, h) = (image.width() as f32, image.height() as f32);
+            let rect = sprite.rect.unwrap_or(Rect::new(0.0, 0.0, w, h));
+            average_of(rect, |x, y| image.get_color_at(x, y).map(|c| c.to_linear()).unwrap_or(LinearRgba::NONE))
+        };
+        self.0.insert((id, key), average);
+        Some(average)
     }
 }
 
-/// Give every ship and turret a picture to bake into.
-#[allow(clippy::type_complexity)]
-pub fn attach_far_art(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    owners: Query<(Entity, Has<TurretBody>), (Or<(With<Ship>, With<AiShip>, With<TurretBody>, With<crate::combat::severance::DetachedSection>)>, Without<FarArt>)>,
-) {
-    // DEPTHS_NO_FAR_ART=1: blocks all the way out, to measure against.
-    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *OFF.get_or_init(|| std::env::var_os("DEPTHS_NO_FAR_ART").is_some()) {
-        return;
+/// The colour of some art, weighted by how solid each pixel is, with alpha for
+/// how much of the area it covers: a corner wedge is half see-through, which
+/// at a few pixels is what a diagonal edge looks like.
+fn average_of(rect: Rect, at: impl Fn(u32, u32) -> LinearRgba) -> LinearRgba {
+    let (mut sum, mut coverage, mut n) = (Vec3::ZERO, 0.0f32, 0.0f32);
+    for j in 0..SAMPLES {
+        for i in 0..SAMPLES {
+            let x = rect.min.x + rect.width() * (i as f32 + 0.5) / SAMPLES as f32;
+            let y = rect.min.y + rect.height() * (j as f32 + 0.5) / SAMPLES as f32;
+            let c = at(x as u32, y as u32);
+            sum += Vec3::new(c.red, c.green, c.blue) * c.alpha;
+            coverage += c.alpha;
+            n += 1.0;
+        }
     }
-    for (owner, turret) in owners.iter() {
-        let image = images.add(Image::new_fill(
-            Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
-            TextureDimension::D2,
-            &[0, 0, 0, 0],
-            TextureFormat::Rgba8UnormSrgb,
-            RenderAssetUsages::RENDER_WORLD,
-        ));
-        let z = if turret { TURRET_ART_Z } else { SHIP_ART_Z };
-        let sprite = commands
-            .spawn((
-                Sprite { image: image.clone(), color: Color::WHITE.with_alpha(0.0), ..default() },
-                Transform::from_xyz(0.0, 0.0, z),
-                Visibility::Hidden,
-                FarArtSprite,
-                ChildOf(owner),
-            ))
-            .id();
-        commands.entity(owner).try_insert(FarArt { sprite, image, baked: None, baked_at: f32::NEG_INFINITY, sprites: 0 });
+    if coverage <= 0.0 {
+        return LinearRgba::NONE;
     }
+    let c = sum / coverage;
+    LinearRgba::new(c.x, c.y, c.z, coverage / n)
 }
 
-/// What a picture is painted from: a ship's hull, parts and roof, or a
-/// turret's plates, parts and gun house roof -- whatever of those is drawn.
-#[allow(clippy::type_complexity)]
-type Pictured<'w, 's> = Query<
-    'w,
-    's,
-    (&'static Sprite, &'static Transform, &'static Visibility, Option<&'static HullSegment>, Option<&'static Module>),
-    (
-        Or<(With<HullSegment>, With<Module>, With<super::ship_roof::RoofTile>, With<super::ship_roof::AiRoofTile>)>,
-        Without<FarArtSprite>,
-    ),
->;
-
-/// The glow of a wound in the far picture.
-const EMBER: (f32, f32, f32) = (1.0, 0.22, 0.03);
-
-/// How much of a block is left, 0..1, for how dark it paints.
-fn wear_of(hull: Option<&HullSegment>, module: Option<&Module>) -> f32 {
+/// How much of a block is left, 0..1.
+fn left_of(hull: Option<&HullSegment>, module: Option<&Module>) -> f32 {
     let (health, max) = match (hull, module) {
         (Some(h), _) => (h.health, h.max_health),
         (_, Some(m)) => (m.health, m.max_health),
@@ -381,180 +149,163 @@ fn wear_of(hull: Option<&HullSegment>, module: Option<&Module>) -> f32 {
     if max > 0.0 { (health / max).clamp(0.0, 1.0) } else { 1.0 }
 }
 
-/// A block's colour for the picture: darker as it's shot up, down to a third.
-fn worn(tint: LinearRgba, left: f32) -> LinearRgba {
-    let k = 0.33 + 0.67 * left;
-    LinearRgba::new(tint.red * k, tint.green * k, tint.blue * k, tint.alpha)
+/// A copy's colour at full strength: darker and hotter as the block is shot
+/// up, so damage reads against the ship around it and not just as a slightly
+/// duller patch.
+fn copy_color(art: LinearRgba, tint: LinearRgba, left: f32) -> LinearRgba {
+    // Brighter than the art: a dark hull a few pixels across against black
+    // space otherwise reads as nothing but its shield.
+    let dark = COPY_GAIN * (0.3 + 0.7 * left);
+    let burn = (1.0 - left) * 0.32;
+    LinearRgba::new(
+        art.red * tint.red * dark + EMBER.0 * burn,
+        art.green * tint.green * dark + EMBER.1 * burn,
+        art.blue * tint.blue * dark + EMBER.2 * burn,
+        art.alpha * tint.alpha,
+    )
 }
 
-/// Bake the pictures that are out of date, a few a frame, only when they can
-/// be seen.
-#[allow(clippy::too_many_arguments)]
-pub fn bake_far_art(
-    mut commands: Commands,
-    camera: Res<CameraState>,
-    time: Res<Time>,
-    mut images: ResMut<Assets<Image>>,
-    mut owners: Query<(Entity, &mut FarArt, Option<&LayoutVersion>, Option<&Children>, Option<&super::ship_roof::Scars>)>,
-    pictured: Pictured,
-    mut sprites: Query<(&mut Sprite, &mut Transform), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
-    mut cache: Local<MipCache>,
-) {
-    let alpha = art_alpha(camera.zoom);
-    if alpha <= 0.0 {
-        return;
-    }
-    let now = time.elapsed_secs();
-    let full = alpha >= 1.0;
-    // Never baked first, then changed, then the stalest.
-    let mut due: Vec<(u8, f32, Entity)> = owners
-        .iter()
-        .filter_map(|(e, art, version, ..)| {
-            let since = now - art.baked_at;
-            let cost_ms = art.sprites as f32 / SPRITES_PER_MS;
-            let rank = match (art.baked, version) {
-                (None, _) => 0,
-                (Some(b), Some(v)) if b != *v && since >= REBAKE_S * cost_ms.max(1.0) => 1,
-                _ if since >= REFRESH_S * cost_ms.max(1.0) => 2,
-                _ => return None,
-            };
-            Some((rank, art.baked_at, e))
-        })
-        .collect();
-    due.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
-
-    for (_, _, owner) in due.into_iter().take(BAKES_PER_FRAME) {
-        let Ok((_, mut art, version, children, scars)) = owners.get_mut(owner) else { continue };
-        let mut layers: Vec<(f32, Entity, &Sprite, &Transform, f32, Option<IVec2>)> = children
-            .into_iter()
-            .flatten()
-            .filter_map(|c| pictured.get(*c).ok().filter(|(_, _, v, ..)| **v != Visibility::Hidden).map(|(s, t, _, hull, module)| (t.translation.z, *c, s, t, wear_of(hull, module), hull.map(|h| h.grid_position))))
-            .collect();
-        layers.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-        // Shrink any art not seen before, then paint bottom up.
-        for (_, _, sprite, ..) in &layers {
-            cache.get(&images, &sprite.image);
-        }
-        let white = Mip::white();
-        let mut stamps: Vec<Stamp> = layers
-            .iter()
-            .filter_map(|(_, _, sprite, t, wear, _)| {
-                let art = if sprite.image.id() == Handle::<Image>::default().id() { &white } else { cache.0.get(&sprite.image.id())? };
-                let (src_w, src_h) = (art.w as f32 * art.step, art.h as f32 * art.step);
-                let rect = sprite.rect.unwrap_or(Rect::new(0.0, 0.0, src_w, src_h));
-                let size = sprite.custom_size.unwrap_or(rect.size()) * t.scale.truncate().abs();
-                let tint = sprite.color.to_linear();
-                let tint = worn(tint, *wear);
-                Some(Stamp {
-                    at: t.translation.truncate(),
-                    angle: t.rotation.to_euler(EulerRot::ZYX).0,
-                    size,
-                    rect,
-                    flip_x: sprite.flip_x,
-                    flip_y: sprite.flip_y,
-                    tint,
-                    art,
-                })
-            })
-            .collect();
-        // Wounds glow, on top of everything.
-        if let Some(scars) = scars {
-            let standing = layers.iter().filter_map(|(.., cell)| *cell).collect();
-            for (cell, bright) in super::ship_roof::embers(scars, &standing) {
-                let size = Vec2::splat(crate::building::GRID_SIZE * 1.3);
-                stamps.push(Stamp {
-                    at: crate::building::grid_to_local(cell),
-                    angle: 0.0,
-                    size,
-                    rect: Rect::new(0.0, 0.0, white.w as f32 * white.step, white.h as f32 * white.step),
-                    flip_x: false,
-                    flip_y: false,
-                    tint: LinearRgba::new(EMBER.0 * bright, EMBER.1 * bright, EMBER.2 * bright, 0.95),
-                    art: &white,
-                });
-            }
-        }
-        art.baked = version.copied();
-        art.baked_at = now;
-        let Some(bounds) = stamps.iter().map(Stamp::bounds).reduce(|a, b| a.union(b)) else { continue };
-        let Some(mut canvas) = Canvas::over(bounds) else { continue };
-        for stamp in &stamps {
-            canvas.paint(stamp);
-        }
-        canvas.rim();
-        let (centre, size) = canvas.placement();
-        art.sprites = stamps.len();
-        // DEPTHS_FAR_TRACE=1 logs each bake; DEPTHS_FAR_DUMP=<dir> writes
-        // each picture there as raw RGBA.
-        if std::env::var_os("DEPTHS_FAR_TRACE").is_some() {
-            info!("FAR ART baked {owner}: {}x{} px from {} sprites, centre {centre}, zoom {:.1}", canvas.w, canvas.h, stamps.len(), camera.zoom);
-        }
-        let image = canvas.into_image();
-        if let Some(dir) = std::env::var_os("DEPTHS_FAR_DUMP") {
-            if let Some(data) = image.data.as_ref() {
-                let path = std::path::Path::new(&dir).join(format!("{owner}_{}x{}.rgba", image.width(), image.height()));
-                let _ = std::fs::write(path, data);
-            }
-        }
-        let _ = images.insert(&art.image, image);
-        if let Ok((mut sprite, mut t)) = sprites.get_mut(art.sprite) {
-            sprite.custom_size = Some(size);
-            t.translation = centre.extend(t.translation.z);
-        }
-        // Fully out, what was just painted stops drawing (blocks built or
-        // laid since the last bake included).
-        if full {
-            for (_, block, ..) in &layers {
-                commands.entity(*block).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
-            }
-        }
-    }
-}
-
-/// Fade the pictures with the zoom; fully out, hide the blocks they stand in
-/// for, and bring them back as the camera comes in.
+/// Give blocks their copies, a few thousand a frame, once they can be seen.
 #[allow(clippy::type_complexity)]
-pub fn show_far_art(
+pub fn attach_far_copies(
     mut commands: Commands,
     camera: Res<CameraState>,
-    owners: Query<(&FarArt, Option<&Children>)>,
-    pictured: Pictured,
-    mut sprites: Query<(&mut Sprite, &mut Visibility), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
-    hidden: Query<Entity, With<FarHidden>>,
-    mut was_full: Local<bool>,
+    images: Res<Assets<Image>>,
+    blocks: Query<(Entity, &Sprite, Option<&HullSegment>, Option<&Module>), (Or<(With<HullSegment>, With<Module>)>, Without<FarCopyOf>)>,
+    mut cache: Local<AverageCache>,
 ) {
-    let alpha = art_alpha(camera.zoom);
-    for (art, _) in owners.iter() {
-        let Ok((mut sprite, mut vis)) = sprites.get_mut(art.sprite) else { continue };
-        let want = alpha;
-        // Not shown until it's been baked once.
-        let want_vis = if want > 0.0 && art.baked_at.is_finite() { Visibility::Inherited } else { Visibility::Hidden };
-        if *vis != want_vis {
-            *vis = want_vis;
-        }
-        if (sprite.color.alpha() - want).abs() > 0.001 {
-            sprite.color.set_alpha(want);
-        }
-    }
-    let full = alpha >= 1.0;
-    if full == *was_full {
+    // DEPTHS_NO_FAR_ART=1: blocks all the way out, to measure against.
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *OFF.get_or_init(|| std::env::var_os("DEPTHS_NO_FAR_ART").is_some()) {
         return;
     }
-    *was_full = full;
-    if std::env::var_os("DEPTHS_FAR_TRACE").is_some() {
-        info!("FAR ART {} at zoom {:.1}", if full { "stands in" } else { "steps back" }, camera.zoom);
+    let fade = art_alpha(camera.zoom);
+    if fade <= 0.0 {
+        return;
     }
-    if full {
-        for (art, children) in owners.iter() {
-            if !art.baked_at.is_finite() {
-                continue;
+    for (block, sprite, hull, module) in blocks.iter().take(COPIES_PER_FRAME) {
+        let Some(art) = cache.get(&images, sprite) else { continue };
+        let size = sprite.custom_size.or_else(|| sprite.rect.map(|r| r.size())).or_else(|| images.get(sprite.image.id()).map(|i| i.size_f32()));
+        let Some(size) = size else { continue };
+        let color = copy_color(art, sprite.color.to_linear(), left_of(hull, module));
+        let copy = commands
+            .spawn((
+                Sprite {
+                    color: Color::LinearRgba(color.with_alpha(color.alpha * fade)),
+                    custom_size: Some(size * COPY_OVERLAP),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, COPY_Z),
+                FarCopy { solid: color.alpha },
+                ChildOf(block),
+            ))
+            .id();
+        commands.entity(block).try_insert(FarCopyOf(copy));
+    }
+}
+
+/// Damage, repairs and repaints, the frame they happen.
+#[allow(clippy::type_complexity)]
+pub fn refresh_far_copies(
+    camera: Res<CameraState>,
+    images: Res<Assets<Image>>,
+    changed: Query<
+        (&Sprite, Option<&HullSegment>, Option<&Module>, &FarCopyOf),
+        (Without<FarCopy>, Or<(Changed<HullSegment>, Changed<Module>, Changed<Sprite>)>),
+    >,
+    mut copies: Query<(&mut Sprite, &mut FarCopy)>,
+    mut cache: Local<AverageCache>,
+) {
+    let fade = art_alpha(camera.zoom);
+    for (sprite, hull, module, link) in changed.iter() {
+        let Some(art) = cache.get(&images, sprite) else { continue };
+        let Ok((mut copy, mut far)) = copies.get_mut(link.0) else { continue };
+        let color = copy_color(art, sprite.color.to_linear(), left_of(hull, module));
+        let color = Color::LinearRgba(color.with_alpha(color.alpha * fade));
+        if copy.color != color {
+            copy.color = color;
+        }
+        far.solid = art.alpha * sprite.color.alpha();
+    }
+}
+
+/// Wounds glow, over the blocks: a hole in a dark ship against dark space
+/// doesn't show from far out. Laid again when a ship's scars change.
+#[allow(clippy::type_complexity)]
+pub fn far_embers(
+    mut commands: Commands,
+    camera: Res<CameraState>,
+    ships: Query<(Entity, Ref<super::ship_roof::Scars>, Option<&Children>)>,
+    embers: Query<(), With<FarEmber>>,
+    hull: Query<(&HullSegment, &Visibility)>,
+    mut laid: Local<HashSet<Entity>>,
+) {
+    let fade = art_alpha(camera.zoom);
+    if fade <= 0.0 {
+        laid.clear();
+        return;
+    }
+    for (ship, scars, children) in ships.iter() {
+        if laid.contains(&ship) && !scars.is_changed() {
+            continue;
+        }
+        laid.insert(ship);
+        let children = || children.into_iter().flatten().copied();
+        for ember in children().filter(|c| embers.contains(*c)) {
+            commands.entity(ember).despawn();
+        }
+        if scars.0.is_empty() && scars.1.is_empty() {
+            continue;
+        }
+        let standing: HashSet<IVec2> = children()
+            .filter_map(|c| hull.get(c).ok())
+            .filter(|(_, v)| **v != Visibility::Hidden)
+            .map(|(h, _)| h.grid_position)
+            .collect();
+        for (cell, bright) in super::ship_roof::embers(&scars, &standing) {
+            let color = LinearRgba::new(EMBER.0 * bright, EMBER.1 * bright, EMBER.2 * bright, EMBER_SOLID * fade);
+            commands.entity(ship).with_child((
+                Sprite {
+                    color: Color::LinearRgba(color),
+                    custom_size: Some(Vec2::splat(crate::building::GRID_SIZE * 1.3)),
+                    ..default()
+                },
+                Transform::from_translation(crate::building::grid_to_local(cell).extend(EMBER_Z)),
+                FarEmber,
+            ));
+        }
+    }
+}
+
+/// Fade the copies and embers with the zoom. Fully out, the real sprites stop
+/// drawing; coming back in, they start again.
+#[allow(clippy::type_complexity)]
+pub fn show_far_copies(
+    mut commands: Commands,
+    camera: Res<CameraState>,
+    mut last: ResMut<FarFade>,
+    mut copies: Query<(&mut Sprite, &mut Visibility, Option<&FarCopy>), Or<(With<FarCopy>, With<FarEmber>)>>,
+    copied: Query<Entity, (With<FarCopyOf>, Without<FarHidden>)>,
+    roofs: Query<Entity, (Or<(With<super::ship_roof::RoofTile>, With<super::ship_roof::AiRoofTile>)>, Without<FarHidden>)>,
+    hidden: Query<Entity, With<FarHidden>>,
+) {
+    let fade = art_alpha(camera.zoom);
+    if fade != last.0 {
+        last.0 = fade;
+        let vis = if fade > 0.0 { Visibility::Inherited } else { Visibility::Hidden };
+        for (mut sprite, mut visibility, copy) in &mut copies {
+            let solid = copy.map_or(EMBER_SOLID, |c| c.solid);
+            sprite.color.set_alpha(solid * fade);
+            if *visibility != vis {
+                *visibility = vis;
             }
-            for child in children.into_iter().flatten() {
-                if pictured.contains(*child) {
-                    commands.entity(*child).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
-                }
-            }
+        }
+    }
+    // Every frame, not on crossing the line: blocks built, roofs relaid and
+    // severed sections join in whenever they appear. Mostly nothing to do.
+    if fade >= 1.0 {
+        for block in copied.iter().chain(roofs.iter()) {
+            commands.entity(block).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
         }
     } else {
         for block in hidden.iter() {
@@ -563,32 +314,58 @@ pub fn show_far_art(
     }
 }
 
-/// Off the flight screen every block draws again.
-pub fn clear_far_art(mut commands: Commands, hidden: Query<Entity, With<FarHidden>>) {
+/// Off the flight screen every block draws its art again, and no copies.
+pub fn clear_far_copies(
+    mut commands: Commands,
+    mut last: ResMut<FarFade>,
+    hidden: Query<Entity, With<FarHidden>>,
+    mut copies: Query<&mut Visibility, Or<(With<FarCopy>, With<FarEmber>)>>,
+) {
     for block in hidden.iter() {
         commands.entity(block).try_remove::<(RenderLayers, FarHidden)>();
     }
+    for mut visibility in &mut copies {
+        *visibility = Visibility::Hidden;
+    }
+    last.0 = -1.0;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn solid(c: LinearRgba) -> Mip {
-        Mip::build(4, 4, |_, _| c)
+    fn app(zoom: f32) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.init_resource::<Assets<Image>>();
+        app.init_resource::<FarFade>();
+        app.insert_resource(CameraState { zoom, ..default() });
+        app.add_systems(Update, (attach_far_copies, refresh_far_copies, far_embers, show_far_copies).chain());
+        app
     }
 
-    fn stamp(art: &Mip, at: Vec2, angle: f32) -> Stamp<'_> {
-        Stamp {
-            at,
-            angle,
-            size: Vec2::splat(66.0),
-            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
-            flip_x: false,
-            flip_y: false,
-            tint: LinearRgba::WHITE,
-            art,
-        }
+    fn block(app: &mut App, ship: Entity, cell: IVec2) -> Entity {
+        app.world_mut()
+            .spawn((
+                HullSegment { health: 100.0, max_health: 100.0, grid_position: cell, ..default() },
+                Sprite { color: Color::srgb(0.5, 0.6, 0.7), custom_size: Some(Vec2::splat(66.0)), ..default() },
+                Transform::default(),
+                Visibility::Inherited,
+                ChildOf(ship),
+            ))
+            .id()
+    }
+
+    fn ship(app: &mut App) -> Entity {
+        app.world_mut().spawn((Transform::default(), Visibility::Inherited, super::super::ship_roof::Scars::default())).id()
+    }
+
+    fn copy_of(app: &App, block: Entity) -> Entity {
+        app.world().get::<FarCopyOf>(block).expect("no copy").0
+    }
+
+    fn color_of(app: &App, copy: Entity) -> LinearRgba {
+        app.world().get::<Sprite>(copy).unwrap().color.to_linear()
     }
 
     #[test]
@@ -599,75 +376,148 @@ mod tests {
         assert_eq!(art_alpha(20.0), 1.0);
     }
 
+    /// Close in, nobody pays: no copies at all.
     #[test]
-    fn a_block_paints_its_own_cell_and_the_rim_goes_round_it() {
-        let red = solid(LinearRgba::RED);
-        let s = stamp(&red, Vec2::ZERO, 0.0);
-        let mut canvas = Canvas::over(s.bounds()).unwrap();
-        canvas.paint(&s);
-        let filled = canvas.px.iter().filter(|c| c.alpha > 0.99).count();
-        assert_eq!(filled, (PX_PER_CELL * PX_PER_CELL) as usize, "one block is 6x6 pixels");
-        canvas.rim();
-        let rim = canvas.px.iter().filter(|c| (c.alpha - RIM.alpha).abs() < 1e-4).count();
-        assert_eq!(rim, 4 * PX_PER_CELL as usize + 4, "a one-pixel ring round it");
+    fn no_copies_are_made_close_in() {
+        let mut app = app(3.0);
+        let s = ship(&mut app);
+        let b = block(&mut app, s, IVec2::ZERO);
+        app.update();
+        app.update();
+        assert!(app.world().get::<FarCopyOf>(b).is_none());
     }
 
+    /// The whole point: a hit shows the frame it lands.
     #[test]
-    fn upper_sprites_cover_lower_ones() {
-        let red = solid(LinearRgba::RED);
-        let blue = solid(LinearRgba::BLUE);
-        let lower = stamp(&red, Vec2::ZERO, 0.0);
-        let upper = stamp(&blue, Vec2::ZERO, 0.0);
-        let mut canvas = Canvas::over(lower.bounds()).unwrap();
-        canvas.paint(&lower);
-        canvas.paint(&upper);
-        let c = canvas.px[(canvas.h / 2 * canvas.w + canvas.w / 2) as usize];
-        assert!(c.blue > 0.99 && c.red < 0.01);
+    fn a_hit_darkens_its_copy_at_once() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let (hit, other) = (block(&mut app, s, IVec2::ZERO), block(&mut app, s, IVec2::X));
+        app.update();
+        let (copy, other_copy) = (copy_of(&app, hit), copy_of(&app, other));
+        app.update();
+        let before = color_of(&app, copy);
+        let other_before = color_of(&app, other_copy);
+
+        app.world_mut().get_mut::<HullSegment>(hit).unwrap().health = 20.0;
+        app.update();
+
+        let after = color_of(&app, copy);
+        assert!(after.blue < before.blue * 0.7, "not darker: {before:?} to {after:?}");
+        assert!(after.red / after.blue > before.red / before.blue, "not hotter: {before:?} to {after:?}");
+        assert_eq!(color_of(&app, other_copy), other_before, "a block that wasn't hit changed");
     }
 
+    /// Repairs show too, not only damage.
     #[test]
-    fn half_see_through_tints_blend() {
-        let white = Mip::white();
-        let base = stamp(&white, Vec2::ZERO, 0.0);
-        let mut shade = stamp(&white, Vec2::ZERO, 0.0);
-        shade.tint = LinearRgba::new(0.0, 0.0, 0.0, 0.5);
-        let mut canvas = Canvas::over(base.bounds()).unwrap();
-        canvas.paint(&base);
-        canvas.paint(&shade);
-        let c = canvas.px[(canvas.h / 2 * canvas.w + canvas.w / 2) as usize];
-        assert!((c.red - 0.5).abs() < 0.01 && (c.alpha - 1.0).abs() < 0.01, "{c:?}");
+    fn a_repair_brings_the_colour_back() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let b = block(&mut app, s, IVec2::ZERO);
+        app.update();
+        let copy = copy_of(&app, b);
+        app.update();
+        let whole = color_of(&app, copy);
+        app.world_mut().get_mut::<HullSegment>(b).unwrap().health = 10.0;
+        app.update();
+        app.world_mut().get_mut::<HullSegment>(b).unwrap().health = 100.0;
+        app.update();
+        assert_eq!(color_of(&app, copy), whole);
     }
 
+    /// A block that dies takes its copy with it: the hole is real.
     #[test]
-    fn art_turns_with_its_sprite() {
-        // Left half red, right half blue; turned a half turn the blue is on
-        // the left.
-        let art = Mip::build(4, 4, |x, _| if x < 2 { LinearRgba::RED } else { LinearRgba::BLUE });
-        let s = stamp(&art, Vec2::ZERO, std::f32::consts::PI);
-        let mut canvas = Canvas::over(s.bounds()).unwrap();
-        canvas.paint(&s);
-        let row = canvas.h / 2;
-        let left = canvas.px[(row * canvas.w + 3) as usize];
-        let right = canvas.px[(row * canvas.w + canvas.w - 4) as usize];
-        assert!(left.blue > 0.9 && right.red > 0.9, "{left:?} {right:?}");
+    fn a_dead_block_takes_its_copy_with_it() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let b = block(&mut app, s, IVec2::ZERO);
+        app.update();
+        let copy = copy_of(&app, b);
+        app.world_mut().entity_mut(b).despawn();
+        app.update();
+        assert!(app.world().get_entity(copy).is_err());
     }
 
+    /// Built while you're zoomed out, a block still shows.
     #[test]
-    fn the_picture_sits_over_the_blocks() {
-        let red = solid(LinearRgba::RED);
-        let a = stamp(&red, Vec2::new(0.0, -33.0), 0.0);
-        let b = stamp(&red, Vec2::new(660.0, -33.0), 0.0);
-        let canvas = Canvas::over(a.bounds().union(b.bounds())).unwrap();
-        let (centre, size) = canvas.placement();
-        assert!((centre - Vec2::new(330.0, -33.0)).length() < UNITS_PER_PX, "{centre}");
-        assert!(size.x >= 726.0 && size.y >= 66.0);
+    fn a_new_block_gets_a_copy() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        block(&mut app, s, IVec2::ZERO);
+        app.update();
+        let late = block(&mut app, s, IVec2::Y);
+        app.update();
+        assert!(app.world().get::<FarCopyOf>(late).is_some());
     }
 
+    /// Fully out the art stops drawing but the copy doesn't; coming back in,
+    /// the art returns and the copy goes away.
     #[test]
-    fn mips_average_the_art() {
-        let m = Mip::build(64, 64, |x, _| if x % 2 == 0 { LinearRgba::WHITE } else { LinearRgba::NONE });
-        assert_eq!((m.w, m.h), (32, 32));
-        let c = m.at(10.0, 10.0);
-        assert!((c.alpha - 0.5).abs() < 1e-4 && (c.red - 0.5).abs() < 1e-4, "premultiplied half cover: {c:?}");
+    fn copies_stand_in_far_out_and_step_back_close_in() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let b = block(&mut app, s, IVec2::ZERO);
+        app.update();
+        app.update();
+        let copy = copy_of(&app, b);
+        assert!(app.world().get::<RenderLayers>(b).is_some(), "the art still draws");
+        assert!(app.world().get::<RenderLayers>(copy).is_none(), "the copy was hidden with it");
+
+        app.world_mut().resource_mut::<CameraState>().zoom = 3.0;
+        app.update();
+        app.update();
+        assert!(app.world().get::<RenderLayers>(b).is_none(), "the art didn't come back");
+        assert_eq!(*app.world().get::<Visibility>(copy).unwrap(), Visibility::Hidden);
+    }
+
+    /// Fading in and out doesn't lose a damaged block's colour.
+    #[test]
+    fn fading_keeps_a_copys_colour() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let b = block(&mut app, s, IVec2::ZERO);
+        app.update();
+        let copy = copy_of(&app, b);
+        app.world_mut().get_mut::<HullSegment>(b).unwrap().health = 20.0;
+        app.update();
+        let hurt = color_of(&app, copy);
+        app.world_mut().resource_mut::<CameraState>().zoom = (ART_FROM + ART_SOLID) / 2.0;
+        app.update();
+        assert!(color_of(&app, copy).alpha < hurt.alpha);
+        app.world_mut().resource_mut::<CameraState>().zoom = 20.0;
+        app.update();
+        assert_eq!(color_of(&app, copy), hurt);
+    }
+
+    /// A wound glows, and stops when it's repaired.
+    #[test]
+    fn scars_glow_and_clear() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        block(&mut app, s, IVec2::ZERO);
+        app.update();
+        let count = |app: &mut App| app.world_mut().query_filtered::<(), With<FarEmber>>().iter(app.world()).count();
+        assert_eq!(count(&mut app), 0);
+        app.world_mut().get_mut::<super::super::ship_roof::Scars>(s).unwrap().1.insert(IVec2::X);
+        app.update();
+        app.update();
+        assert!(count(&mut app) > 0, "a torn edge didn't glow");
+        app.world_mut().get_mut::<super::super::ship_roof::Scars>(s).unwrap().1.clear();
+        app.update();
+        app.update();
+        assert_eq!(count(&mut app), 0);
+    }
+
+    /// Solid art is its own colour; a half-empty wedge is half see-through,
+    /// and the empty half doesn't turn it black.
+    #[test]
+    fn the_average_ignores_empty_pixels() {
+        let rect = Rect::new(0.0, 0.0, 16.0, 16.0);
+        let solid = average_of(rect, |_, _| LinearRgba::new(0.2, 0.4, 0.6, 1.0));
+        assert!((solid.red - 0.2).abs() < 1e-4 && (solid.alpha - 1.0).abs() < 1e-4);
+        let wedge = average_of(rect, |x, y| if x + y < 16 { LinearRgba::new(0.2, 0.4, 0.6, 1.0) } else { LinearRgba::NONE });
+        assert!((wedge.red - 0.2).abs() < 1e-3, "{wedge:?}");
+        assert!(wedge.alpha > 0.35 && wedge.alpha < 0.65, "{wedge:?}");
+        assert_eq!(average_of(rect, |_, _| LinearRgba::NONE), LinearRgba::NONE);
     }
 }
