@@ -102,6 +102,20 @@ pub const PIERCE_MIN_DAMAGE: f32 = 5.0;
 /// The share of a designed shell's blast a block at the very rim takes.
 pub const HE_EDGE: f32 = 0.4;
 
+/// Below this caliber (a 150 mm gun is 1.0) a shell just makes its hole.
+const SHOCK_MIN_CALIBER: f32 = 1.0;
+/// Reach of the shock, per caliber: a block and a half round a 170 mm hit, four
+/// and a half round a 500 mm one.
+const SHOCK_RADIUS: f32 = 88.0;
+/// The share of the shell's damage the blocks at the middle of the shock take.
+const SHOCK_SHARE: f32 = 0.1;
+
+/// The shock of a heavy shell's first impact, radius and damage at the middle:
+/// what makes a big gun's hit tear a piece out, not bore one line through it.
+pub fn impact_shock(caliber: f32, damage: f32) -> Option<(f32, f32)> {
+    (caliber >= SHOCK_MIN_CALIBER).then_some((SHOCK_RADIUS * caliber, damage * SHOCK_SHARE))
+}
+
 /// What an armour-piercing round carries into the next block, if anything.
 ///
 /// A block soaks up to the health it has left; what the round had beyond
@@ -1403,6 +1417,16 @@ pub fn check_projectile_hits(
                 // A designed shell's blast weakens towards its rim; the old
                 // fixed-list rounds keep the flat blast they were tuned with.
                 let blast_edge = if proj.effect.is_some() { HE_EDGE } else { 1.0 };
+                // A heavy shell's first impact shocks the blocks around it.
+                if !proj.has_penetrated && proj.effect.is_some() {
+                    if let Some((radius, shock)) = impact_shock(proj.caliber, proj.damage) {
+                        splash_blocks(
+                            &mut commands, children, &mut ai_module_query, &mut ai_hull_query,
+                            hit_entity, hit_pos, radius, shock, HE_EDGE,
+                        );
+                        spawn_explosion(&mut commands, &fx, hit_pos, radius * IMPACT_BLAST_SCALE, Color::srgb(1.0, 0.55, 0.15));
+                    }
+                }
                 if let Some(behavior) = behavior {
                     use crate::combat::ammo_types::AmmoHitBehavior::*;
                     match behavior {
