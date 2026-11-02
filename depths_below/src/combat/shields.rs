@@ -330,22 +330,26 @@ fn spawn_built_skin(
     is_player: bool,
 ) {
     let handle = images.add(img);
-    let mut e = commands.spawn((
-        Sprite {
-            image: handle,
-            color: Color::srgba(0.5, 0.8, 1.0, 0.0), // alpha driven by update_shields / update_shield_segment
-            custom_size: Some(size),
-            ..default()
-        },
-        Transform::from_xyz(center.x, center.y, 0.9),
-        ShieldBubble,
-    ));
-    // The player's bubble is masked into a moving segment; store the base glow.
-    if is_player {
-        e.insert(ShieldSegment { base_a, w, h, center, size, lit, angles: Vec::new(), angles_pivot: None, masked_for: None });
-    }
-    let skin = e.id();
-    commands.entity(owner).add_child(skin);
+    // Spawned from inside the command, so an owner gone by the time it runs
+    // leaves no skin behind and no error.
+    commands.entity(owner).queue_silenced(move |mut owner: EntityWorldMut| {
+        owner.with_children(|skins| {
+            let mut e = skins.spawn((
+                Sprite {
+                    image: handle,
+                    color: Color::srgba(0.5, 0.8, 1.0, 0.0), // alpha driven by update_shields / update_shield_segment
+                    custom_size: Some(size),
+                    ..default()
+                },
+                Transform::from_xyz(center.x, center.y, 0.9),
+                ShieldBubble,
+            ));
+            // The player's bubble is masked into a moving segment; store the base glow.
+            if is_player {
+                e.insert(ShieldSegment { base_a, w, h, center, size, lit, angles: Vec::new(), angles_pivot: None, masked_for: None });
+            }
+        });
+    });
 }
 
 /// Attach a shield to the player ship (scaled by Shield Emitter modules).
@@ -367,7 +371,8 @@ pub fn attach_player_shield(
     let max = SHIELD_BASE_HP + emitters * SHIELD_HP_PER_EMITTER;
     let (center, radius) = ship_extent(ship, &transform_query);
 
-    commands.entity(ship).insert(ShipShield {
+    // try_: a load can replace the ship the frame this is queued.
+    commands.entity(ship).try_insert(ShipShield {
         current: max,
         max,
         base_max: max,
@@ -504,7 +509,8 @@ pub fn attach_ai_shields(
             base * AI_SHIELD_HP_MULT
         };
         let (center, radius) = ship_extent(entity, &transform_query);
-        commands.entity(entity).insert(ShipShield {
+        // try_: the ship can be filed away or destroyed the frame this is queued.
+        commands.entity(entity).try_insert(ShipShield {
             current: max,
             max,
             base_max: max,
