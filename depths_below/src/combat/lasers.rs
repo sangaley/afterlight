@@ -600,6 +600,7 @@ pub fn resolve_laser_shots(
     mut player_hits: super::new_projectiles::PlayerHitEffects,
     view: (Res<Time>, Query<&Projection, With<crate::camera::MainCamera>>),
     terrain: (Res<crate::ship::collision::ColliderGrid>, Query<(&Transform, &crate::ship::collision::Collider), crate::ship::collision::TerrainFilter>),
+    sides: super::new_projectiles::Sides,
 ) {
     let dt = view.0.delta_secs().max(1e-4);
     let zoom = match view.1.single() {
@@ -671,7 +672,7 @@ pub fn resolve_laser_shots(
             }
         }
         for (ship, tf, gt, children, shield, _) in ships.iter() {
-            if ship == shot.ship {
+            if ship == shot.ship || sides.flies_past(shot.ship, ship) {
                 continue;
             }
             let centre = shield.world_center(tf);

@@ -713,6 +713,8 @@ pub fn fire_weapons_system(
                 .unwrap_or(base_color);
 
             let angle = vel.y.atan2(vel.x);
+            // Point defence stops where its engagement does, not on across the fight.
+            let lifetime = if pd_engaged { crate::combat::missile_defence::pd_lifetime(proj_speed).min(4.0) } else { 4.0 };
 
             commands.spawn((
                 (Sprite {
@@ -727,8 +729,8 @@ pub fn fire_weapons_system(
                 Projectile {
                     damage: weapon.damage * ammo_damage_mult * debug_tuning.damage_mult,
                     speed: proj_speed,
-                    lifetime: 4.0,
-                    max_lifetime: 4.0,
+                    lifetime,
+                    max_lifetime: lifetime,
                     owner: entity,
                     damage_type,
                     penetration,
@@ -1024,6 +1026,44 @@ impl PlayerHitEffects<'_, '_> {
     }
 }
 
+/// Who an AI gun's round or beam can hit. Fleets fight at 20 km, and at that
+/// range a shot crossing a friend's hull on its way to the enemy was every
+/// twentieth hit in a battle, more round a crowded station.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct Sides<'w, 's> {
+    ships: Query<'w, 's, (&'static crate::ai_ship::components::AiShipType, Option<&'static crate::ai_ship::components::AiShipTarget>)>,
+    standing: Res<'w, crate::diplomacy::FactionStanding>,
+}
+
+impl Sides<'_, '_> {
+    /// Does a shot from `shooter`'s guns fly on past `ship`? Never for the
+    /// player's own guns: those are aimed by a person, who may mean it.
+    pub(crate) fn flies_past(&self, shooter: Entity, ship: Entity) -> bool {
+        let Ok((faction, target)) = self.ships.get(shooter) else { return false };
+        let theirs = self.ships.get(ship).ok().map(|(f, _)| *f);
+        flies_past(*faction, target.and_then(|t| t.entity), ship, theirs, self.standing.attacks_player(*faction))
+    }
+}
+
+/// A shot passes any ship its shooter's side isn't fighting. What it's actually
+/// shooting at still gets hit, whoever that is: a friendly crew answering you
+/// for shots you fired has the player as its target.
+fn flies_past(
+    faction: crate::ai_ship::components::AiShipType,
+    target: Option<Entity>,
+    ship: Entity,
+    ship_faction: Option<crate::ai_ship::components::AiShipType>,
+    attacks_player: bool,
+) -> bool {
+    if target == Some(ship) {
+        return false;
+    }
+    match ship_faction {
+        Some(theirs) => !crate::ai_ship::components::factions_hostile(faction, theirs),
+        None => !attacks_player,
+    }
+}
+
 pub fn check_projectile_hits(
     fx: Res<crate::vfx::effect_textures::EffectTextures>,
     mut commands: Commands,
@@ -1052,7 +1092,7 @@ pub fn check_projectile_hits(
     turret_bodies: Query<(), With<crate::combat::turret_deck::TurretBody>>,
     turret_layers: Query<(&GlobalTransform, &Children), With<crate::combat::turret_deck::TurretBody>>,
     // Each ship's and turret's grid, and each turret's gun house roof over it.
-    grids: (Query<&crate::building::ShipGrid>, Query<&crate::building::RoofGrid>),
+    grids: (Query<&crate::building::ShipGrid>, Query<&crate::building::RoofGrid>, Sides),
     block_query: Query<&crate::building::Block>,
     mut ai_damage_events: MessageWriter<crate::events::AiShipDamaged>,
     mut player_hits: PlayerHitEffects,
@@ -1075,6 +1115,7 @@ pub fn check_projectile_hits(
         // === AI SHIPS: shield first, then block-by-block hull damage ===
         for (ai_entity, ai_transform, ai_gt, children, mut shield, is_player) in ai_ship_query.iter_mut() {
             if Some(ai_entity) == owner_ship { continue; }
+            if owner_ship.is_some_and(|shooter| grids.2.flies_past(shooter, ai_entity)) { continue; }
             // Bubble is centered on the blocks' centroid, not the root
             let center = shield.world_center(ai_transform);
             // Distance from the whole STEP, not its end point. A railgun
@@ -1952,6 +1993,7 @@ mod shared_hit_tests {
         app.add_message::<crate::events::HullBreached>();
         app.add_message::<crate::events::RoomDepressurized>();
         app.add_message::<ShowNotification>();
+        app.init_resource::<crate::diplomacy::FactionStanding>();
         app.add_systems(Update, check_projectile_hits);
 
         let player = app.world_mut()
@@ -2000,6 +2042,74 @@ mod shared_hit_tests {
         assert_eq!(hits.len(), 1);
         assert!(hits[0].applied, "already applied, so process_ship_damage won't apply it twice");
         assert!(matches!(hits[0].source, crate::events::DamageSource::Gunfire));
+    }
+
+    fn shooter(app: &mut App) -> Entity {
+        app.world_mut().query_filtered::<Entity, With<AiShip>>().iter(app.world()).next().unwrap()
+    }
+
+    fn rounds(app: &mut App) -> usize {
+        app.world_mut().query::<&Projectile>().iter(app.world()).count()
+    }
+
+    fn standing(app: &mut App, faction: crate::ai_ship::components::AiShipType, delta: f32) {
+        app.world_mut().resource_mut::<crate::diplomacy::FactionStanding>().change(faction, delta, "test");
+    }
+
+    #[test]
+    fn a_friendly_crews_round_flies_past_the_player() {
+        use crate::ai_ship::components::AiShipType::TerranHegemony;
+        let (mut app, _, plates) = setup(false);
+        let gun_ship = shooter(&mut app);
+        app.world_mut().entity_mut(gun_ship).insert(TerranHegemony);
+        standing(&mut app, TerranHegemony, 1000.0);
+        app.update();
+        assert_eq!(app.world().get::<HullSegment>(plates[0]).unwrap().health, 100.0);
+        assert_eq!(rounds(&mut app), 1, "the round flew on");
+    }
+
+    #[test]
+    fn a_hostile_crews_round_still_hits_the_player() {
+        use crate::ai_ship::components::AiShipType::TerranHegemony;
+        let (mut app, _, plates) = setup(false);
+        let gun_ship = shooter(&mut app);
+        app.world_mut().entity_mut(gun_ship).insert(TerranHegemony);
+        standing(&mut app, TerranHegemony, -1000.0);
+        app.update();
+        assert!(app.world().get::<HullSegment>(plates[0]).unwrap().health < 100.0);
+    }
+
+    /// You shot a friendly ship and it's answering: that fire lands.
+    #[test]
+    fn what_a_ship_is_shooting_at_gets_hit_whoever_it_is() {
+        use crate::ai_ship::components::AiShipType::TerranHegemony;
+        let (mut app, player, plates) = setup(false);
+        let gun_ship = shooter(&mut app);
+        app.world_mut().entity_mut(gun_ship).insert((
+            TerranHegemony,
+            crate::ai_ship::components::AiShipTarget { entity: Some(player), ..default() },
+        ));
+        standing(&mut app, TerranHegemony, 1000.0);
+        app.update();
+        assert!(app.world().get::<HullSegment>(plates[0]).unwrap().health < 100.0);
+    }
+
+    /// Two AI ships, through the real resolver: a fleet-mate is flown past, an
+    /// enemy is hit, and an ally of the shooter's faction counts as a friend.
+    #[test]
+    fn a_round_only_lands_on_ships_its_side_is_fighting() {
+        use crate::ai_ship::components::AiShipType::{self, *};
+        let hits = |victim: AiShipType| {
+            let (mut app, ship, _) = setup(false);
+            let gun_ship = shooter(&mut app);
+            app.world_mut().entity_mut(gun_ship).insert(TerranHegemony);
+            app.world_mut().entity_mut(ship).remove::<Ship>().insert((AiShip, victim));
+            app.update();
+            app.world_mut().resource_mut::<Messages<crate::events::AiShipDamaged>>().drain().count()
+        };
+        assert_eq!(hits(TerranHegemony), 0, "same faction");
+        assert_eq!(hits(GildedThrone), 0, "allied");
+        assert!(hits(EternalHegemony) > 0, "at war");
     }
 
     /// A turret standing on the player's ship, its centre over hull cell

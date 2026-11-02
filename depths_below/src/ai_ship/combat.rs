@@ -301,7 +301,8 @@ pub fn ai_weapon_fire_system(
                 let round = crate::combat::new_projectiles::spawn_ai_round(
                     &mut commands, &asset_server, child, module.module_type, muzzle, aim,
                     weapon.damage * efficiency, g.stats.velocity_mps * crate::combat::gun_assembly::GAME_SPEED_PER_MPS,
-                    weapon.range, ammo_storage.ammo_type, loaded.map(|a| a.0), Some(g),
+                    // Stops where the engagement does, not on across the fight.
+                    weapon.range.min(crate::combat::missile_defence::PD_RANGE), ammo_storage.ammo_type, loaded.map(|a| a.0), Some(g),
                 );
                 commands.entity(round).insert(crate::combat::point_defense::PointDefenseRound { ship: ai_entity });
                 continue;
