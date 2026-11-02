@@ -436,7 +436,7 @@ mod tests {
         let copy = copy_of(&app, b);
         app.update();
         let whole = color_of(&app, copy);
-        app.world_mut().get_mut::<Sprite>(b).unwrap().color = Color::srgb(0.18, 0.18, 0.2);
+        app.world_mut().get_mut::<Sprite>(b).unwrap().color = Color::srgb(0.42, 0.42, 0.44);
         app.update();
         let dark = color_of(&app, copy);
         assert!(dark.blue < whole.blue * 0.5, "not dark: {whole:?} to {dark:?}");
