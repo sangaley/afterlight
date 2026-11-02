@@ -115,7 +115,7 @@ pub fn fire_missiles_system(
     fire_state: Res<FireGroupState>,
     power_state: Res<crate::resources::PowerState>,
     selection: Res<TargetSelection>,
-    aim_lock: Res<super::targeting::AimLock>,
+    aim_lock: (Res<super::targeting::AimLock>, Res<super::targeting::MarkedTargets>, Local<usize>),
     ship_query: Query<(Entity, &ShipPhysics, &Transform, &Velocity), With<Ship>>,
     mut weapon_query: Query<(
         // WeaponMount is gone from here deliberately: a missile leaves down
@@ -142,6 +142,7 @@ pub fn fire_missiles_system(
     mut notifications: MessageWriter<ShowNotification>,
     mut fired_events: MessageWriter<crate::events::WeaponFired>,
 ) {
+    let (aim_lock, marks, mut mark_turn) = aim_lock;
     let Ok((player_ship, ship_physics, ship_transform, ship_velocity)) = ship_query.single() else { return };
 
     // Weapons need power — grid deficit silences launchers too.
@@ -249,7 +250,18 @@ pub fn fire_missiles_system(
         // POINTED is no longer a function of the target at all — it leaves
         // down the tube either way — so a launcher with nothing to chase
         // still fires, and flies out unguided.
-        let homing_target = locked.or(selection.target).or(auto)
+        // Marked ships take the launchers' shots in turn, among those in range.
+        let marked: Vec<Entity> = marks.ships.iter().copied()
+            .filter(|e| candidates.iter().any(|(c, pos)| c == e && weapon_pos.distance(*pos) <= weapon.range))
+            .collect();
+        if locked.is_none() && !marks.ships.is_empty() && marked.is_empty() {
+            continue;
+        }
+        let next_marked = (!marked.is_empty()).then(|| {
+            *mark_turn = mark_turn.wrapping_add(1);
+            marked[*mark_turn % marked.len()]
+        });
+        let homing_target = locked.or(next_marked).or(selection.target).or(auto)
             .filter(|e| target_query.get(*e).is_ok());
 
         // The tube points where the tube points.

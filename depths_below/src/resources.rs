@@ -1038,6 +1038,11 @@ const HULL_PLATING: [ModuleType; 2] = [
 /// from drifting apart again.
 const STRUCTURAL_PALETTE: &[ModuleType] = &[
     ModuleType::ArmorPlate,
+    // The two armours that aren't plain plate, each beside its wedge.
+    ModuleType::AblativeArmor,
+    ModuleType::AngledAblativeArmor,
+    ModuleType::ReflectivePlate,
+    ModuleType::AngledReflectivePlate,
     // The other angle pieces, beside the plate they're cut from (the 45-degree
     // wedges ride in HULL_PLATING).
     ModuleType::BevelledArmorPlate,

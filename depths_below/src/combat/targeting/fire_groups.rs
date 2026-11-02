@@ -39,6 +39,7 @@ pub fn fire_group_input(
     // of picking a block is to keep working it while you fly, not to hold
     // Space at it. Manual fire still works, locked or not.
     lock: Res<super::aim_lock::AimLock>,
+    marks: Res<super::auto_engage::MarkedTargets>,
     player_ship: Query<(&Transform, &Children), With<Ship>>,
     player_weapons: Query<(&Weapon, &Module), Without<crate::ai_ship::components::OwnedByAiShip>>,
 ) {
@@ -56,7 +57,9 @@ pub fn fire_group_input(
         super::aim_lock::auto_fire_engaged(&lock, transform.translation.truncate(), max_range)
     });
 
+    // Marks fire the same way; each gun holds until it has one it can reach.
     let fire_all = auto
+        || !marks.ships.is_empty()
         || keyboard.pressed(KeyCode::Space)
         || (mouse.pressed(MouseButton::Left) && !over_ui);
     state.firing[0] = keyboard.pressed(KeyCode::Digit1) || fire_all;

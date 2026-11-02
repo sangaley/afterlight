@@ -2,6 +2,11 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use crate::components::*;
 
+/// Rust-tan, so ablative reads as the soft plate it is.
+const ABLATIVE_TONE: Color = Color::srgb(0.62, 0.42, 0.28);
+/// Pale polished blue, so reflective plate catches the eye beside dark steel.
+const REFLECTIVE_TONE: Color = Color::srgb(0.68, 0.84, 0.95);
+
 /// Definition of a module type with all its stats
 #[allow(dead_code)]
 pub struct ModuleDef {
@@ -1830,10 +1835,37 @@ pub fn build_registry() -> ModuleRegistry {
     });
 
     defs.insert(ModuleType::AblativeArmor, ModuleDef {
-        name: "Ablative Armor", description: "Sacrificial armor layer. Absorbs 200 damage then breaks. Replaceable at station. Cheap insurance.",
-        category: ModuleCategory::Utility, size: IVec2::new(1, 1), health: 200.0,
-        power_generation: 0.0, power_consumption: 0.0, color: Color::srgb(0.62, 0.60, 0.56),
-        companion: CompanionData::None, customizable: false, cost: 19,
+        name: "Ablative Armor", description: "Soft sacrificial plate. A shell that hits it stops there, however big, and the plate breaks. Small guns strip it quickly. Replaceable at station.",
+        category: ModuleCategory::Structural, size: IVec2::new(1, 1), health: 100.0,
+        power_generation: 0.0, power_consumption: 0.0, color: ABLATIVE_TONE,
+        companion: CompanionData::None, customizable: false, cost: 40,
+        base_stats: CalculatedStats::default(), crew_station: false,
+    });
+
+    defs.insert(ModuleType::AngledAblativeArmor, ModuleDef {
+        name: "Angled Ablative Armor",
+        description: "Ablative plate cut to a wedge. Stops a shell dead like the flat plate, and fits the hull's edge. Rotate to pick which corner the face looks out from.",
+        category: ModuleCategory::Structural, size: IVec2::new(1, 1), health: 90.0,
+        power_generation: 0.0, power_consumption: 0.0, color: ABLATIVE_TONE,
+        companion: CompanionData::None, customizable: false, cost: 44,
+        base_stats: CalculatedStats::default(), crew_station: false,
+    });
+
+    defs.insert(ModuleType::ReflectivePlate, ModuleDef {
+        name: "Reflective Plate",
+        description: "Polished plate that turns most of a laser away. Thin and brittle: shells and small guns go through it easily. A stronger laser still burns in.",
+        category: ModuleCategory::Structural, size: IVec2::new(1, 1), health: 120.0,
+        power_generation: 0.0, power_consumption: 0.0, color: REFLECTIVE_TONE,
+        companion: CompanionData::None, customizable: false, cost: 70,
+        base_stats: CalculatedStats::default(), crew_station: false,
+    });
+
+    defs.insert(ModuleType::AngledReflectivePlate, ModuleDef {
+        name: "Angled Reflective Plate",
+        description: "Reflective plate cut to a wedge. Turns lasers like the flat plate, and fits the hull's edge. Rotate to pick which corner the face looks out from.",
+        category: ModuleCategory::Structural, size: IVec2::new(1, 1), health: 110.0,
+        power_generation: 0.0, power_consumption: 0.0, color: REFLECTIVE_TONE,
+        companion: CompanionData::None, customizable: false, cost: 74,
         base_stats: CalculatedStats::default(), crew_station: false,
     });
 

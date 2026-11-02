@@ -49,16 +49,20 @@ impl AimLock {
         self.is_locked().then_some(self.point)
     }
 
-    fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.ship = None;
         self.block = None;
     }
 }
 
 /// Right-click: lock the block under the cursor, or clear the lock if the
-/// click landed on empty space.
+/// click landed on empty space. With Shift held: mark or unmark the ship under
+/// the cursor, for the battery to split across (see `auto_engage`).
+#[allow(clippy::too_many_arguments)]
 pub fn aim_lock_input(
     mouse: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut marks: ResMut<super::auto_engage::MarkedTargets>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<crate::camera::MainCamera>>,
     mut lock: ResMut<AimLock>,
@@ -101,8 +105,25 @@ pub fn aim_lock_input(
 
     lock.click_consumed = true;
 
+    if keyboard.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]) {
+        let Some((_, ship, ..)) = best else { return };
+        if marks.ships.contains(&ship) {
+            marks.ships.retain(|e| *e != ship);
+        } else {
+            marks.ships.push(ship);
+            lock.clear();
+        }
+        notifications.write(ShowNotification {
+            message: format!("{} ships marked - guns split across them.", marks.ships.len()),
+            notification_type: NotificationType::Info,
+            duration: 2.0,
+        });
+        return;
+    }
+
     match best {
         Some((block, ship, pos, _, name)) => {
+            marks.ships.clear();
             lock.ship = Some(ship);
             lock.block = Some(block);
             lock.point = pos;
@@ -119,8 +140,9 @@ pub fn aim_lock_input(
         }
         None => {
             // Empty space: drop everything and hand the guns back to the mouse.
-            if lock.is_locked() || selection.target.is_some() {
+            if lock.is_locked() || selection.target.is_some() || !marks.ships.is_empty() {
                 lock.clear();
+                marks.ships.clear();
                 selection.target = None;
                 selection.target_type = TargetType::None;
                 notifications.write(ShowNotification {

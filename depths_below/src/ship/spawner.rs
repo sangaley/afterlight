@@ -524,8 +524,19 @@ pub fn spawn_module(
     // a dark triangle over it just made a square with a triangle on it — the
     // outline never actually got cut. The triangle is built from child quads
     // below instead, so the block's shape is the shape.
-    let is_wedge = matches!(module_type, ModuleType::AngledArmorPlate | ModuleType::AngledHullPlate);
-    let module_base_color = if is_wedge { Color::NONE } else { Color::WHITE };
+    let is_wedge = matches!(
+        module_type,
+        ModuleType::AngledArmorPlate | ModuleType::AngledHullPlate | ModuleType::AngledAblativeArmor | ModuleType::AngledReflectivePlate
+    );
+    // Ablative and reflective plate share the plain plate's art: their colour
+    // is how you tell the three armours apart in a fight.
+    let module_base_color = if is_wedge {
+        Color::NONE
+    } else if matches!(module_type, ModuleType::AblativeArmor | ModuleType::ReflectivePlate) {
+        def.color
+    } else {
+        Color::WHITE
+    };
 
     let module_entity = commands.spawn((
         (Sprite {

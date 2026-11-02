@@ -237,6 +237,7 @@ pub fn module_sprite_path(module_type: ModuleType) -> Option<&'static str> {
         ModuleType::StaggeredArmorPlate => "sprites/modules/hull_beam_3x2.png",
         ModuleType::AngledHullPlate => "sprites/modules/hull_beam.png",
         ModuleType::AngledArmorPlate => "sprites/modules/hull_beam.png",
+        ModuleType::AngledAblativeArmor | ModuleType::ReflectivePlate | ModuleType::AngledReflectivePlate => "sprites/modules/hull_beam.png",
         ModuleType::BevelledArmorPlate => "sprites/modules/bevelled_plate.png",
         ModuleType::SlopeArmorPlateLow => "sprites/modules/slope_low.png",
         ModuleType::SlopeArmorPlateHigh => "sprites/modules/slope_high.png",

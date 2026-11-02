@@ -246,7 +246,9 @@ pub fn part_mass_t(t: ModuleType) -> f32 {
         // The roof: plates and fittings (combat::gun_house).
         ModuleType::ArmorPlate | ModuleType::AngledArmorPlate | ModuleType::BevelledArmorPlate
         | ModuleType::SlopeArmorPlateLow | ModuleType::SlopeArmorPlateHigh
-        | ModuleType::SlopeArmorPlateLowMirror | ModuleType::SlopeArmorPlateHighMirror => 0.5,
+        | ModuleType::SlopeArmorPlateLowMirror | ModuleType::SlopeArmorPlateHighMirror
+        | ModuleType::AngledReflectivePlate | ModuleType::ReflectivePlate
+        | ModuleType::AblativeArmor | ModuleType::AngledAblativeArmor => 0.5,
         ModuleType::HalfArmorPlate => 0.3,
         ModuleType::Rangefinder | ModuleType::RoofVent | ModuleType::Periscope | ModuleType::ArmouredHatch => 0.4,
         ModuleType::Loader => 1.2,

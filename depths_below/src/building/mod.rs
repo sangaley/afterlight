@@ -248,6 +248,11 @@ pub struct Block {
     /// keeps more of the cell (a bevel only chips the corner); less keeps
     /// less (the low half of a long slope).
     pub cut: f32,
+    /// What a laser's intensity is measured against. The same as `thickness`
+    /// on everything but reflective plate.
+    pub laser_thickness: f32,
+    /// Ablative: a round that hits this goes no further, however big it was.
+    pub stops_round: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,27 +263,38 @@ pub enum BlockKind {
 
 impl Block {
     pub fn hull(cell: IVec2, material: HullMaterial) -> Self {
-        Self { cell, kind: BlockKind::Hull, thickness: material.damage_absorption(), facing: None, cut: 0.0 }
+        let thickness = material.damage_absorption();
+        Self { cell, kind: BlockKind::Hull, thickness, facing: None, cut: 0.0, laser_thickness: thickness, stops_round: false }
     }
 
     /// A module with no armour value — machinery, which is what most modules
     /// are. Also the fallback when a struck block has no Block component.
     pub fn module(cell: IVec2) -> Self {
-        Self { cell, kind: BlockKind::Module, thickness: 0.0, facing: None, cut: 0.0 }
+        Self { cell, kind: BlockKind::Module, thickness: 0.0, facing: None, cut: 0.0, laser_thickness: 0.0, stops_round: false }
     }
 
     /// A module as actually spawned: plating modules carry real armour and
     /// wedges carry a declared diagonal face.
     pub fn for_module(cell: IVec2, module_type: ModuleType, rotation: Rotation) -> Self {
+        let thickness = module_thickness(module_type);
         Self {
             cell,
             kind: BlockKind::Module,
-            thickness: module_thickness(module_type),
+            thickness,
             facing: module_facing(module_type, rotation),
             cut: module_shape(module_type).map_or(0.0, |(_, cut)| cut),
+            laser_thickness: match module_type {
+                ModuleType::ReflectivePlate | ModuleType::AngledReflectivePlate => REFLECTIVE_LASER_THICKNESS,
+                _ => thickness,
+            },
+            stops_round: matches!(module_type, ModuleType::AblativeArmor | ModuleType::AngledAblativeArmor),
         }
     }
 }
+
+/// What reflective plate counts as against a laser: a plain 60-intensity beam
+/// burns in at 40%, and four doublers (intensity 120) at 80%.
+const REFLECTIVE_LASER_THICKNESS: f32 = 150.0;
 
 /// Armour rating of a module, in the same units as
 /// `HullMaterial::damage_absorption` (Steel 15 … Abyssal Alloy 80).
@@ -291,7 +307,10 @@ fn module_thickness(module_type: ModuleType) -> f32 {
     match module_type {
         ModuleType::StaggeredArmorPlate => 45.0, // premium, 6 cells, no straight seam
         ModuleType::ArmorPlate | ModuleType::CornerArmorPlate => 40.0,
-        ModuleType::AblativeArmor => 35.0,       // spends itself instead of the hull
+        // Thin on purpose: even a 20 mm round bites these. See `stops_round`
+        // and `laser_thickness` for what they're good at instead.
+        ModuleType::AblativeArmor | ModuleType::AngledAblativeArmor => 5.0,
+        ModuleType::ReflectivePlate | ModuleType::AngledReflectivePlate => 8.0,
         ModuleType::AngledArmorPlate => 30.0,    // less steel than a flat plate...
         ModuleType::BevelledArmorPlate => 38.0,  // a plate with its corner chipped
         ModuleType::SlopeArmorPlateLow | ModuleType::SlopeArmorPlateHigh
@@ -326,7 +345,8 @@ pub fn module_shape(module_type: ModuleType) -> Option<(f32, f32)> {
     let shallow_mirror = (1.0f32).atan2(0.5);
     let half_step = 0.25 / (1.25f32).sqrt();
     Some(match module_type {
-        ModuleType::AngledArmorPlate | ModuleType::AngledHullPlate => (FRAC_PI_4, 0.0),
+        ModuleType::AngledArmorPlate | ModuleType::AngledHullPlate
+        | ModuleType::AngledAblativeArmor | ModuleType::AngledReflectivePlate => (FRAC_PI_4, 0.0),
         // Legs of 0.4 cell chipped off the corner.
         ModuleType::BevelledArmorPlate => (FRAC_PI_4, 0.6 / std::f32::consts::SQRT_2),
         ModuleType::SlopeArmorPlateLow => (shallow, -half_step),
@@ -370,6 +390,9 @@ pub fn is_blowout_panel(module_type: ModuleType) -> bool {
             | ModuleType::CornerArmorPlate
             | ModuleType::StaggeredArmorPlate
             | ModuleType::AblativeArmor
+            | ModuleType::AngledAblativeArmor
+            | ModuleType::ReflectivePlate
+            | ModuleType::AngledReflectivePlate
     )
 }
 

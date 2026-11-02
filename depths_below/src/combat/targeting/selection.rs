@@ -52,6 +52,8 @@ pub fn cycle_target(
     mut notifications: MessageWriter<ShowNotification>,
 ) {
     if !keyboard.just_pressed(KeyCode::Backslash) { return; }
+    // Shift + `\` marks every hostile instead (auto_engage::mark_all_input).
+    if keyboard.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]) { return; }
 
     let Ok(ship_transform) = ship_query.single() else { return };
     let ship_pos = ship_transform.translation.truncate();

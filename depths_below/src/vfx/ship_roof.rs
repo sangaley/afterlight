@@ -53,7 +53,7 @@ fn is_armour(module: crate::components::ModuleType) -> bool {
     use crate::components::ModuleType::*;
     matches!(
         module,
-        ArmorPlate | CornerArmorPlate | StaggeredArmorPlate | AblativeArmor | HullReinforcePlate
+        ArmorPlate | CornerArmorPlate | StaggeredArmorPlate | AblativeArmor | ReflectivePlate | HullReinforcePlate
     )
 }
 

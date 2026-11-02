@@ -1,5 +1,6 @@
 MOD	AICombatCore	2	1	false	Control	113
-MOD	AblativeArmor	1	1	false	Utility	19
+MOD	AblativeArmor	1	1	false	Structural	40
+MOD	AngledAblativeArmor	1	1	false	Structural	44
 MOD	AccessHatch	1	1	false	Structural	19
 MOD	AdvancedOxygenator	2	1	true	LifeSupport	150
 MOD	AdvancedRadar	1	1	true	Detection	150
@@ -112,6 +113,8 @@ MOD	PressureFrame	1	1	false	Structural	150
 MOD	PressureSensor	1	1	false	Detection	26
 MOD	ProximityAlarm	1	1	false	Detection	26
 MOD	RTG	1	1	false	Power	188
+MOD	ReflectivePlate	1	1	false	Structural	70
+MOD	AngledReflectivePlate	1	1	false	Structural	74
 MOD	RadarArray	1	1	true	Detection	60
 MOD	RadiationHardening	1	1	false	Utility	68
 MOD	Railgun	2	1	true	Weapons	300

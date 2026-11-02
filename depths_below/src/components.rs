@@ -559,7 +559,6 @@ impl ModuleCategory {
                             ModuleType::ShieldEmitter,
                 ModuleType::DecoyLauncher,
                 ModuleType::ChaffDispenser,
-                ModuleType::AblativeArmor,
                 ModuleType::PointDefenseDrone,
                 ModuleType::HullReinforcePlate,
                 ModuleType::SignalJammer,
@@ -575,6 +574,10 @@ impl ModuleCategory {
                 // was the 16th here, which made the pair effectively unfindable.
                 ModuleType::ArmorPlate,
                 ModuleType::AngledArmorPlate,
+                ModuleType::AblativeArmor,
+                ModuleType::AngledAblativeArmor,
+                ModuleType::ReflectivePlate,
+                ModuleType::AngledReflectivePlate,
                 ModuleType::BevelledArmorPlate,
                 ModuleType::SlopeArmorPlateLow,
                 ModuleType::SlopeArmorPlateHigh,
@@ -891,6 +894,9 @@ pub enum ModuleType {
     SlopeArmorPlateLowMirror,  // The same pair, mirrored for the other side
     SlopeArmorPlateHighMirror,
     HalfArmorPlate,            // Half a cell thick, flat
+    AngledAblativeArmor,       // Wedge of ablative: stops one shell, then breaks
+    ReflectivePlate,           // Thin plate that turns lasers
+    AngledReflectivePlate,     // Wedge of reflective plate
 }
 
 impl ModuleType {
@@ -911,6 +917,9 @@ impl ModuleType {
         !matches!(
             self,
             ModuleType::AblativeArmor
+                | ModuleType::AngledAblativeArmor
+                | ModuleType::ReflectivePlate
+                | ModuleType::AngledReflectivePlate
                 | ModuleType::AngledArmorPlate
                 | ModuleType::BevelledArmorPlate
                 | ModuleType::SlopeArmorPlateLow
@@ -1025,7 +1034,6 @@ impl ModuleType {
             ModuleType::ShieldEmitter |
             ModuleType::DecoyLauncher |
             ModuleType::ChaffDispenser |
-            ModuleType::AblativeArmor |
             ModuleType::PointDefenseDrone |
             ModuleType::HullReinforcePlate |
             ModuleType::SignalJammer |
@@ -1041,6 +1049,10 @@ impl ModuleType {
             ModuleType::CornerArmorPlate |
             ModuleType::StaggeredArmorPlate |
             ModuleType::AngledArmorPlate |
+            ModuleType::AblativeArmor |
+            ModuleType::AngledAblativeArmor |
+            ModuleType::ReflectivePlate |
+            ModuleType::AngledReflectivePlate |
             ModuleType::BevelledArmorPlate |
             ModuleType::SlopeArmorPlateLow | ModuleType::SlopeArmorPlateHigh |
             ModuleType::SlopeArmorPlateLowMirror | ModuleType::SlopeArmorPlateHighMirror |
@@ -1311,6 +1323,9 @@ impl ModuleType {
             ModuleType::StaggeredArmorPlate => "Staggered Armor Plate",
             ModuleType::AngledHullPlate => "Angled Hull Plate",
             ModuleType::AngledArmorPlate => "Angled Armor Plate",
+            ModuleType::AngledAblativeArmor => "Angled Ablative Armor",
+            ModuleType::ReflectivePlate => "Reflective Plate",
+            ModuleType::AngledReflectivePlate => "Angled Reflective Plate",
             ModuleType::BevelledArmorPlate => "Bevelled Armor Plate",
             ModuleType::SlopeArmorPlateLow => "Slope Plate (low)",
             ModuleType::SlopeArmorPlateHigh => "Slope Plate (high)",

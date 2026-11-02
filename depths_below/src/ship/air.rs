@@ -126,6 +126,48 @@ pub fn sync_air_tiles(
     air.vents = compute_vents(&room_map, &air.holes);
 }
 
+/// DEPTHS_AIR_TRACE=1: every 5 s, the player's air, compartment by compartment,
+/// and where the crew are in it.
+pub fn trace_air(
+    time: Res<Time>,
+    mut since: Local<f32>,
+    air: Res<AirField>,
+    room_map: Res<RoomMap>,
+    crew: Query<(&Transform, &CrewMember, Has<crate::components::Suited>), Without<crate::ai_ship::components::OwnedByAiShip>>,
+) {
+    *since += time.delta_secs();
+    if *since < 5.0 || std::env::var("DEPTHS_AIR_TRACE").ok().as_deref() != Some("1") {
+        return;
+    }
+    *since = 0.0;
+    let mut in_room: HashMap<usize, u32> = HashMap::default();
+    let (mut alive, mut suited, mut thin_air, mut outside) = (0, 0, 0, 0);
+    for (transform, member, suit) in crew.iter() {
+        if member.health <= 0.0 {
+            continue;
+        }
+        alive += 1;
+        suited += suit as u32;
+        let cell = local_to_grid(transform.translation.truncate());
+        match room_map.tile_to_room.get(&cell) {
+            Some(room) => *in_room.entry(*room).or_insert(0) += 1,
+            None => outside += 1,
+        }
+        thin_air += (air.pressure.get(&cell).copied().unwrap_or(1.0) < 0.25) as u32;
+    }
+    let mut rooms: Vec<(usize, f32, u32, bool)> = room_map
+        .rooms
+        .iter()
+        .map(|r| (r.tiles.len(), air.mean(&r.tiles), in_room.get(&r.id).copied().unwrap_or(0), r.tiles.iter().any(|t| air.vents.contains_key(t))))
+        .collect();
+    rooms.sort_by_key(|r| std::cmp::Reverse(r.0));
+    let top: Vec<String> = rooms.iter().take(6).map(|r| format!("{} tiles {:.2} air {} crew{}", r.0, r.1, r.2, if r.3 { " HOLED" } else { "" })).collect();
+    info!(
+        "AIR player: {} rooms, {} holes, {} crew ({} suited, {} in thin air, {} not in a room) | {}",
+        rooms.len(), air.holes.len(), alive, suited, thin_air, outside, top.join("; ")
+    );
+}
+
 /// Refreshes the remembered holes from hull damage.
 ///
 /// Deliberately NOT geometric. Treating "no block in that cell" as open space

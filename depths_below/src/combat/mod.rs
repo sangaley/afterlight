@@ -446,6 +446,7 @@ impl Plugin for CombatPlugin {
             .add_systems(Update, report::combat_report.run_if(in_state(crate::states::GameState::Exploring)))
             .init_resource::<targeting::TargetSelection>()
             .init_resource::<targeting::AimLock>()
+            .init_resource::<targeting::MarkedTargets>()
             .init_resource::<targeting::FireGroupState>()
             .init_resource::<recoil::RecoilAccumulator>()
             .configure_sets(Update, CombatSet::WeaponFire.after(SpatialSet::Update).run_if(in_state(GameState::Exploring)))
@@ -475,6 +476,10 @@ impl Plugin for CombatPlugin {
                     .after(targeting::cycle_target)
                     .after(targeting::maintain_aim_lock)
                     .before(CombatSet::WeaponFire),
+            ).run_if(in_state(GameState::Exploring)))
+            .add_systems(Update, (
+                targeting::mark_all_input.before(targeting::assign_auto_aim),
+                targeting::draw_marks,
             ).run_if(in_state(GameState::Exploring)))
             // Shields: attach to player + AI ships, recharge, drive bubble visuals
             .add_systems(Update, (

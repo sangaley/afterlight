@@ -216,6 +216,21 @@ pub struct Impact {
     pub cos_impact: f32,
 }
 
+/// Below this share of the armour it meets, a round does nothing at all.
+const NO_BITE_BELOW: f32 = 0.3;
+
+/// How much of a round bites into armour it may not be able to get through:
+/// all of it with the penetration to spare, falling steeply to none. A slope
+/// counts as thicker, by the plate along the round's path. A round with no
+/// penetration at all works by blast or spall, which this doesn't touch.
+pub fn bite(penetration: f32, thickness: f32, cos_impact: f32) -> f32 {
+    if penetration <= 0.0 || thickness <= 0.0 {
+        return 1.0;
+    }
+    let share = penetration * cos_impact.max(0.3) / thickness;
+    ((share - NO_BITE_BELOW) / (1.0 - NO_BITE_BELOW)).clamp(0.0, 1.0)
+}
+
 /// Fraction of a bounced round's energy the plate still eats. A skipping hit
 /// scrapes rather than bites, and the more square-on it was the more it leaves
 /// behind — so this scales with cos, not against it.
@@ -265,6 +280,49 @@ pub fn resolve_impact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn small_rounds_stop_on_armour_that_big_ones_ignore() {
+        // 20 mm, 60 mm, 170 mm, 500 mm as they fly (combat::gun_assembly::penetration_for).
+        let (twenty, sixty, one_seventy, five_hundred) = (5.5, 16.5, 47.0, 137.0);
+        // Steel hull: a 20 mm barely marks it, a 60 mm goes straight in.
+        assert!(bite(twenty, 15.0, 1.0) < 0.15);
+        assert_eq!(bite(sixty, 15.0, 1.0), 1.0);
+        // A hard plate: nothing from 20 mm, little from 60 mm, all from 170 mm.
+        assert_eq!(bite(twenty, 40.0, 1.0), 0.0);
+        assert!(bite(sixty, 40.0, 1.0) < 0.25);
+        assert_eq!(bite(one_seventy, 40.0, 1.0), 1.0);
+        // The thickest hull still gives a 170 mm trouble, not a 500 mm.
+        assert!(bite(one_seventy, 80.0, 1.0) < 0.5);
+        assert_eq!(bite(five_hundred, 80.0, 1.0), 1.0);
+        // The thin armours let small guns at them.
+        assert_eq!(bite(twenty, 5.0, 1.0), 1.0);
+        assert!(bite(twenty, 8.0, 1.0) > 0.5);
+    }
+
+    #[test]
+    fn a_slope_counts_as_thicker_and_blast_rounds_are_left_alone() {
+        assert!(bite(47.0, 40.0, 0.5) < bite(47.0, 40.0, 1.0));
+        assert_eq!(bite(0.0, 80.0, 1.0), 1.0);
+        assert_eq!(bite(5.5, 0.0, 1.0), 1.0);
+    }
+
+    #[test]
+    fn each_armour_has_its_own_job() {
+        use crate::components::{ModuleType, Rotation};
+        let block = |mt| Block::for_module(IVec2::ZERO, mt, Rotation::North);
+        assert!(block(ModuleType::AblativeArmor).stops_round && block(ModuleType::AngledAblativeArmor).stops_round);
+        assert!(!block(ModuleType::ArmorPlate).stops_round && !block(ModuleType::ReflectivePlate).stops_round);
+        let reflective = block(ModuleType::ReflectivePlate);
+        assert!(reflective.laser_thickness > reflective.thickness);
+        assert_eq!(reflective.laser_thickness, block(ModuleType::AngledReflectivePlate).laser_thickness);
+        let plate = block(ModuleType::ArmorPlate);
+        assert_eq!(plate.laser_thickness, plate.thickness);
+        // Every kind has its wedge.
+        assert!(block(ModuleType::AngledArmorPlate).facing.is_some());
+        assert!(block(ModuleType::AngledAblativeArmor).facing.is_some());
+        assert!(block(ModuleType::AngledReflectivePlate).facing.is_some());
+    }
     use crate::components::HullMaterial;
     use bevy::math::IVec2;
 

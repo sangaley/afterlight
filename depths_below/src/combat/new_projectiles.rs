@@ -505,6 +505,7 @@ pub fn fire_weapons_system(
             // engaged ship (targeting::auto_engage). Every gun gets a
             // different one, which is what stops a battery from drilling a
             // single tile while the rest of the hull goes untouched.
+            if !auto.in_reach { continue; }
             let to_point = auto.point - weapon_pos;
             let aim = if to_point.length() > weapon.range {
                 weapon_pos + to_point.normalize_or_zero() * weapon.range
@@ -1225,10 +1226,14 @@ pub fn check_projectile_hits(
                     commands.entity(proj_entity).try_despawn();
                     continue 'projectiles;
                 }
-                let incoming = proj.damage;
                 let obl = crate::combat::impact::obliquity(
                     surface.normal, dir_local, &block, proj.ammo, proj.caliber,
                 );
+                // Armour too thick for the round: what bites is less, and it
+                // stops here. So does anything that hits ablative.
+                let bite = crate::combat::impact::bite(proj.penetration, block.thickness, obl.cos_impact);
+                let stopped = bite < 1.0 || block.stops_round;
+                let incoming = proj.damage * bite;
 
                 // Primary hit: damage the struck block, remember where.
                 let mut penetrated = false;
@@ -1242,7 +1247,7 @@ pub fn check_projectile_hits(
                     // the cell in update_ship_grids), so reaching a module
                     // means nothing covers it: fully exposed, takes everything.
                     let hit_pos = gt.translation().truncate();
-                    let impact = crate::combat::impact::resolve_impact(proj.damage, &block, surface.span, obl, Some(0.0));
+                    let impact = crate::combat::impact::resolve_impact(incoming, &block, surface.span, obl, Some(0.0));
                     penetrated = impact.outcome == crate::combat::impact::ImpactOutcome::Penetrated;
                     armour_met = impact.effective_thickness;
                     ai_module_query.get_mut(step.entity).ok().map(|(mut module, _)| {
@@ -1270,10 +1275,10 @@ pub fn check_projectile_hits(
                         })
                     });
                     let pass = match covered {
-                        Some(_) => crate::combat::ammo_types::armor_pass_through(proj.ammo),
-                        None => 0.0,
+                        Some(_) if !stopped => crate::combat::ammo_types::armor_pass_through(proj.ammo),
+                        _ => 0.0,
                     };
-                    let impact = crate::combat::impact::resolve_impact(proj.damage, &block, surface.span, obl, Some(pass));
+                    let impact = crate::combat::impact::resolve_impact(incoming, &block, surface.span, obl, Some(pass));
                     penetrated = impact.outcome == crate::combat::impact::ImpactOutcome::Penetrated;
                     armour_met = impact.effective_thickness;
                     let hull_hit = ai_hull_query.get_mut(step.entity).ok().map(|(mut hull, gt)| {
@@ -1312,7 +1317,7 @@ pub fn check_projectile_hits(
                 // identity and the reason its penetration is 0 by design. It's
                 // the answer to a sloped hull you can't punch.
                 let spall = crate::combat::ammo_types::spall(proj.ammo);
-                if penetrated || spall.through_solid {
+                if (penetrated && !stopped) || spall.through_solid {
                     spall_blocks(
                         &mut commands,
                         &fx, grid, &mut ai_module_query, &mut ai_hull_query,
@@ -1418,8 +1423,8 @@ pub fn check_projectile_hits(
                 // fixed-list rounds keep the flat blast they were tuned with.
                 let blast_edge = if proj.effect.is_some() { HE_EDGE } else { 1.0 };
                 // A heavy shell's first impact shocks the blocks around it.
-                if !proj.has_penetrated && proj.effect.is_some() {
-                    if let Some((radius, shock)) = impact_shock(proj.caliber, proj.damage) {
+                if !proj.has_penetrated && proj.effect.is_some() && !block.stops_round {
+                    if let Some((radius, shock)) = impact_shock(proj.caliber, incoming) {
                         splash_blocks(
                             &mut commands, children, &mut ai_module_query, &mut ai_hull_query,
                             hit_entity, hit_pos, radius, shock, HE_EDGE,
@@ -1438,7 +1443,7 @@ pub fn check_projectile_hits(
                             // a light one stops a block or two in.
                             let first = !proj.has_penetrated;
                             proj.penetration -= armour_met.max(PIERCE_COST_MIN);
-                            if let Some(carried) = pierce_onward(proj.damage, overkill, proj.penetration, first, damage_falloff) {
+                            if let Some(carried) = pierce_onward(proj.damage, overkill, proj.penetration, first, damage_falloff).filter(|_| !stopped) {
                                 penetrates = true;
                                 proj.has_penetrated = true;
                                 proj.last_hit = Some(hit_entity);

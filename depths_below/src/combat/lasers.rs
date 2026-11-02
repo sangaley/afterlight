@@ -721,7 +721,7 @@ pub fn resolve_laser_shots(
                     let entry = a + dir_local * step.t_enter;
                     let exit = a + dir_local * (step.t_enter + step.span);
                     if crate::combat::impact::clip_to_shape(&block, step.entry_face, step.cell, entry, exit).is_some() {
-                        steps.push((step.entity, block.thickness));
+                        steps.push((step.entity, block.laser_thickness));
                         if steps.len() >= PULSE_DEPTH {
                             break;
                         }

@@ -109,6 +109,9 @@ pub fn is_plating(t: ModuleType) -> bool {
             | ModuleType::HullReinforcePlate
             | ModuleType::AngledHullPlate
             | ModuleType::AblativeArmor
+            | ModuleType::AngledAblativeArmor
+            | ModuleType::ReflectivePlate
+            | ModuleType::AngledReflectivePlate
     )
 }
 
