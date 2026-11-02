@@ -278,7 +278,7 @@ pub struct AiRoofLaid(usize, usize, usize);
 /// replaced by fresh plating and the ship looked untouched: 1,253 blocks down
 /// to 536 and the same picture. These get a burn instead.
 ///
-/// `.1` is the hull cells shot away, for the far view: a hole in a dark ship
+/// `.1` is the hull cells shot away, for the far picture: a hole in a dark ship
 /// against dark space doesn't show from 20 km, so its torn edges glow.
 #[derive(Component, Default, Debug)]
 pub struct Scars(pub HashSet<IVec2>, pub HashSet<IVec2>);
@@ -324,7 +324,7 @@ pub fn note_scars(
     }
 }
 
-/// Where a far ship glows, with how bright, 0..1: about half of what's
+/// Where the far picture glows, with how bright, 0..1: about half of what's
 /// burnt out, and the edge of every hole. All of a wound would be a solid orange
 /// blob, and a hole's middle is empty space.
 pub fn embers(scars: &Scars, standing: &HashSet<IVec2>) -> Vec<(IVec2, f32)> {

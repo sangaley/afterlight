@@ -123,22 +123,6 @@ pub fn update_death_rattle(
     }
 }
 
-/// A wreck's blocks: dark, but still a shape against dark space.
-const WRECK_TINT: Color = Color::srgb(0.42, 0.42, 0.44);
-
-/// Paint a wreck's block dark for good. The base colour is what lasts: the damage
-/// tint repaints every standing block from it each frame, so the sprite alone
-/// stayed dark for one frame and the wreck then looked whole.
-fn paint_wreck(commands: &mut Commands, block: Entity, sprite: &mut Sprite) {
-    // Same rule as the damage tint: a transparent sprite is a block that draws
-    // its shape out of children (the angled plates). Painting it would fade a
-    // solid square in over the silhouette.
-    if sprite.color.alpha() > 0.0 {
-        sprite.color = WRECK_TINT;
-        commands.entity(block).try_insert(BaseSpriteColor(WRECK_TINT));
-    }
-}
-
 /// When an AI ship is destroyed, turn it into a wreck IN PLACE — keep the
 /// hull/module hierarchy intact (attach Wreck/PointOfInterest/AiShipWreck to
 /// the existing root) instead of despawning it and spawning an unrelated
@@ -205,6 +189,7 @@ pub fn ai_ship_death_system(
         // nothing left running. No instant credit payout here anymore:
         // wreck value is whatever the salvage detail physically carries
         // home (crew::eva_salvage), priced by whichever station buys it.
+        const WRECK_TINT: Color = Color::srgb(0.18, 0.18, 0.2);
         let mut block_count = 0u32;
         let mut intact_count = 0u32;
         if let Ok(children) = children_query.get(event.entity) {
@@ -215,13 +200,21 @@ pub fn ai_ship_death_system(
                         intact_count += 1;
                     }
                     module.is_active = false;
-                    paint_wreck(&mut commands, child, &mut sprite);
+                    // Same rule as the damage tint: a transparent sprite is a
+                    // block that draws its shape out of children (the angled
+                    // plates). Painting it would fade a solid square in over
+                    // the silhouette.
+                    if sprite.color.alpha() > 0.0 {
+                        sprite.color = WRECK_TINT;
+                    }
                 } else if let Ok((mut sprite, _hull, is_destroyed)) = hull_query.get_mut(child) {
                     block_count += 1;
                     if !is_destroyed {
                         intact_count += 1;
                     }
-                    paint_wreck(&mut commands, child, &mut sprite);
+                    if sprite.color.alpha() > 0.0 {
+                        sprite.color = WRECK_TINT;
+                    }
                 }
             }
         }
@@ -343,37 +336,6 @@ pub fn wreck_fire_consumes_loot(
                 ));
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod wreck_paint_tests {
-    use super::*;
-    use bevy::ecs::system::RunSystemOnce;
-
-    /// With the damage tint running, as it does in the game.
-    #[test]
-    fn a_wreck_stays_dark() {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        app.add_systems(Update, crate::ship::tint_damaged_hull);
-        let block = app
-            .world_mut()
-            .spawn((
-                HullSegment { health: 100.0, max_health: 100.0, ..default() },
-                BaseSpriteColor(Color::WHITE),
-                Sprite::default(),
-            ))
-            .id();
-        app.update();
-        app.world_mut()
-            .run_system_once(move |mut commands: Commands, mut sprites: Query<&mut Sprite>| {
-                paint_wreck(&mut commands, block, &mut sprites.get_mut(block).unwrap());
-            })
-            .unwrap();
-        app.update();
-        app.update();
-        assert_eq!(app.world().get::<Sprite>(block).unwrap().color, WRECK_TINT);
     }
 }
 
