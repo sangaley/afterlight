@@ -96,7 +96,7 @@ impl Plugin for AiShipPlugin {
                     noise::ai_ship_noise_trail_system,
                     noise::ai_ship_radar_contact_decay,
                     wreck::ai_ship_death_system,
-                    wreck::update_death_rattle,
+                    (wreck::update_death_rattle, wreck::paint_wrecks),
                     wreck::wreck_fire_consumes_loot,
                     scavenger::schedule_scavenger_waves.after(wreck::ai_ship_death_system),
                     scavenger::spawn_scavenger_waves,

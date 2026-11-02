@@ -123,6 +123,44 @@ pub fn update_death_rattle(
     }
 }
 
+/// Paint a fresh wreck dark, all of it: hull, parts, turrets, what's drawn on
+/// them, and the roof. The base colour is what lasts: the damage tint repaints
+/// every standing block from it each frame, so a block's sprite alone stayed dark
+/// for one frame. The far picture is painted from all of this and follows. Fires
+/// on the hulk stay lit.
+#[allow(clippy::type_complexity)]
+pub fn paint_wrecks(
+    fresh: Query<Entity, Added<AiShipWreck>>,
+    children: Query<&Children>,
+    blocks: Query<(), Or<(With<HullSegment>, With<Module>)>>,
+    roofs: Query<(), With<crate::vfx::ship_roof::AiRoofTile>>,
+    mut sprites: Query<
+        (&mut Sprite, Option<&mut BaseSpriteColor>, Option<&mut super::interior::Concealed>),
+        Without<crate::ship::fire::FireOverlay>,
+    >,
+) {
+    for wreck in fresh.iter() {
+        let mut paint = |entity: Entity| {
+            let Ok((mut sprite, base, concealed)) = sprites.get_mut(entity) else { return };
+            sprite.color = wreck_shade(sprite.color);
+            if let Some(mut base) = base {
+                base.0 = wreck_shade(base.0);
+            }
+            if let Some(mut concealed) = concealed {
+                concealed.0 = wreck_shade(concealed.0);
+            }
+        };
+        for entity in children.iter_descendants(wreck) {
+            if blocks.contains(entity) || roofs.contains(entity) {
+                paint(entity);
+                for part in children.iter_descendants(entity).filter(|p| !blocks.contains(*p)) {
+                    paint(part);
+                }
+            }
+        }
+    }
+}
+
 /// When an AI ship is destroyed, turn it into a wreck IN PLACE — keep the
 /// hull/module hierarchy intact (attach Wreck/PointOfInterest/AiShipWreck to
 /// the existing root) instead of despawning it and spawning an unrelated
@@ -137,8 +175,8 @@ pub fn ai_ship_death_system(
     mut commands: Commands,
     mut destroyed_events: MessageReader<AiShipDestroyed>,
     children_query: Query<&Children>,
-    mut module_query: Query<(&mut Module, &mut Sprite, Has<DestroyedModule>), Without<HullSegment>>,
-    mut hull_query: Query<(&mut Sprite, &HullSegment, Has<HullDestroyed>), Without<Module>>,
+    mut module_query: Query<(&mut Module, Has<DestroyedModule>), Without<HullSegment>>,
+    hull_query: Query<Has<HullDestroyed>, (With<HullSegment>, Without<Module>)>,
     mut shield_query: Query<&mut crate::combat::shields::ShipShield>,
     mut notifications: MessageWriter<ShowNotification>,
 ) {
@@ -174,7 +212,7 @@ pub fn ai_ship_death_system(
                 for (i, child) in children.iter().enumerate() {
                     // Every other block: a shattered hulk, not vapour.
                     if i % 2 != 0 { continue; }
-                    if let Ok((mut module, _, is_destroyed)) = module_query.get_mut(child) {
+                    if let Ok((mut module, is_destroyed)) = module_query.get_mut(child) {
                         if !is_destroyed {
                             module.health = 0.0;
                             let original_type = module.module_type;
@@ -185,35 +223,24 @@ pub fn ai_ship_death_system(
             }
         }
 
-        // Power off and darken every block — dead reactor, no power,
-        // nothing left running. No instant credit payout here anymore:
-        // wreck value is whatever the salvage detail physically carries
-        // home (crew::eva_salvage), priced by whichever station buys it.
-        const WRECK_TINT: Color = Color::srgb(0.18, 0.18, 0.2);
+        // Power off every block — dead reactor, no power, nothing left
+        // running (paint_wrecks darkens them). No instant credit payout here
+        // anymore: wreck value is whatever the salvage detail physically
+        // carries home (crew::eva_salvage), priced by whichever station buys it.
         let mut block_count = 0u32;
         let mut intact_count = 0u32;
         if let Ok(children) = children_query.get(event.entity) {
             for child in children.iter() {
-                if let Ok((mut module, mut sprite, is_destroyed)) = module_query.get_mut(child) {
+                if let Ok((mut module, is_destroyed)) = module_query.get_mut(child) {
                     block_count += 1;
                     if !is_destroyed {
                         intact_count += 1;
                     }
                     module.is_active = false;
-                    // Same rule as the damage tint: a transparent sprite is a
-                    // block that draws its shape out of children (the angled
-                    // plates). Painting it would fade a solid square in over
-                    // the silhouette.
-                    if sprite.color.alpha() > 0.0 {
-                        sprite.color = WRECK_TINT;
-                    }
-                } else if let Ok((mut sprite, _hull, is_destroyed)) = hull_query.get_mut(child) {
+                } else if let Ok(is_destroyed) = hull_query.get(child) {
                     block_count += 1;
                     if !is_destroyed {
                         intact_count += 1;
-                    }
-                    if sprite.color.alpha() > 0.0 {
-                        sprite.color = WRECK_TINT;
                     }
                 }
             }
@@ -336,6 +363,79 @@ pub fn wreck_fire_consumes_loot(
                 ));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod paint_tests {
+    use super::*;
+    use crate::vfx::ship_roof::AiRoofTile;
+
+    const ALIVE: Color = Color::srgb(0.5, 0.6, 0.7);
+
+    fn sprite() -> Sprite {
+        Sprite { color: ALIVE, ..default() }
+    }
+
+    fn colour(app: &App, entity: Entity) -> Color {
+        app.world().get::<Sprite>(entity).unwrap().color
+    }
+
+    /// All of it, with the damage tint running as it does in the game; and only
+    /// what's the ship, not whatever else hangs off it.
+    #[test]
+    fn a_wreck_goes_dark_and_stays_dark() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, (paint_wrecks, crate::ship::tint_damaged_hull).chain());
+        let world = app.world_mut();
+        let ship = world.spawn(Transform::default()).id();
+        let hull = || (HullSegment { health: 100.0, max_health: 100.0, ..default() }, BaseSpriteColor(ALIVE), sprite());
+        let block = world.spawn((hull(), ChildOf(ship))).id();
+        let quad = world.spawn((sprite(), ChildOf(block))).id();
+        let body = world.spawn((Transform::default(), ChildOf(ship))).id();
+        let turret_plate = world.spawn((hull(), ChildOf(body))).id();
+        let roof = world.spawn((sprite(), AiRoofTile(1.0), ChildOf(ship))).id();
+        let not_the_ship = world.spawn((sprite(), ChildOf(ship))).id();
+        app.update();
+
+        app.world_mut().entity_mut(ship).insert(AiShipWreck {
+            ship_type: AiShipType::TerranHegemony,
+            loot_remaining: 1,
+            intact_frac: 1.0,
+        });
+        for _ in 0..3 {
+            app.update();
+            for dark in [block, quad, turret_plate, roof] {
+                assert_eq!(colour(&app, dark), wreck_shade(ALIVE));
+            }
+            assert_eq!(colour(&app, not_the_ship), ALIVE);
+        }
+    }
+
+    /// Shot open later, a concealed deck is revealed in the wreck's colours.
+    #[test]
+    fn a_wrecks_hidden_decks_are_dark_too() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, paint_wrecks);
+        let world = app.world_mut();
+        let ship = world.spawn(Transform::default()).id();
+        let block = world
+            .spawn((
+                HullSegment { health: 100.0, max_health: 100.0, ..default() },
+                sprite(),
+                super::super::interior::Concealed(ALIVE),
+                ChildOf(ship),
+            ))
+            .id();
+        world.entity_mut(ship).insert(AiShipWreck {
+            ship_type: AiShipType::TerranHegemony,
+            loot_remaining: 1,
+            intact_frac: 1.0,
+        });
+        app.update();
+        assert_eq!(app.world().get::<super::super::interior::Concealed>(block).unwrap().0, wreck_shade(ALIVE));
     }
 }
 

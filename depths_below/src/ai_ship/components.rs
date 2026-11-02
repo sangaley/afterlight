@@ -277,6 +277,14 @@ pub struct AiShipRadarContact {
     pub revealed_timer: Timer,
 }
 
+/// A wreck's colour, from its colour alive: dark, but still a shape against
+/// dark space, and still its faction's paint.
+pub fn wreck_shade(color: Color) -> Color {
+    const SHADE: f32 = 0.42;
+    let c = color.to_srgba();
+    Color::srgba(c.red * SHADE, c.green * SHADE, c.blue * SHADE, c.alpha)
+}
+
 /// Wreck entity spawned after AI ship destruction
 #[derive(Component)]
 pub struct AiShipWreck {
