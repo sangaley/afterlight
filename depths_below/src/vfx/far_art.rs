@@ -767,33 +767,22 @@ pub fn bake_far_art(
     }
 }
 
-/// How bright a wreck's far picture stays.
-const WRECK_SHADE: f32 = 0.42;
-
 /// Fade the pictures with the zoom; fully out, hide the blocks they stand in
 /// for, and bring them back as the camera comes in.
 #[allow(clippy::type_complexity)]
 pub fn show_far_art(
     mut commands: Commands,
     camera: Res<CameraState>,
-    owners: Query<(&FarArt, Option<&Children>, Option<&crate::ai_ship::components::AiShipState>)>,
+    owners: Query<(&FarArt, Option<&Children>)>,
     pictured: Pictured,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
     hidden: Query<Entity, With<FarHidden>>,
     mut was_full: Local<bool>,
 ) {
     let alpha = art_alpha(camera.zoom);
-    for (art, _, state) in owners.iter() {
+    for (art, _) in owners.iter() {
         let Ok((mut sprite, mut vis)) = sprites.get_mut(art.sprite) else { continue };
         let want = alpha;
-        // A wreck goes dark: from 20 km its name-plate was the only sign that
-        // a ship had died. Here and not in the paint, which a block's damage
-        // tint puts back within a frame.
-        let shade = if state.is_some_and(|s| s.is_destroyed) { WRECK_SHADE } else { 1.0 };
-        let shaded = Color::srgba(shade, shade, shade, sprite.color.alpha());
-        if sprite.color != shaded {
-            sprite.color = shaded;
-        }
         // Not shown until it's been baked once.
         let want_vis = if want > 0.0 && art.picture.is_some() { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != want_vis {
@@ -812,7 +801,7 @@ pub fn show_far_art(
         info!("FAR ART {} at zoom {:.1}", if full { "stands in" } else { "steps back" }, camera.zoom);
     }
     if full {
-        for (art, children, _) in owners.iter() {
+        for (art, children) in owners.iter() {
             if art.picture.is_none() {
                 continue;
             }
@@ -1046,27 +1035,29 @@ mod tests {
         assert_eq!(pixel(&app, s, other), other_before, "a block that wasn't hit changed");
     }
 
-    /// From far out a wreck stays dark, with the damage tint undoing the paint
-    /// on its blocks as it does in the game.
+    /// From 20 km a dead ship's name-plate used to be the only sign it had died.
+    /// Its paint reaches the picture and stays, with the damage tint running.
     #[test]
-    fn a_wreck_stays_dark_in_the_picture() {
+    fn a_wreck_goes_dark_in_the_picture() {
         let mut app = app(20.0);
-        app.add_systems(Update, crate::ship::tint_damaged_hull);
+        app.add_systems(Update, (crate::ai_ship::wreck::paint_wrecks, crate::ship::tint_damaged_hull));
         let s = ship(&mut app);
         let block = hull(&mut app, s, IVec2::ZERO);
         app.world_mut().entity_mut(block).insert(crate::components::BaseSpriteColor(Color::srgb(0.5, 0.6, 0.7)));
-        app.world_mut().entity_mut(s).insert(crate::ai_ship::components::AiShipState::default());
         app.update();
         app.update();
-        let sprite = app.world().get::<FarArt>(s).unwrap().sprite;
-        let shade = |app: &App| app.world().get::<Sprite>(sprite).unwrap().color.to_srgba().red;
-        assert_eq!(shade(&app), 1.0, "a living ship was shaded");
+        let alive = pixel(&app, s, IVec2::ZERO);
 
-        app.world_mut().get_mut::<crate::ai_ship::components::AiShipState>(s).unwrap().is_destroyed = true;
-        app.world_mut().get_mut::<Sprite>(block).unwrap().color = Color::srgb(0.18, 0.18, 0.2);
+        app.world_mut().entity_mut(s).insert(crate::ai_ship::components::AiShipWreck {
+            ship_type: crate::ai_ship::components::AiShipType::TerranHegemony,
+            loot_remaining: 1,
+            intact_frac: 1.0,
+        });
+        app.update();
         for _ in 0..3 {
-            app.update();
-            assert_eq!(shade(&app), WRECK_SHADE, "the wreck lit up again");
+            look(&mut app, s);
+            let dead = pixel(&app, s, IVec2::ZERO);
+            assert!(dead[2] < alive[2] / 2, "not dark: {alive:?} to {dead:?}");
         }
     }
 

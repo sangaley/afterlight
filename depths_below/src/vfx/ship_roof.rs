@@ -348,7 +348,7 @@ pub fn update_ai_roofs(
     mut commands: Commands,
     assets: Res<AssetServer>,
     camera: Res<CameraState>,
-    roots: Query<(Entity, Option<&AiRoofLaid>, &Scars), With<crate::ai_ship::components::AiShip>>,
+    roots: Query<(Entity, Option<&AiRoofLaid>, &Scars, Has<crate::ai_ship::components::AiShipWreck>), With<crate::ai_ship::components::AiShip>>,
     hull: Query<(&HullSegment, &OwnedByAiShip), Without<HullDestroyed>>,
     modules: Query<(&Module, &OwnedByAiShip), Without<DestroyedModule>>,
     mut tiles: Query<(Entity, &mut Sprite, &AiRoofTile, &ChildOf)>,
@@ -368,7 +368,7 @@ pub fn update_ai_roofs(
     for (m, owner) in modules.iter() {
         mods_by.entry(owner.root).or_default().push(m);
     }
-    for (root, laid, scars) in roots.iter() {
+    for (root, laid, scars, wrecked) in roots.iter() {
         let hulls = hull_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
         let mods = mods_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
         if hulls.is_empty() || laid.is_some_and(|l| l.0 == hulls.len() && l.1 == mods.len() && l.2 == scars.0.len()) {
@@ -415,11 +415,12 @@ pub fn update_ai_roofs(
             let q = cell.rem_euclid(IVec2::splat(2));
             let rect = Rect::new(q.x as f32 * 128.0, (1 - q.y) as f32 * 128.0, q.x as f32 * 128.0 + 128.0, (2 - q.y) as f32 * 128.0);
             let tone = plate_tone(plate) * DECK_LIGHTEN;
+            let color = Color::srgba(tone, tone, tone, alpha);
             commands.spawn((
                 Sprite {
                     image: image.clone(),
                     rect: Some(rect),
-                    color: Color::srgba(tone, tone, tone, alpha),
+                    color: if wrecked { crate::ai_ship::components::wreck_shade(color) } else { color },
                     custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
                     ..default()
                 },
