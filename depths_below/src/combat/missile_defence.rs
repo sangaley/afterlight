@@ -260,6 +260,12 @@ pub fn age_decoys(time: Res<Time>, mut commands: Commands, mut decoys: Query<(En
 /// How far out a point defence gun reaches for missiles.
 pub const PD_RANGE: f32 = 4000.0 * super::gun_assembly::RANGE_SCALE;
 
+/// How long a point defence round flies, at `speed`: to the edge of what it
+/// engages. A miss used to fly half as far again, across the whole fight.
+pub fn pd_lifetime(speed: f32) -> f32 {
+    PD_RANGE / speed.max(1.0)
+}
+
 /// Where a round at `speed` from `from` meets something at `at` moving at
 /// `vel` (relative to the shooter). None if it can't catch it.
 pub fn intercept(from: Vec2, speed: f32, at: Vec2, vel: Vec2) -> Option<Vec2> {
