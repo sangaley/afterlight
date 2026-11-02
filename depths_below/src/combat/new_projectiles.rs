@@ -104,16 +104,18 @@ pub const HE_EDGE: f32 = 0.4;
 
 /// Below this caliber (a 150 mm gun is 1.0) a shell just makes its hole.
 const SHOCK_MIN_CALIBER: f32 = 1.0;
-/// Reach of the shock, per caliber: a block and a half round a 170 mm hit, four
-/// and a half round a 500 mm one.
+/// Reach of the shock from a 150 mm shell. It grows steeply with size, because
+/// past a block's health a shell's damage does nothing unless it reaches more
+/// blocks: 40,000 damage at 280 mm used to take about 30 of them.
 const SHOCK_RADIUS: f32 = 88.0;
+const SHOCK_GROWTH: f32 = 1.8;
 /// The share of the shell's damage the blocks at the middle of the shock take.
 const SHOCK_SHARE: f32 = 0.1;
 
 /// The shock of a heavy shell's first impact, radius and damage at the middle:
 /// what makes a big gun's hit tear a piece out, not bore one line through it.
 pub fn impact_shock(caliber: f32, damage: f32) -> Option<(f32, f32)> {
-    (caliber >= SHOCK_MIN_CALIBER).then_some((SHOCK_RADIUS * caliber, damage * SHOCK_SHARE))
+    (caliber >= SHOCK_MIN_CALIBER).then(|| (SHOCK_RADIUS * caliber.powf(SHOCK_GROWTH), damage * SHOCK_SHARE))
 }
 
 /// What an armour-piercing round carries into the next block, if anything.
@@ -2200,6 +2202,23 @@ mod pierce_tests {
     #[test]
     fn a_light_round_still_gets_its_second_block_and_no_more() {
         assert_eq!(blocks_through(87.0, 47.0, 100.0, 15.0), 2);
+    }
+
+    #[test]
+    fn a_bigger_shell_tears_out_far_more_of_a_ship() {
+        use crate::combat::new_projectiles::{impact_shock, HE_EDGE};
+        // A cell is 66 across: blocks in reach, by gauge.
+        let blocks = |gauge: f32, damage: f32| {
+            let (radius, _) = impact_shock(gauge / 150.0, damage).unwrap();
+            std::f32::consts::PI * (radius / 66.0).powi(2)
+        };
+        assert!(impact_shock(60.0 / 150.0, 9.0).is_none(), "small rounds just make a hole");
+        assert!(blocks(170.0, 3000.0) < 15.0);
+        assert!(blocks(280.0, 15000.0) > 40.0);
+        assert!(blocks(500.0, 60000.0) > 300.0);
+        // Every block in reach dies, even at the rim of the blast.
+        let (_, middle) = impact_shock(500.0 / 150.0, 60000.0).unwrap();
+        assert!(middle * HE_EDGE > 480.0, "the toughest plate outlasted it");
     }
 
     #[test]

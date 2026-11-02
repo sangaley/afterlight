@@ -3,7 +3,7 @@ what did the damage. Muted and offscreen.
 
     python3 tools/combat-lab/sweep.py <out_dir> <binary> [--secs 150] [--seeds 3]
         [--workers 3] [--factions A,B] [--fleet Patrol] [--design designs/starter.json]
-        [--first-seed 3] [--keep] [--env KEY=VALUE ...]
+        [--first-seed 3] [--keep] [--resume] [--env KEY=VALUE ...]
 
 Run from depths_below/, with a copy of the built binary so a rebuild can't change
 it mid-run, and its shared libraries in DEPTHS_LAB_LIBS (see train.py).
@@ -29,6 +29,8 @@ SOURCE = re.compile(r"(\w+) x(\d+) (\d+)dmg")
 def fight(binary, faction, seed, a):
     os.makedirs(a.out, exist_ok=True)
     log = os.path.join(a.out, f"{faction}_{seed}.log")
+    if a.resume and finished(log, a.secs):
+        return read_fight(log, faction, seed, a, False)
     env = dict(os.environ, DEPTHS_MUTE="1", DEPTHS_SKIP_MENU="1", DEPTHS_OFFSCREEN="1", DEPTHS_MOVETEST="1",
                DEPTHS_MOVETEST_ENEMY_SHOOTS="1", DEPTHS_MOVETEST_FLEET=f"{faction}:{a.fleet}",
                DEPTHS_MOVETEST_FLEET_AT="0,20000", DEPTHS_COMBAT_REPORT="1", DEPTHS_DESIGN=a.design,
@@ -44,7 +46,6 @@ def fight(binary, faction, seed, a):
         p = subprocess.Popen([binary], cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT)
         while p.poll() is None and time.time() - began < a.secs + 6:
             time.sleep(1)
-        real = time.time() - began
         crashed = p.poll() not in (None, 0)
         if p.poll() is None:
             p.terminate()
@@ -52,6 +53,19 @@ def fight(binary, faction, seed, a):
                 p.wait(10)
             except subprocess.TimeoutExpired:
                 p.kill()
+    return read_fight(log, faction, seed, a, crashed)
+
+
+def finished(log, secs):
+    """A log from a fight that ran its time: not cut short by a restart."""
+    if not os.path.exists(log):
+        return False
+    text = open(log, errors="replace").read()
+    times = re.findall(r"COMBAT t=(\d+) player", text)
+    return bool(times) and (int(times[-1]) >= secs - 12 or "Skipped event Destroyed" in text[-2000:])
+
+
+def read_fight(log, faction, seed, a, crashed):
     text = re.sub(r"\x1b\[[0-9;]*m", "", open(log, errors="replace").read())
     rows = [(int(t), int(alive), int(start), found) for t, alive, start, found in LINE.findall(text)]
     if not rows:
@@ -100,6 +114,7 @@ def main():
     p.add_argument("--design", default="designs/starter.json")
     p.add_argument("--first-seed", type=int, default=3)
     p.add_argument("--keep", action="store_true", help="keep each fight's log")
+    p.add_argument("--resume", action="store_true", help="reuse the logs of fights that already ran their time")
     p.add_argument("--env", nargs="*", default=[])
     a = p.parse_args()
     binary = os.path.abspath(a.binary)
