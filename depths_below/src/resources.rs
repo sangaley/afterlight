@@ -233,7 +233,9 @@ impl Default for FuelState {
         Self {
             current_fuel: 1500.0,    // Enough for a real expedition; outposts resupply
             max_fuel: 1500.0,
-            fuel_consumption_rate: 0.8,
+            // Per engine. 0.8 was set for a five-engine ship; the starter now
+            // has twenty, and at 0.8 it burned its tank in 94 s at full throttle.
+            fuel_consumption_rate: 0.2,
         }
     }
 }
@@ -1844,7 +1846,7 @@ mod tests {
         // old 500 / 1.0 long after they were raised, so the suite has simply
         // been red ever since rather than catching anything.
         assert!((fuel.max_fuel - 1500.0).abs() < f32::EPSILON);
-        assert!((fuel.fuel_consumption_rate - 0.8).abs() < f32::EPSILON);
+        assert!((fuel.fuel_consumption_rate - 0.2).abs() < f32::EPSILON);
     }
 
     #[test]

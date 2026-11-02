@@ -3640,9 +3640,13 @@ struct RackAmmo {
     damage: f32,
 }
 
-/// Credits per point of a built gun's shell damage: a 170 mm shell ~2c,
-/// 280 mm ~5c, 500 mm ~18c, next to a cannon shell's 1.5c.
-const BUILT_SHELL_PRICE_PER_DAMAGE: f32 = 0.02;
+/// What a built gun's shell costs, before its load and the station's discount:
+/// a 20 mm round 0.05c, 60 mm 0.2c, 170 mm 8c, 280 mm 24c, 500 mm 60c. It grows
+/// slower than damage does: a 500 mm shell does 20 times a 170 mm's damage, and
+/// priced by damage alone it cost more than a bounty pays.
+fn built_shell_price(damage: f32) -> f32 {
+    0.0375 * damage.max(0.0).powf(0.67)
+}
 
 impl RackAmmo {
     /// Rounds short of a full magazine. Power-fed guns have no magazine to buy.
@@ -3655,7 +3659,7 @@ impl RackAmmo {
         if self.kind == ModuleType::FiringPiece {
             let type_mult = crate::combat::ammo_types::rearm_price(ModuleType::Cannon, self.loaded, 1)
                 / crate::combat::ammo_types::rearm_price(ModuleType::Cannon, None, 1);
-            return self.damage * BUILT_SHELL_PRICE_PER_DAMAGE * type_mult * discount;
+            return built_shell_price(self.damage) * type_mult * discount;
         }
         crate::combat::ammo_types::rearm_price(self.kind, self.loaded, 1) * discount
     }
@@ -4981,13 +4985,18 @@ mod rearm_tests {
     /// Short of the bill you still get rounds -- in every gun, not one --
     /// and are never charged more than you have.
     #[test]
-    fn a_built_guns_shells_cost_by_their_damage() {
-        let mut small = gun(1, ModuleType::FiringPiece, 0, 10);
-        small.damage = 87.0;
-        let mut big = gun(2, ModuleType::FiringPiece, 0, 10);
-        big.damage = 909.0;
-        assert!((small.round_cost(1.0) - 1.74).abs() < 0.01);
-        assert!(big.round_cost(1.0) > 10.0 * small.round_cost(1.0) * 0.9);
+    fn a_built_guns_shells_cost_more_with_size_but_stay_affordable() {
+        let cost = |damage: f32| {
+            let mut g = gun(1, ModuleType::FiringPiece, 0, 10);
+            g.damage = damage;
+            g.round_cost(1.0)
+        };
+        // 170 mm, then 500 mm: 20 times the damage, far less than 20 times the price.
+        assert!((cost(3000.0) - 8.0).abs() < 0.1);
+        assert!(cost(60000.0) > 3.0 * cost(3000.0));
+        assert!(cost(60000.0) < 10.0 * cost(3000.0));
+        // A 20 mm round is next to free.
+        assert!(cost(1.5) < 0.1);
     }
 
     #[test]

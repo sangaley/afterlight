@@ -176,7 +176,7 @@ pub fn apply_hull_enhancers(
 
 /// Base fuel_consumption_rate before any FuelInjector bonus — matches
 /// FuelState::default(), the only other place this value is set.
-const BASE_FUEL_CONSUMPTION_RATE: f32 = 0.8;
+const BASE_FUEL_CONSUMPTION_RATE: f32 = 0.2;
 
 /// Base ship mass before any InertialDampener/GravityCompensator bonus —
 /// matches the GravityAffected the player ship spawns with (ship/spawner.rs).
