@@ -15,6 +15,7 @@ mod contracts;
 mod combat;
 mod radar;
 mod camera;
+mod despawn_races;
 mod sprite_map;
 pub mod ai_ship;
 mod celestial;
@@ -55,6 +56,8 @@ use tutorial::TutorialPlugin;
 
 fn main() {
     App::new()
+        .set_error_handler(despawn_races::survive_despawned)
+        .add_systems(Update, despawn_races::reap_stranded)
         // Default Bevy plugins (windowing, rendering, input, etc.)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
