@@ -31,10 +31,20 @@ pub fn combat_report(
     // counts bare floor, and most rounds land on what stands over it.
     enemy_blocks: Query<&OwnedByAiShip, (Or<(With<Module>, With<HullSegment>)>, Without<DestroyedModule>, Without<HullDestroyed>)>,
     mut enemy_start: Local<bevy::platform::collections::HashMap<Entity, usize>>,
+    // What did it since the last line: hits by source, and what blew up.
+    mut hits: MessageReader<crate::events::ShipDamaged>,
+    mut explosions: MessageReader<crate::events::ModuleExploded>,
+    mut tally: Local<(bevy::platform::collections::HashMap<String, (u32, f32)>, u32)>,
 ) {
     if !on() {
         return;
     }
+    for hit in hits.read() {
+        let entry = tally.0.entry(format!("{:?}", hit.source)).or_default();
+        entry.0 += 1;
+        entry.1 += hit.amount;
+    }
+    tally.1 += explosions.read().count() as u32;
     let now = time.elapsed_secs();
     if now < *next {
         return;
@@ -69,6 +79,13 @@ pub fn combat_report(
         })
         .collect();
     seen.sort();
+    if !tally.0.is_empty() || tally.1 > 0 {
+        let mut sources: Vec<String> = tally.0.iter().map(|(k, (n, d))| format!("{k} x{n} {d:.0}dmg")).collect();
+        sources.sort();
+        info!("COMBAT HITS t={:.0} {} | explosions {}", now, sources.join(", "), tally.1);
+    }
+    tally.0.clear();
+    tally.1 = 0;
     info!(
         "COMBAT t={:.0} player hull={:.2} blocks={}/{} power={:.0}/{:.0} crew={} | {}",
         now,

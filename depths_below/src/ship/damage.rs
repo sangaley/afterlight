@@ -381,6 +381,14 @@ pub fn cleanup_hit_effects(
     }
 }
 
+/// How hard anything explosive goes up, and how far, of what it's listed with.
+/// A magazine took about 21 blocks with it, and a ship with eight lost a tenth of
+/// itself to its own shells. Reach is what counts: most blocks die to even a
+/// weakened blast, so damage alone at 0.7 saved 4% (measured, with nothing else
+/// shooting). A hit magazine should still hurt badly. Both sides alike.
+pub(crate) const BLAST_STRENGTH: f32 = 0.7;
+pub(crate) const BLAST_REACH: f32 = 0.8;
+
 /// When an explosive module is freshly destroyed, queue a detonation with a short fuse delay.
 /// Warning notifications only fire for the player's own ship (via ChildOf) — an
 /// AI ship's reactor cooking off is not the player's emergency.
@@ -411,8 +419,8 @@ pub fn queue_detonation(
 
         commands.entity(entity).insert(PendingDetonation {
             timer: Timer::from_seconds(fuse_secs, TimerMode::Once),
-            blast_radius: explosive.blast_radius,
-            blast_damage: explosive.blast_damage,
+            blast_radius: explosive.blast_radius * BLAST_REACH,
+            blast_damage: explosive.blast_damage * BLAST_STRENGTH,
             explosive_type: explosive.explosive_type,
             grid_position: module.grid_position,
         });
@@ -624,8 +632,8 @@ pub fn queue_ai_detonation(
         };
         commands.entity(entity).try_insert(AiPendingDetonation {
             timer: Timer::from_seconds(fuse_secs, TimerMode::Once),
-            blast_radius_world: explosive.blast_radius * 66.0,
-            blast_damage: explosive.blast_damage,
+            blast_radius_world: explosive.blast_radius * BLAST_REACH * 66.0,
+            blast_damage: explosive.blast_damage * BLAST_STRENGTH,
             explosive_type: explosive.explosive_type,
             position: gt.translation().truncate(),
             ship: parent.parent(),

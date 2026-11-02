@@ -1063,11 +1063,11 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
         for sys in &scene.systems {
             let Some(owner) = sys.owner else { continue };
             let at = cam.to_px(sys.galaxy, stage);
-            let radius = (300_000.0 * cam.scale).max(30.0);
+            let radius = (560_000.0 * cam.scale).max(30.0);
             if !paint.on_stage(at, radius) {
                 continue;
             }
-            let alpha = (if sys.visited { 0.13 } else { 0.08 }) * (1.0 - open);
+            let alpha = (if sys.visited { 0.11 } else { 0.07 }) * (1.0 - open);
             paint.glow(at, radius, faction_map_color(owner), alpha);
         }
     }
@@ -1165,20 +1165,6 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
         // The star.
         paint.glow(at, 26.0, Color::srgb(1.0, 0.82, 0.3), 0.55 * open);
         paint.disc(at, 6.0, faded(Color::srgb(1.0, 0.95, 0.77), open));
-        for (i, planet) in sys.planets.iter().enumerate() {
-            let px = cam.to_px(planet.galaxy, stage);
-            if !paint.on_stage(px, 60.0) {
-                continue;
-            }
-            paint.disc(px, 3.8, faded(planet.color, open));
-            paint.label(&planet.name, px + Vec2::new(7.0, -7.0), F::TINY, faded(C::TEXT_SECONDARY, open), &mut placed);
-            spots.push(Hotspot {
-                px,
-                radius: 10.0,
-                pick: MapPick::Planet(sys.id, i),
-                tip: vec![planet.name.clone(), format!("{} planet", planet.kind)],
-            });
-        }
         for (i, station) in sys.stations.iter().enumerate() {
             let px = cam.to_px(station.galaxy, stage);
             if !paint.on_stage(px, 60.0) {
@@ -1192,6 +1178,20 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
                 radius: 11.0,
                 pick: MapPick::Station(sys.id, i),
                 tip: vec![station.name.clone(), station.kind.to_string()],
+            });
+        }
+        for (i, planet) in sys.planets.iter().enumerate() {
+            let px = cam.to_px(planet.galaxy, stage);
+            if !paint.on_stage(px, 60.0) {
+                continue;
+            }
+            paint.disc(px, 3.8, faded(planet.color, open));
+            paint.label(&planet.name, px + Vec2::new(7.0, -7.0), F::TINY, faded(C::TEXT_SECONDARY, open), &mut placed);
+            spots.push(Hotspot {
+                px,
+                radius: 10.0,
+                pick: MapPick::Planet(sys.id, i),
+                tip: vec![planet.name.clone(), format!("{} planet", planet.kind)],
             });
         }
         if layers.ships {
@@ -2269,7 +2269,8 @@ mod tests {
                 assert!(a * (1.0 + e) * sys.frame.squeeze <= SYSTEM_DISC, "{}", sys.name);
             }
             let world = sys.frame.local + Vec2::new(1234.0, -987.0);
-            assert!(sys.frame.to_world(sys.frame.to_galaxy(world)).distance(world) < 1.0);
+            // Far out on the map f32 only holds a few units; a click isn't that fine.
+            assert!(sys.frame.to_world(sys.frame.to_galaxy(world)).distance(world) < 20.0);
         }
     }
 

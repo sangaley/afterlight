@@ -288,9 +288,15 @@ impl BorderWar {
         for id in ids {
             let Some(owner) = map.systems.iter().find(|s| s.id == id).and_then(|s| s.faction) else { continue };
             let capital = map.systems.iter().any(|s| s.id == id && s.capital);
+            // A faction's last system doesn't fall to the off-screen war: its
+            // claimants' hold fades instead. With systems spread out every
+            // holding has more hostile neighbours, and small factions died in
+            // over half of all galaxies inside ten hours of play. You can still
+            // finish one yourself (`push`).
+            let last_stand = map.systems.iter().filter(|s| s.faction == Some(owner)).count() <= 1;
             let rivals: Vec<AiShipType> = border_factions(map, id)
                 .into_iter()
-                .filter(|f| TERRITORIAL.contains(f) && factions_hostile(owner, *f))
+                .filter(|f| !last_stand && TERRITORIAL.contains(f) && factions_hostile(owner, *f))
                 .collect();
             let defend = stretched_power(map, owner) * if capital { CAPITAL_GUARD } else { 1.0 };
             {
@@ -659,6 +665,35 @@ mod tests {
         let json = serde_json::to_string(&war).unwrap();
         let back: BorderWar = serde_json::from_str(&json).unwrap();
         assert!((back.contest(2).unwrap().share(TerranHegemony) - 20.0).abs() < 1e-3);
+    }
+
+    /// Across many galaxies, not a lucky few: on the layout before this rule
+    /// a faction died inside ten hours in one galaxy in four, and with systems
+    /// further apart in more than one in two.
+    #[test]
+    fn the_war_alone_never_wipes_a_faction_out() {
+        for seed in 0..50u64 {
+            let mut map = crate::celestial::galaxy::generate_galaxy_map(seed * 31 + 11);
+            let mut war = BorderWar::default();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            for _ in 0..600 {
+                war.tick(&mut map, &mut rng);
+            }
+            for f in TERRITORIAL {
+                assert!(map.systems.iter().any(|s| s.faction == Some(f)), "seed {seed}: {f:?} was wiped out");
+            }
+        }
+    }
+
+    /// The rule protects a faction from the background war, not from you.
+    #[test]
+    fn you_can_still_take_a_factions_last_system() {
+        use AiShipType::*;
+        let mut map = row(&[TheSilence, TheSilence, TerranHegemony]);
+        let mut war = BorderWar::default();
+        let flips = war.push(&mut map, 3, TheSilence, 60.0);
+        assert_eq!(flips.len(), 1);
+        assert_eq!(map.systems.iter().filter(|s| s.faction == Some(TerranHegemony)).count(), 0);
     }
 
     /// Ten hours of war on a real galaxy: borders move, but no faction ends

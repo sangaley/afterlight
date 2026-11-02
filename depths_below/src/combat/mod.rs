@@ -139,8 +139,9 @@ pub(crate) fn spawn_muzzle_flash(
     ));
 }
 
-/// Where blasts draw: over the ship's far picture (vfx::far_art), which would
-/// otherwise hide every explosion on a hull once the camera is well back.
+/// Where blasts draw: over a far ship's copies, embers and turrets (vfx::far_art),
+/// which would otherwise hide every explosion on a hull once the camera is well
+/// back.
 const BLAST_Z: f32 = 1.6;
 
 /// A warhead going off: expanding fireball, shock ring, radial spray, smoke.
@@ -664,7 +665,7 @@ mod firing_arc_tests {
 #[cfg(test)]
 mod blast_depth_tests {
     #[test]
-    fn blasts_draw_over_the_far_picture() {
-        assert!(super::BLAST_Z > crate::vfx::far_art::SHIP_ART_Z);
+    fn blasts_draw_over_the_far_view() {
+        assert!(super::BLAST_Z > crate::vfx::far_art::EMBER_Z);
     }
 }
