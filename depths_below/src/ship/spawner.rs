@@ -433,6 +433,10 @@ pub fn starts_active(module_type: ModuleType) -> bool {
             | ModuleType::RepairBay
             | ModuleType::AirlockChamber
             | ModuleType::DockingPort
+            // Without these `air::auto_containment` passes over them: a door
+            // that was never switched on never shuts.
+            | ModuleType::EmergencyBulkhead
+            | ModuleType::AirlockValve
     )
 }
 

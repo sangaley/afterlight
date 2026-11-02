@@ -20,6 +20,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ALL = ["EternalHegemony", "TerranHegemony", "GildedThrone", "BrokenChoir", "CorpseStars",
        "SynthesisCollective", "Shepherd", "RecursiveKingdom"]
 LINE = re.compile(r"COMBAT t=(\d+) player hull=[\d.]+ blocks=(\d+)/(\d+) .*?\| (.*)")
+CREW = re.compile(r"COMBAT t=\d+ player .*?crew=(\d+)")
 ENEMY = re.compile(r"(\w+)/(\w+|-) hull=[\d.]+ blocks=(\d+)/(\d+) d=(\d+) (\w+)")
 HITS = re.compile(r"COMBAT HITS t=(\d+) (.*?) \| explosions (\d+)")
 SOURCE = re.compile(r"(\w+) x(\d+) (\d+)dmg")
@@ -74,6 +75,10 @@ def fight(binary, faction, seed, a):
         os.remove(log)
     return dict(faction=faction, seed=seed, you=1 - rows[-1][1] / max(rows[-1][2], 1), them=gone / max(total, 1),
                 killed=sum(e[5] == "DESTROYED" for e in found), ships=len(found), classes=[e[1] for e in found],
+                shot_off=sum(int(e[3]) - int(e[2]) for e in found) / max(total, 1),
+                crew=[int(c) for c in CREW.findall(text)],
+                by_class=[(e[1], int(e[3]), int(e[3]) - int(e[2]), e[5] == "DESTROYED") for e in found],
+                strikes=re.findall(r"strikes: ([a-z ]+)", text),
                 t_half=t_half, t_first_hit=t_first_hit, t_kill=t_kill, sources=sources, last_t=rows[-1][0],
                 crashed=crashed, errors=errors)
 
@@ -124,6 +129,25 @@ def main():
               f"| {gun:.0f} | {blast:.0f} | {other:.0f} | {mean([r['last_t'] for r in rs]):.0f} "
               f"| {sum(r['errors'] + r['crashed'] for r in rs)} |", flush=True)
     print(f"| ALL | {mean([r['you'] for r in results]):.0%} | {mean([r['them'] for r in results]):.0%} | | | | | | | | |")
+    # `they lost` counts a surrendered ship as all gone: this is what was shot off.
+    print(f"blocks actually shot off: {mean([r['shot_off'] for r in results]):.0%}")
+    print(f"your crew left at the end: {mean([r['crew'][-1] / max(r['crew'][0], 1) for r in results if r['crew']]):.0%}")
+    print("\n| faction | ship | seen | blocks | shot off | finished |\n|---|---|---|---|---|---|")
+    by = {}
+    for r in results:
+        for name, blocks, off, dead in r["by_class"]:
+            s = by.setdefault((r["faction"], name), [0, 0, 0, 0])
+            s[0] += 1
+            s[1] += blocks
+            s[2] += off
+            s[3] += dead
+    for (f, name), s in sorted(by.items(), key=lambda kv: (kv[0][0], -kv[1][1] / kv[1][0])):
+        print(f"| {f} | {name} | {s[0]} | {s[1] // s[0]} | {s[2] / max(s[1], 1):.0%} | {s[3]}/{s[0]} |")
+    why = {}
+    for r in results:
+        for w in r["strikes"]:
+            why[w.strip()] = why.get(w.strip(), 0) + 1
+    print("\nwhy ships gave up:", why)
 
 
 if __name__ == "__main__":

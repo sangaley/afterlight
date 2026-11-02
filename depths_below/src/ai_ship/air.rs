@@ -5,7 +5,8 @@
 //! at the bow empties the bow first while the stern feeds it, and a capital
 //! with one hole in it loses its air slowly -- a ship is nearly always one
 //! big compartment (its hallways join everything), so venting a whole room
-//! at once would have suffocated every crew on the first hit.
+//! at once would have suffocated every crew on the first hit. Inner hull and
+//! doors divide it, as on the player's ship.
 //!
 //! AI crew have no bodies (see `ai_ship::crew`), so each stands where its job
 //! is: at the station it is manning, or else at a berth handed out the first
@@ -44,6 +45,9 @@ const SEAL_PER_CREW_S: f32 = 1.0 / 60.0;
 /// How fast life support brings a sealed ship's air back, per second.
 const REFILL_PER_S: f32 = 0.05;
 
+/// What an enemy's oxygen tank holds, as the player's does (`building::registry`).
+const OXYGEN_TANK_AIR: f32 = 200.0;
+
 /// One enemy ship's air, in its own grid cells.
 #[derive(Component, Default)]
 pub struct AiAir {
@@ -55,6 +59,8 @@ pub struct AiAir {
     pub sealed: HashSet<IVec2>,
     /// Work done toward the next patch.
     patching: f32,
+    /// Oxygen tanks aboard: the block, the compartment it feeds, the air it holds.
+    pub tanks: Vec<(Entity, Vec<IVec2>, f32)>,
 }
 
 /// Where an AI crewman is when he isn't manning anything.
@@ -72,7 +78,21 @@ pub fn interior_cells(
     hull: impl Iterator<Item = (IVec2, HullLayer)>,
     modules: impl Iterator<Item = (bool, bool, Vec<IVec2>)>,
 ) -> HashSet<IVec2> {
-    let mut inside: HashSet<IVec2> = hull.filter(|(_, l)| *l == HullLayer::Hallway).map(|(c, _)| c).collect();
+    let mut inside: HashSet<IVec2> = HashSet::new();
+    // Inner hull is what divides a ship, as on the player's (`building::rooms`):
+    // without it every enemy was one room, and a single hole emptied it.
+    let mut walls: HashSet<IVec2> = HashSet::new();
+    for (cell, layer) in hull {
+        match layer {
+            HullLayer::Hallway => {
+                inside.insert(cell);
+            }
+            HullLayer::Inner => {
+                walls.insert(cell);
+            }
+            _ => {}
+        }
+    }
     let mut doors: HashSet<IVec2> = HashSet::new();
     for (holds_air, door, cells) in modules {
         if door {
@@ -81,8 +101,27 @@ pub fn interior_cells(
             inside.extend(cells);
         }
     }
-    inside.retain(|c| !doors.contains(c));
+    inside.retain(|c| !doors.contains(c) && !walls.contains(c));
     inside
+}
+
+/// The air connected to a block: from its own cell or the one beside it.
+fn compartment_of(inside: &HashSet<IVec2>, cell: IVec2) -> Vec<IVec2> {
+    const SIDES: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
+    let Some(start) = std::iter::once(cell).chain(SIDES.iter().map(|s| cell + *s)).find(|c| inside.contains(c)) else {
+        return Vec::new();
+    };
+    let mut seen: HashSet<IVec2> = [start].into_iter().collect();
+    let mut stack = vec![start];
+    while let Some(at) = stack.pop() {
+        for side in SIDES {
+            let next = at + side;
+            if inside.contains(&next) && seen.insert(next) {
+                stack.push(next);
+            }
+        }
+    }
+    seen.into_iter().collect()
 }
 
 /// One fixed step of the air: holes inside are vacuum, tiles beside a hole
@@ -147,7 +186,13 @@ pub fn fill_ai_air(
             let at = tiles[(i * 7919) % tiles.len()];
             commands.entity(c).try_insert(AiCrewBerth(at));
         }
-        commands.entity(ship).try_insert(AiAir { pressure: inside.into_iter().map(|c| (c, 1.0)).collect(), ..default() });
+        let tanks = children
+            .iter()
+            .filter_map(|c| modules.get(c).ok().map(|m| (c, m)))
+            .filter(|(_, m)| m.module_type == crate::components::ModuleType::OxygenTank)
+            .map(|(c, m)| (c, compartment_of(&inside, m.grid_position), OXYGEN_TANK_AIR))
+            .collect();
+        commands.entity(ship).try_insert(AiAir { pressure: inside.into_iter().map(|c| (c, 1.0)).collect(), tanks, ..default() });
     }
 }
 
@@ -159,6 +204,7 @@ pub fn breathe_ai_ships(
     mut crew: Query<(Entity, &mut CrewMember, Option<&AiCrewBerth>), With<OwnedByAiShip>>,
     mut wounds: MessageWriter<CrewDamaged>,
     mut traced: Local<f32>,
+    parts: Query<&Module>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -194,6 +240,12 @@ pub fn breathe_ai_ships(
             }
         }
         air.since = air.since.min(STEP);
+        let AiAir { pressure, tanks, .. } = air;
+        for (block, tiles, stored) in tanks.iter_mut() {
+            if parts.get(*block).is_ok_and(|m| m.health > 0.0) {
+                crate::ship::air::feed_tiles(pressure, tiles, stored, dt);
+            }
+        }
         if open.is_empty() && hands > 0 {
             for p in air.pressure.values_mut() {
                 *p = (*p + REFILL_PER_S * dt).min(1.0);
@@ -310,6 +362,28 @@ mod tests {
         run(&mut a, &side, 10.0);
         run(&mut b, &deck, 10.0);
         assert!(b.values().sum::<f32>() < a.values().sum::<f32>());
+    }
+
+    #[test]
+    fn a_tank_holds_the_air_up_until_it_runs_dry() {
+        let holes: HashSet<IVec2> = [IVec2::new(-1, 0)].into_iter().collect();
+        let mean = |p: &HashMap<IVec2, f32>| p.values().sum::<f32>() / p.len() as f32;
+        let (mut plain, mut tanked) = (corridor(30), corridor(30));
+        let tiles: Vec<IVec2> = tanked.keys().copied().collect();
+        let mut stored = 200.0;
+        for _ in 0..(60.0 / STEP) as u32 {
+            step_air(&mut plain, &holes, STEP);
+            step_air(&mut tanked, &holes, STEP);
+            crate::ship::air::feed_tiles(&mut tanked, &tiles, &mut stored, STEP);
+        }
+        assert!(mean(&tanked) > mean(&plain) + 0.25, "{} against {}", mean(&tanked), mean(&plain));
+        assert!(stored < 200.0);
+
+        // Dry, it does nothing.
+        let before = mean(&plain);
+        let mut none = 0.0;
+        crate::ship::air::feed_tiles(&mut plain, &tiles, &mut none, STEP);
+        assert_eq!(mean(&plain), before);
     }
 
     #[test]

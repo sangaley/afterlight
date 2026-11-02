@@ -154,7 +154,6 @@ impl Plugin for BuildingPlugin {
                     // order (both run under GameState::Exploring).
                     multiblock::enhancers::apply_utility_enhancers
                         .after(crate::ship::update_ship_state),
-                    multiblock::enhancers::emergency_o2_system,
                     multiblock::enhancers::emergency_shutdown_system,
                     multiblock::enhancers::afterburner_system,
                 ).run_if(in_state(GameState::Exploring)),

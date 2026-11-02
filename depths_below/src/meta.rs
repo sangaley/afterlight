@@ -922,6 +922,14 @@ fn respawn_ship_parts(
     }
 
     // ---- Respawn crew ----
+    // On the deck, spread through the ship. They used to be laid out in a line
+    // from the ship's middle, 20 units apart: fine for eight, but with a crew of
+    // 240 most of them came back standing in open space.
+    let deck: Vec<Vec2> = hull_segments
+        .iter()
+        .filter(|h| h.hull_layer == HullLayer::Hallway)
+        .map(|h| Vec2::new(h.grid_position.x as f32 * 66.0, h.grid_position.y as f32 * 66.0 - 33.0))
+        .collect();
     let mut roster_members = Vec::new();
     for (i, crew_data) in crew.iter().enumerate() {
         let crew_entity = commands.spawn((
@@ -929,12 +937,12 @@ fn respawn_ship_parts(
                     color: Color::srgb(0.8, 0.6, 0.5),
                     custom_size: Some(Vec2::new(16.0, 16.0)),
                     ..default()
-                }, Transform::from_xyz(
-                    (i as f32 - 3.5) * 20.0,
-                    0.0,
-                    // Above the modules, like every other crew spawn — the
-                    // walk planner pulls them onto real deck from here.
-                    crate::crew::walking::CREW_Z,
+                }, Transform::from_translation(
+                    // Above the modules, like every other crew spawn.
+                    deck.get((i * 7919) % deck.len().max(1))
+                        .copied()
+                        .unwrap_or(Vec2::new((i as f32 - 3.5) * 20.0, 0.0))
+                        .extend(crate::crew::walking::CREW_Z),
                 )),
             crew_data.duty,
             CrewMember {

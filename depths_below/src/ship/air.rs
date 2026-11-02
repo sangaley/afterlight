@@ -55,8 +55,10 @@ const PANIC_FLOW: f32 = 0.5;
 /// is long enough that a glancing tug on the way past costs nothing.
 const PANIC_MORALE_DRAIN: f32 = 15.0;
 
-/// Flow at a hole above which a body goes through it.
-const EJECT_FLOW: f32 = 0.6;
+/// Flow at a hole above which a body goes through it: the first rush of a fresh
+/// hole with the compartment still full. At 0.6 a tank holding a compartment's
+/// air up kept that rush going, and it pulled out more crew than it saved.
+const EJECT_FLOW: f32 = 0.85;
 
 /// Idle draw of a force-field emitter, matching its registry entry. Holding
 /// holes costs more on top, per hole.
@@ -126,6 +128,84 @@ pub fn sync_air_tiles(
     air.vents = compute_vents(&room_map, &air.holes);
 }
 
+/// Air a tank pushes out, in tiles' worth a second: about what one hole takes.
+const TANK_FEED_PER_S: f32 = 1.0;
+/// What an emergency cache lets go all at once, in tiles' worth.
+const CACHE_AIR: f32 = 60.0;
+/// A cache opens when its compartment falls this thin.
+const CACHE_OPENS_AT: f32 = 0.5;
+
+/// One tank's air into its compartment, shared evenly over the tiles with room
+/// for it. Into one tile alone it barely helped: air crosses a compartment far
+/// more slowly than a tank can give it.
+pub fn feed_tiles(pressure: &mut HashMap<IVec2, f32>, tiles: &[IVec2], stored: &mut f32, dt: f32) {
+    if tiles.is_empty() || *stored <= 0.0 {
+        return;
+    }
+    let each = (TANK_FEED_PER_S * dt).min(*stored) / tiles.len() as f32;
+    for tile in tiles {
+        if let Some(p) = pressure.get_mut(tile) {
+            let given = each.min(1.0 - *p).max(0.0);
+            *p += given;
+            *stored -= given;
+        }
+    }
+}
+
+/// Where a block's air goes: its own cell, or else the air beside it.
+fn air_cell(air: &AirField, cell: IVec2) -> Option<IVec2> {
+    [IVec2::ZERO, IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y]
+        .into_iter()
+        .map(|o| cell + o)
+        .find(|c| air.pressure.contains_key(c))
+}
+
+/// Oxygen tanks hold a compartment's air up against a leak until they run dry,
+/// and an emergency cache refills it once when it runs thin.
+#[allow(clippy::type_complexity)]
+pub fn tanks_feed_air(
+    mut commands: Commands,
+    time: Res<Time>,
+    room_map: Res<RoomMap>,
+    mut air: ResMut<AirField>,
+    ship_query: Query<Entity, With<Ship>>,
+    mut tanks: Query<(&Module, &mut OxygenTankComp, &ChildOf), Without<DestroyedModule>>,
+    caches: Query<(Entity, &Module, &ChildOf), Without<DestroyedModule>>,
+    mut notifications: MessageWriter<ShowNotification>,
+) {
+    let Ok(ship) = ship_query.single() else { return };
+    let dt = time.delta_secs();
+    for (module, mut tank, parent) in tanks.iter_mut() {
+        if parent.parent() != ship || !module.is_active || module.health <= 0.0 {
+            continue;
+        }
+        let Some(cell) = air_cell(&air, module.grid_position) else { continue };
+        let Some(room) = room_map.tile_to_room.get(&cell).and_then(|r| room_map.rooms.get(*r)) else { continue };
+        feed_tiles(&mut air.pressure, &room.tiles, &mut tank.stored, dt);
+    }
+    for (entity, module, parent) in caches.iter() {
+        if module.module_type != ModuleType::EmergencyO2Cache || parent.parent() != ship || module.health <= 0.0 {
+            continue;
+        }
+        let Some(cell) = air_cell(&air, module.grid_position) else { continue };
+        let Some(room) = room_map.tile_to_room.get(&cell).and_then(|r| room_map.rooms.get(*r)) else { continue };
+        if room.tiles.is_empty() || air.mean(&room.tiles) >= CACHE_OPENS_AT {
+            continue;
+        }
+        let each = CACHE_AIR / room.tiles.len() as f32;
+        for tile in &room.tiles {
+            let pressure = air.pressure.entry(*tile).or_insert(0.0);
+            *pressure = (*pressure + each).min(1.0);
+        }
+        commands.entity(entity).try_insert(DestroyedModule { original_type: module.module_type });
+        notifications.write(ShowNotification {
+            message: "EMERGENCY O2 CACHE DEPLOYED!".into(),
+            notification_type: NotificationType::Danger,
+            duration: 4.0,
+        });
+    }
+}
+
 /// DEPTHS_AIR_TRACE=1: every 5 s, the player's air, compartment by compartment,
 /// and where the crew are in it.
 pub fn trace_air(
@@ -134,7 +214,12 @@ pub fn trace_air(
     air: Res<AirField>,
     room_map: Res<RoomMap>,
     crew: Query<(&Transform, &CrewMember, Has<crate::components::Suited>), Without<crate::ai_ship::components::OwnedByAiShip>>,
+    mut deaths: MessageReader<CrewDied>,
+    mut died: Local<std::collections::BTreeMap<&'static str, u32>>,
 ) {
+    for death in deaths.read() {
+        *died.entry(death.cause.describe()).or_insert(0) += 1;
+    }
     *since += time.delta_secs();
     if *since < 5.0 || std::env::var("DEPTHS_AIR_TRACE").ok().as_deref() != Some("1") {
         return;
@@ -163,8 +248,8 @@ pub fn trace_air(
     rooms.sort_by_key(|r| std::cmp::Reverse(r.0));
     let top: Vec<String> = rooms.iter().take(6).map(|r| format!("{} tiles {:.2} air {} crew{}", r.0, r.1, r.2, if r.3 { " HOLED" } else { "" })).collect();
     info!(
-        "AIR player: {} rooms, {} holes, {} crew ({} suited, {} in thin air, {} not in a room) | {}",
-        rooms.len(), air.holes.len(), alive, suited, thin_air, outside, top.join("; ")
+        "AIR player: {} rooms, {} holes, {} crew ({} suited, {} in thin air, {} not in a room), dead {:?} | {}",
+        rooms.len(), air.holes.len(), alive, suited, thin_air, outside, *died, top.join("; ")
     );
 }
 
@@ -855,6 +940,57 @@ mod air_tests {
     /// And once divided, air must not cross it — the reason you would ever
     /// shut one.
     #[test]
+    fn a_hole_anywhere_in_a_compartment_shuts_its_doors_at_once() {
+        let run = |holed: bool| {
+            let mut app = App::new();
+            app.init_resource::<Time>();
+            app.init_resource::<AirField>();
+            app.init_resource::<RoomMap>();
+            app.add_message::<ShowNotification>();
+            app.add_systems(Update, auto_containment);
+            let ship = app.world_mut().spawn(Ship).id();
+            let door = app.world_mut().spawn((
+                Module {
+                    module_type: ModuleType::EmergencyBulkhead,
+                    health: 100.0,
+                    max_health: 100.0,
+                    power_consumption: 0.0,
+                    power_generation: 0.0,
+                    is_active: true,
+                    grid_position: IVec2::new(20, 0),
+                    size: IVec2::ONE,
+                    rotation: Rotation::North,
+                },
+                ChildOf(ship),
+            )).id();
+            // The hole is twenty tiles away, and the air at the door is still full.
+            let tiles: Vec<IVec2> = (0..20).map(|x| IVec2::new(x, 0)).collect();
+            {
+                let mut room_map = app.world_mut().resource_mut::<RoomMap>();
+                for &t in &tiles {
+                    room_map.tile_to_room.insert(t, 0);
+                }
+                room_map.rooms.push(crate::building::rooms::Room { id: 0, tiles: tiles.clone(), air_level: 1.0, is_breached: holed, has_power: false });
+            }
+            {
+                let mut air = app.world_mut().resource_mut::<AirField>();
+                for &t in &tiles {
+                    air.pressure.insert(t, 1.0);
+                }
+                if holed {
+                    air.vents.insert(IVec2::ZERO, (Vec2::NEG_X, 1.0));
+                }
+            }
+            app.update();
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_secs(5));
+            app.update();
+            app.world().entity(door).contains::<BulkheadSealed>()
+        };
+        assert!(run(true), "a holed compartment left its door open");
+        assert!(!run(false), "a door shut with no hole anywhere");
+    }
+
+    #[test]
     fn shutting_a_door_saves_the_compartment_behind_it() {
         let mut app = sim_app();
         // Six cells, holed past the x=0 end. Tiles 0..2 are the doomed side,
@@ -1176,11 +1312,17 @@ pub fn auto_containment(
     let Ok(player_ship) = ship_query.single() else { return };
     let dt = time.delta();
 
+    // A hole anywhere in a compartment shuts every door on it. Waiting for the
+    // air beside each door to thin left a big room open while the crew were
+    // being pulled out through the hole, with its far end still at full pressure.
+    let holed: HashSet<usize> = air.vents.keys().filter_map(|c| room_map.tile_to_room.get(c).copied()).collect();
+    // One notice for a ring of doors, not one per tile of door.
+    let (mut told_open, mut told_sealed, mut told_closing) = (false, false, false);
+
     for (entity, module, parent, sealed, closing) in doors.iter_mut() {
+        // Not gated on `is_active`: a door without power still falls shut, and
+        // saves from before doors started switched on keep them off.
         if parent.parent() != player_ship || !module.module_type.is_containment_door() {
-            continue;
-        }
-        if !module.is_active {
             continue;
         }
 
@@ -1191,6 +1333,7 @@ pub fn auto_containment(
             .filter(|c| room_map.tile_to_room.contains_key(c))
             .map(|c| (c, air.pressure.get(&c).copied().unwrap_or(1.0)))
             .collect();
+        let beside_a_hole = neighbours.iter().any(|(c, _)| room_map.tile_to_room.get(c).is_some_and(|r| holed.contains(r)));
         if neighbours.is_empty() {
             continue;
         }
@@ -1205,13 +1348,15 @@ pub fn auto_containment(
             .fold((IVec2::ZERO, f32::MIN), |acc, n| if n.1 > acc.1 { n } else { acc });
 
         if sealed {
-            if worst.1 > UNSEAL_AT {
+            if worst.1 > UNSEAL_AT && !beside_a_hole {
                 commands.entity(entity).remove::<BulkheadSealed>();
-                notifications.write(ShowNotification {
-                    message: "Bulkhead reopened - pressure restored.".into(),
-                    notification_type: NotificationType::Info,
-                    duration: 2.0,
-                });
+                if !std::mem::replace(&mut told_open, true) {
+                    notifications.write(ShowNotification {
+                        message: "Bulkhead reopened - pressure restored.".into(),
+                        notification_type: NotificationType::Info,
+                        duration: 2.0,
+                    });
+                }
             }
             continue;
         }
@@ -1223,19 +1368,21 @@ pub fn auto_containment(
                     .entity(entity)
                     .remove::<BulkheadClosing>()
                     .insert(BulkheadSealed);
-                notifications.write(ShowNotification {
-                    message: "Bulkhead sealed - compartment isolated.".into(),
-                    notification_type: NotificationType::Danger,
-                    duration: 3.0,
-                });
-            } else if worst.1 > UNSEAL_AT {
+                if !std::mem::replace(&mut told_sealed, true) {
+                    notifications.write(ShowNotification {
+                        message: "Bulkhead sealed - compartment isolated.".into(),
+                        notification_type: NotificationType::Danger,
+                        duration: 3.0,
+                    });
+                }
+            } else if worst.1 > UNSEAL_AT && !beside_a_hole {
                 // The leak was dealt with while the clock ran; stand down.
                 commands.entity(entity).remove::<BulkheadClosing>();
             }
             continue;
         }
 
-        if worst.1 >= SEAL_AT {
+        if worst.1 >= SEAL_AT && !beside_a_hole {
             continue;
         }
 
@@ -1267,15 +1414,17 @@ pub fn auto_containment(
             }
         }
 
-        notifications.write(ShowNotification {
-            message: if running > 0 {
-                format!("BULKHEAD CLOSING - {running} crew running for it!")
-            } else {
-                "Bulkhead closing - decompression detected.".into()
-            },
-            notification_type: NotificationType::Warning,
-            duration: CLOSING_DELAY,
-        });
+        if !std::mem::replace(&mut told_closing, true) {
+            notifications.write(ShowNotification {
+                message: if running > 0 {
+                    format!("BULKHEAD CLOSING - {running} crew running for it!")
+                } else {
+                    "Bulkhead closing - decompression detected.".into()
+                },
+                notification_type: NotificationType::Warning,
+                duration: CLOSING_DELAY,
+            });
+        }
     }
 }
 

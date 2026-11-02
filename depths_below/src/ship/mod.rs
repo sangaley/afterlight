@@ -176,6 +176,7 @@ impl Plugin for ShipPlugin {
                         air::project_force_fields.after(air::sync_air_tiles),
                         air::vent_air_at_breaches.after(air::project_force_fields),
                         air::diffuse_air.after(air::vent_air_at_breaches),
+                        air::tanks_feed_air.after(air::diffuse_air).before(air::sync_room_air),
                         air::sync_room_air.after(air::diffuse_air),
                         air::trace_air.after(air::sync_room_air),
                         update_decompression.after(air::sync_room_air),

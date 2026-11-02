@@ -243,36 +243,6 @@ pub fn apply_utility_enhancers(
     }
 }
 
-/// Emergency O2 cache: auto-deploys when oxygen hits critical
-pub fn emergency_o2_system(
-    mut commands: Commands,
-    oxygen_state: Res<OxygenState>,
-    module_query: Query<(Entity, &Module), Without<DestroyedModule>>,
-    mut notifications: MessageWriter<ShowNotification>,
-    mut deployed: Local<bool>,
-) {
-    if oxygen_state.current_oxygen > 5.0 {
-        *deployed = false;
-        return;
-    }
-    if *deployed { return; }
-
-    for (entity, module) in module_query.iter() {
-        if module.module_type != ModuleType::EmergencyO2Cache || !module.is_active { continue; }
-
-        *deployed = true;
-        commands.entity(entity).try_insert(DestroyedModule {
-            original_type: module.module_type,
-        });
-        notifications.write(ShowNotification {
-            message: "EMERGENCY O2 CACHE DEPLOYED! 60 seconds of air!".into(),
-            notification_type: NotificationType::Danger,
-            duration: 4.0,
-        });
-        return;
-    }
-}
-
 /// Emergency shutdown: auto-SCRAM reactor before meltdown
 pub fn emergency_shutdown_system(
     mut commands: Commands,

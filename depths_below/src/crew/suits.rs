@@ -56,8 +56,9 @@ impl Default for SuitErrandTimer {
     }
 }
 
-/// Nearest standable cell of a working airlock, and the suits racked there.
-fn locker(nav: &NavGrid, airlocks: impl Iterator<Item = (Module, u32)>) -> Option<(IVec2, u32)> {
+/// Standable cells of the working airlocks, and the suits racked across them.
+fn lockers(nav: &NavGrid, airlocks: impl Iterator<Item = (Module, u32)>) -> Option<(Vec<IVec2>, u32)> {
+    let (mut at, mut racked) = (Vec::new(), 0);
     for (module, suits) in airlocks {
         if !module.is_active || module.health <= 0.0 {
             continue;
@@ -66,10 +67,19 @@ fn locker(nav: &NavGrid, airlocks: impl Iterator<Item = (Module, u32)>) -> Optio
         let cells =
             ShipGrid::cells_for(module.grid_position, module.size, module.rotation, footprint);
         if let Some(cell) = cells.first().and_then(|c| nav.nearest_passable(*c)) {
-            return Some((cell, suits));
+            at.push(cell);
+            racked += suits;
         }
     }
-    None
+    (!at.is_empty()).then_some((at, racked))
+}
+
+/// The locker nearest someone standing at `from`.
+fn nearest_locker(at: &[IVec2], from: Vec2) -> IVec2 {
+    at.iter()
+        .copied()
+        .min_by(|a, b| crate::building::grid_to_local(*a).distance(from).total_cmp(&crate::building::grid_to_local(*b).distance(from)))
+        .unwrap_or(IVec2::ZERO)
 }
 
 /// Sends unsuited hands to the locker while the hull is open.
@@ -85,7 +95,7 @@ pub fn plan_suit_errands(
     ships: Query<(Entity, &NavGrid), (With<Ship>, Without<OwnedByAiShip>)>,
     airlocks: Query<(&Module, &AirlockComp, &ChildOf), Without<DestroyedModule>>,
     crew: Query<
-        (Entity, &ChildOf, Has<Suited>, Has<SuitingUp>),
+        (Entity, &ChildOf, &Transform, Has<Suited>, Has<SuitingUp>),
         (With<CrewMember>, Without<EvaSalvaging>, Without<OwnedByAiShip>),
     >,
 ) {
@@ -96,7 +106,7 @@ pub fn plan_suit_errands(
     let Ok((ship, nav)) = ships.single() else { return };
 
     let breached = !air.vents.is_empty();
-    let Some((cell, _)) = locker(
+    let Some((at, racked)) = lockers(
         nav,
         airlocks
             .iter()
@@ -105,7 +115,7 @@ pub fn plan_suit_errands(
     ) else {
         // No lock, no suits. Anyone already told to fetch one is stood down
         // rather than left walking to a place that no longer exists.
-        for (entity, _, _, going) in crew.iter() {
+        for (entity, _, _, _, going) in crew.iter() {
             if going {
                 commands.entity(entity).try_remove::<SuitingUp>();
             }
@@ -113,7 +123,11 @@ pub fn plan_suit_errands(
         return;
     };
 
-    for (entity, parent, suited, going) in crew.iter() {
+    // Only as many go as there are suits left: the whole crew leaving its posts
+    // for a rack of a dozen is how a holed ship stopped firing.
+    let spoken_for = crew.iter().filter(|(_, parent, _, suited, going)| parent.parent() == ship && (*suited || *going)).count() as u32;
+    let mut free = racked.saturating_sub(spoken_for);
+    for (entity, parent, transform, suited, going) in crew.iter() {
         if parent.parent() != ship {
             continue;
         }
@@ -123,10 +137,11 @@ pub fn plan_suit_errands(
             }
             continue;
         }
-        if !going {
+        if !going && free > 0 {
+            free -= 1;
             commands
                 .entity(entity)
-                .try_insert((SuitingUp, CrewDestination(cell)));
+                .try_insert((SuitingUp, CrewDestination(nearest_locker(&at, transform.translation.truncate()))));
         }
     }
 }
@@ -144,7 +159,7 @@ pub fn issue_suits(
     mut notifications: MessageWriter<ShowNotification>,
 ) {
     let Ok((ship, nav)) = ships.single() else { return };
-    let Some((cell, racked)) = locker(
+    let Some((at, racked)) = lockers(
         nav,
         airlocks
             .iter()
@@ -155,10 +170,10 @@ pub fn issue_suits(
     };
 
     let mut worn = suited.iter().count() as u32;
-    let target = crate::building::grid_to_local(cell);
 
     for (entity, transform, mut member) in waiting.iter_mut() {
-        if transform.translation.truncate().distance(target) > REACH {
+        let here = transform.translation.truncate();
+        if crate::building::grid_to_local(nearest_locker(&at, here)).distance(here) > REACH {
             continue;
         }
         if worn >= racked {

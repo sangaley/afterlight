@@ -1063,7 +1063,7 @@ pub fn build_registry() -> ModuleRegistry {
         power_generation: 0.0,
         power_consumption: 5.0,
         color: Color::srgb(0.5, 0.5, 0.6),
-        companion: CompanionData::Airlock { suits: 4 },
+        companion: CompanionData::Airlock { suits: 12 },
         customizable: false,
         cost: 45,
         base_stats: CalculatedStats::default(),
@@ -1914,7 +1914,7 @@ pub fn build_registry() -> ModuleRegistry {
     });
 
     defs.insert(ModuleType::EmergencyO2Cache, ModuleDef {
-        name: "Emergency O2 Cache", description: "Sealed oxygen reserve. Auto-deploys when life support fails. 60 seconds of air. One use.",
+        name: "Emergency O2 Cache", description: "Sealed oxygen reserve. When its compartment runs thin it lets go all at once and refills it. One use.",
         category: ModuleCategory::Utility, size: IVec2::new(1, 1), health: 40.0,
         power_generation: 0.0, power_consumption: 0.0, color: Color::srgb(0.25, 0.55, 0.55),
         companion: CompanionData::None, customizable: false, cost: 30,
@@ -2629,7 +2629,7 @@ pub fn build_registry() -> ModuleRegistry {
 
     defs.insert(ModuleType::OxygenTank, ModuleDef {
         name: "Oxygen Tank",
-        description: "Pressurized O2 reserve. Fills when scrubbers produce surplus, drains to prevent suffocation.",
+        description: "Pressurized O2 reserve. Pushes air into its compartment when a breach is emptying it, buying the crew time to seal the hole. Scrubbers refill it.",
         category: ModuleCategory::LifeSupport,
         size: IVec2::new(1, 1),
         health: 60.0,
