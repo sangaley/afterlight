@@ -62,17 +62,74 @@ pub fn roof_alpha(zoom: f32) -> f32 {
     ((zoom - ROOF_FROM) / (ROOF_SOLID - ROOF_FROM)).clamp(0.0, 1.0)
 }
 
-/// The player has lifted the roof to look inside at any zoom (the toolbar's
-/// Inside button, or `.`), Cosmoteer's roof toggle.
+/// Looking inside your own ship (the toolbar's Inside button, or `.`): the
+/// camera closes in until the ship fills the screen and the roof comes off.
+/// Q's air view does the same. Press again and the camera goes back to the
+/// zoom it came from.
 #[derive(Resource, Default)]
-pub struct SeeInside(pub bool);
+pub struct SeeInside {
+    pub on: bool,
+    /// The zoom to go back to.
+    back_to: Option<f32>,
+}
 
-/// The key that lifts the roof. Every letter is taken in flight.
+impl SeeInside {
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+}
+
+/// The key that looks inside. Every letter is taken in flight.
 pub const SEE_INSIDE_KEY: KeyCode = KeyCode::Period;
 
-pub fn toggle_see_inside(keyboard: Res<ButtonInput<KeyCode>>, mut inside: ResMut<SeeInside>) {
-    if keyboard.just_pressed(SEE_INSIDE_KEY) {
-        inside.0 = !inside.0;
+/// How much of the screen's height the ship takes when you look inside.
+const INSIDE_FILL: f32 = 0.75;
+
+/// The zoom that fills `fill` of a view this tall with a ship this wide.
+pub fn inside_zoom(ship_radius: f32, view_height: f32) -> f32 {
+    if ship_radius <= 0.0 || view_height <= 0.0 {
+        return crate::camera::DEFAULT_ZOOM;
+    }
+    2.0 * ship_radius / (INSIDE_FILL * view_height)
+}
+
+/// `.` toggles the inside view; Q (the air view) follows it in and out. Runs
+/// before the air view's own toggle, so it reads whether that was up.
+#[allow(clippy::too_many_arguments)]
+pub fn toggle_see_inside(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut inside: ResMut<SeeInside>,
+    mut camera: ResMut<CameraState>,
+    ships: Query<(&Children, Has<PressureOverlayVisible>), With<Ship>>,
+    blocks: Query<&Transform, Or<(With<Module>, With<HullSegment>)>>,
+    windows: Query<&Window>,
+) {
+    let Ok((children, air_view)) = ships.single() else { return };
+    let want = if keyboard.just_pressed(SEE_INSIDE_KEY) {
+        !inside.on
+    } else if keyboard.just_pressed(KeyCode::KeyQ) {
+        // The air view is about to flip: inside goes with it.
+        !air_view
+    } else {
+        return;
+    };
+    if want == inside.on {
+        return;
+    }
+    inside.on = want;
+    if want {
+        let radius = children
+            .iter()
+            .filter_map(|c| blocks.get(c).ok())
+            .map(|t| t.translation.truncate().length() + 47.0)
+            .fold(0.0_f32, f32::max);
+        let height = windows.iter().next().map_or(720.0, |w| w.height());
+        inside.back_to = Some(camera.zoom.max(camera.fight_zoom.unwrap_or(0.0)));
+        camera.user_zoomed = true;
+        camera.fight_framing_off |= camera.fight_zoom.is_some();
+        camera.zoom = inside_zoom(radius, height).clamp(camera.min_zoom, camera.max_zoom);
+    } else if let Some(z) = inside.back_to.take() {
+        camera.zoom = z.clamp(camera.min_zoom, camera.max_zoom);
     }
 }
 
@@ -80,7 +137,7 @@ pub fn toggle_see_inside(keyboard: Res<ButtonInput<KeyCode>>, mut inside: ResMut
 /// while the air view is up -- the roof covers the corridors, which are most
 /// of what that view tints.
 fn own_roof_alpha(zoom: f32, inside: &SeeInside, air_view: bool) -> f32 {
-    if inside.0 || air_view { 0.0 } else { roof_alpha(zoom) }
+    if inside.on || air_view { 0.0 } else { roof_alpha(zoom) }
 }
 
 /// Which cells the deck plating covers: every interior floor cell -- a hull

@@ -1253,6 +1253,7 @@ fn parse_key(name: &str) -> Option<KeyCode> {
         "ArrowLeft" => KeyCode::ArrowLeft,
         "ArrowRight" => KeyCode::ArrowRight,
         "Space" => KeyCode::Space,
+        "Period" => KeyCode::Period,
         "Semicolon" => KeyCode::Semicolon,
         "BracketLeft" => KeyCode::BracketLeft,
         "BracketRight" => KeyCode::BracketRight,

@@ -76,7 +76,8 @@ const BEAM_FALLOFF: f32 = 15_000.0;
 /// fights end, and beams were left behind at a tenth of a gun: a whole bank's
 /// pumps did what one 170 mm gun does in a few seconds. Doubled from 16 after
 /// the big-gun rework (2026-11-03): played, lasers felt weak beside the guns.
-pub const BEAM_DAMAGE_SCALE: f32 = 32.0;
+/// Then a quarter back off, from the next play: 24.
+pub const BEAM_DAMAGE_SCALE: f32 = 24.0;
 
 /// How much of the beam is left after `distance` units.
 pub fn reaching(distance: f32, lenses: u32, point_defence: bool) -> f32 {

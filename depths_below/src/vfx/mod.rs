@@ -71,7 +71,11 @@ impl Plugin for VfxPlugin {
             // Zoomed out, the ship shows plating instead of its insides.
             .add_systems(
                 Update,
-                (ship_roof::toggle_see_inside, ship_roof::update_ship_roof, ship_roof::raise_weapons_over_roof)
+                (
+                    ship_roof::toggle_see_inside.before(crate::ui::pressure_overlay::toggle_pressure_overlay),
+                    ship_roof::update_ship_roof,
+                    ship_roof::raise_weapons_over_roof,
+                )
                     .chain()
                     .run_if(in_state(GameState::Exploring)),
             )

@@ -99,17 +99,23 @@ pub fn gauge_mm(increasers: u32, reducers: u32) -> f32 {
 /// | gauge | one shell, in game | one loader, one clip |
 /// |---|---|---|
 /// | 20 mm | 1.5 | 0.02 s |
-/// | 60 mm | 9 | 0.15 s |
-/// | 170 mm | 3,000 | 15 s |
-/// | 280 mm | 15,000 | 45 s |
-/// | 500 mm | 60,000 | 2 min |
+/// | 60 mm | 27 | 0.45 s |
+/// | 170 mm | 6,000 | 30 s |
+/// | 280 mm | 22,500 | 67 s |
+/// | 500 mm | 75,000 | 2.5 min |
+///
+/// 2026-11-03, from play: guns chewed through ships instead of landing hits
+/// you could feel. From 60 mm up a gun loads 3x / 2x / 1.5x / 1.25x slower
+/// (60 / 170 / 280 / 500 mm) for that much more in each shell, so damage a
+/// second is unchanged. 20 mm stays a sandblaster: it's point defence, and
+/// it has to fill the sky.
 pub fn heavy_gun(gauge_mm: f32) -> (f32, f32, f32) {
     const KNOTS: [(f32, f32, f32, f32); 5] = [
         (20.0, 1.0, 0.31, 1.0),
-        (60.0, 0.87, 0.21, 0.49),
-        (170.0, 7.5, 8.65, 1.0),
-        (280.0, 6.9, 16.0, 1.0),
-        (500.0, 4.7, 20.0, 1.0),
+        (60.0, 0.87 * 3.0, 0.21 * 3.0, 0.49),
+        (170.0, 7.5 * 2.0, 8.65 * 2.0, 1.0),
+        (280.0, 6.9 * 1.5, 16.0 * 1.5, 1.0),
+        (500.0, 4.7 * 1.25, 20.0 * 1.25, 1.0),
     ];
     let gauge = gauge_mm.clamp(KNOTS[0].0, KNOTS[4].0);
     let i = KNOTS.iter().rposition(|k| k.0 <= gauge).unwrap_or(0).min(KNOTS.len() - 2);
@@ -246,21 +252,22 @@ mod gun_math_tests {
     }
 
     /// The user's brief: big guns hit very hard and take a long time to load,
-    /// small ones do almost nothing a shot and fire very fast.
+    /// small ones do almost nothing a shot and fire very fast. And from play
+    /// (2026-11-03): from 60 mm up, slower still and harder, so a hit is felt.
     #[test]
     fn big_guns_hit_hard_and_load_slowly_and_small_ones_the_reverse() {
         let (twenty, sixty, big, bigger, biggest) = (plain(0, 2), plain(0, 0), plain(2, 0), plain(4, 0), plain(8, 0));
         // In game, BUILT_DAMAGE_SCALE on top.
         let in_game = |s: &GunStats| s.damage * 4.0;
         assert!(in_game(&twenty) < 2.0, "{}", in_game(&twenty));
-        assert!(in_game(&sixty) < 12.0, "{}", in_game(&sixty));
-        assert!((2500.0..3500.0).contains(&in_game(&big)), "{}", in_game(&big));
-        assert!(in_game(&biggest) > 50_000.0, "{}", in_game(&biggest));
+        assert!((20.0..35.0).contains(&in_game(&sixty)), "{}", in_game(&sixty));
+        assert!((5000.0..7000.0).contains(&in_game(&big)), "{}", in_game(&big));
+        assert!(in_game(&biggest) > 70_000.0, "{}", in_game(&biggest));
         assert!(twenty.rpm > 1500.0, "{}", twenty.rpm);
-        assert!(sixty.rpm > 350.0, "{}", sixty.rpm);
-        assert!((13.0..17.0).contains(&big.reload_s), "{}", big.reload_s);
-        assert!((40.0..50.0).contains(&bigger.reload_s), "{}", bigger.reload_s);
-        assert!((110.0..130.0).contains(&biggest.reload_s), "{}", biggest.reload_s);
+        assert!(sixty.rpm > 110.0, "{}", sixty.rpm);
+        assert!((26.0..34.0).contains(&big.reload_s), "{}", big.reload_s);
+        assert!((60.0..75.0).contains(&bigger.reload_s), "{}", bigger.reload_s);
+        assert!((138.0..163.0).contains(&biggest.reload_s), "{}", biggest.reload_s);
     }
 
     /// Every step up the bores loads slower and hits harder, with no dip where
@@ -282,9 +289,9 @@ mod gun_math_tests {
         assert_eq!(s.gauge_mm, 500.0);
         assert!((s.shell_m - 1.5).abs() < 1e-5);
         assert!((s.velocity_mps - 1030.0).abs() < 0.5);
-        // Four loaders, each 100 s with its two clips: a shell every 25 s.
-        assert!((s.reload_s - 100.0).abs() < 5.0, "{}", s.reload_s);
-        assert!((s.rpm - 2.4).abs() < 0.2, "{}", s.rpm);
+        // Four loaders, each 125 s with its two clips: a shell every 31 s.
+        assert!((s.reload_s - 125.0).abs() < 6.0, "{}", s.reload_s);
+        assert!((s.rpm - 1.92).abs() < 0.2, "{}", s.rpm);
         assert_eq!(s.working_loaders, 4);
         assert_eq!(s.ready_rack, 4 * 7);
         assert_eq!(s.rail_power_mw, 3.0);

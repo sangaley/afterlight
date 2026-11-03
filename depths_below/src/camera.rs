@@ -73,7 +73,7 @@ impl Default for CameraState {
 }
 
 /// The zoom a small ship opens at, and the floor under the fitted zoom.
-const DEFAULT_ZOOM: f32 = 1.8;
+pub const DEFAULT_ZOOM: f32 = 1.8;
 
 /// Share of the view's height the ship's turning circle should take. At the
 /// old fixed 1.8 the starter pincer filled 97% of a 720-high view, so in a
