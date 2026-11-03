@@ -22,7 +22,7 @@ use bevy::prelude::*;
 use crate::ai_ship::components::OwnedByAiShip;
 use crate::building::{footprints, grid_to_local, ShipGrid};
 use crate::camera::CameraState;
-use crate::components::{DestroyedModule, HullDestroyed, HullLayer, HullMaterial, HullSegment, Module, ModuleCategory, Ship};
+use crate::components::{DestroyedModule, HullDestroyed, HullLayer, HullMaterial, HullSegment, Module, ModuleCategory, PressureOverlayVisible, Ship};
 
 /// Zoom where the roof starts to show, and where it's solid.
 const ROOF_FROM: f32 = 3.5;
@@ -60,6 +60,27 @@ fn is_armour(module: crate::components::ModuleType) -> bool {
 /// How solid the roof is at a zoom.
 pub fn roof_alpha(zoom: f32) -> f32 {
     ((zoom - ROOF_FROM) / (ROOF_SOLID - ROOF_FROM)).clamp(0.0, 1.0)
+}
+
+/// The player has lifted the roof to look inside at any zoom (the toolbar's
+/// Inside button, or `.`), Cosmoteer's roof toggle.
+#[derive(Resource, Default)]
+pub struct SeeInside(pub bool);
+
+/// The key that lifts the roof. Every letter is taken in flight.
+pub const SEE_INSIDE_KEY: KeyCode = KeyCode::Period;
+
+pub fn toggle_see_inside(keyboard: Res<ButtonInput<KeyCode>>, mut inside: ResMut<SeeInside>) {
+    if keyboard.just_pressed(SEE_INSIDE_KEY) {
+        inside.0 = !inside.0;
+    }
+}
+
+/// How solid your own ship's roof is: none while you're looking inside, or
+/// while the air view is up -- the roof covers the corridors, which are most
+/// of what that view tints.
+fn own_roof_alpha(zoom: f32, inside: &SeeInside, air_view: bool) -> f32 {
+    if inside.0 || air_view { 0.0 } else { roof_alpha(zoom) }
 }
 
 /// Which cells the deck plating covers: every interior floor cell -- a hull
@@ -102,14 +123,15 @@ pub fn update_ship_roof(
     mut commands: Commands,
     assets: Res<AssetServer>,
     camera: Res<CameraState>,
-    ships: Query<(Entity, &Scars), With<Ship>>,
+    inside: Res<SeeInside>,
+    ships: Query<(Entity, &Scars, Has<PressureOverlayVisible>), With<Ship>>,
     hull: Query<(&HullSegment, &ChildOf), (Without<HullDestroyed>, Without<OwnedByAiShip>)>,
     modules: Query<(&Module, &ChildOf), (Without<DestroyedModule>, Without<OwnedByAiShip>)>,
     mut tiles: Query<(Entity, &mut Sprite, &RoofTile)>,
     mut last: Local<Option<(Entity, usize, usize, usize)>>,
 ) {
-    let alpha = roof_alpha(camera.zoom);
-    let Ok((ship, scars)) = ships.single() else { return };
+    let Ok((ship, scars, air_view)) = ships.single() else { return };
+    let alpha = own_roof_alpha(camera.zoom, &inside, air_view);
     if alpha <= 0.0 {
         if last.is_some() {
             for (tile, _, _) in tiles.iter() {
@@ -231,11 +253,12 @@ const RAISED_Z: f32 = ROOF_Z + 0.05;
 pub fn raise_weapons_over_roof(
     mut commands: Commands,
     camera: Res<CameraState>,
-    ships: Query<Entity, With<Ship>>,
+    inside: Res<SeeInside>,
+    ships: Query<(Entity, Has<PressureOverlayVisible>), With<Ship>>,
     mut weapons: Query<(Entity, &Module, &ChildOf, &mut Transform, Option<&RaisedOverRoof>), Without<OwnedByAiShip>>,
 ) {
-    let up = roof_alpha(camera.zoom) > 0.0;
-    let Ok(ship) = ships.single() else { return };
+    let Ok((ship, air_view)) = ships.single() else { return };
+    let up = own_roof_alpha(camera.zoom, &inside, air_view) > 0.0;
     for (entity, module, parent, mut tf, raised) in weapons.iter_mut() {
         if parent.parent() != ship || !stands_above(module) {
             continue;

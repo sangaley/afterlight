@@ -88,6 +88,9 @@ const COAST_HALF_LIFE: f32 = 1.4;
 /// toward the ship's facing, so turns become course changes instead of
 /// endless sideways drift. 0.0 = pure Newtonian.
 const VELOCITY_ALIGN_RATE: f32 = 1.2;
+/// Share of full thrust the range-holding helm uses (ship::keep_range): about
+/// what main drive and strafe jets give between them off-axis.
+const AUTOPILOT_SHARE: f32 = 0.75;
 
 /// How much of the full turn rate (and how quickly it builds) a hull of
 /// these cells gets. Turning is about the hull's spread round its middle --
@@ -230,7 +233,10 @@ pub fn ship_movement(
     // Strafe runs at 50% main thrust — maneuvering jets, not the main drive.
     let right = Vec2::new(facing.y, -facing.x);
     let thrust_force = facing * total_thrust * physics.throttle * THRUST_SCALE
-        + right * total_thrust * input_state.movement.x * 0.5 * THRUST_SCALE;
+        + right * total_thrust * input_state.movement.x * 0.5 * THRUST_SCALE
+        // Holding range on a locked ship: the drive and the jets together,
+        // whichever way the nose happens to point.
+        + input_state.autopilot * total_thrust * AUTOPILOT_SHARE * THRUST_SCALE;
 
     // --- SPACE DRAG (minimal — just light dampening for gameplay) ---
     let v_sq = velocity.0.length_squared();
@@ -248,6 +254,19 @@ pub fn ship_movement(
 
     // Update velocity
     velocity.0 += acceleration * dt;
+    if std::env::var("DEPTHS_HELM_TRACE").is_ok() && (time.elapsed_secs() % 1.0) < dt {
+        let mine: Vec<_> = engine_query.iter().filter(|e| e.4.parent() == player_ship).collect();
+        info!(
+            "HELM engines {} active of {}, efficiency {:?}",
+            mine.iter().filter(|e| e.1.is_active).count(),
+            mine.len(),
+            mine.iter().map(|e| (effective_efficiency(e.1, e.3) * 100.0) as i32).collect::<Vec<_>>()
+        );
+        info!(
+            "HELM thrust {:.0}, mass {:.0}, accel {:.0} (drag {:.0}), speed {:.0}, autopilot {:?}, throttle {:.2}",
+            total_thrust, mass, acceleration.length(), drag_force.length() / mass, velocity.0.length(), input_state.autopilot, physics.throttle
+        );
+    }
 
     // Brake (Shift): retro-thrust straight against the drift. In a dragless
     // void this is the only way to actually stop.
@@ -274,7 +293,9 @@ pub fn ship_movement(
 
     // Coast damping: with no thrust input and no brake, bleed speed off
     // automatically (arcade handling — release W and the ship settles).
-    if settles(input_state.movement, input_state.brake, total_thrust) {
+    // The range-holding helm counts as a hand on the stick: damping under it
+    // capped its speed far below the ship's, so anything faster outran it.
+    if settles(input_state.movement + input_state.autopilot, input_state.brake, total_thrust) {
         let decay = (0.5_f32).powf(dt / COAST_HALF_LIFE);
         velocity.0 *= decay;
         if velocity.0.length_squared() < 4.0 {

@@ -19,6 +19,7 @@ mod logistics;
 pub mod drill;
 pub mod rebuild;
 pub mod collision;
+pub mod keep_range;
 
 pub use movement::*;
 pub use systems::*;
@@ -84,6 +85,18 @@ impl Plugin for ShipPlugin {
             .init_resource::<AutopilotState>()
             .init_resource::<TargetingBonus>()
             .init_resource::<AtmosphereState>()
+            .init_resource::<keep_range::KeepRange>()
+            // A right-click lock on a ship holds gun range on it.
+            .add_systems(
+                Update,
+                (
+                    keep_range::keep_range
+                        .after(ship_input)
+                        .after(crate::combat::targeting::aim_lock_input)
+                        .in_set(ShipSet::Input),
+                    keep_range::draw_keep_range.run_if(in_state(GameState::Exploring)),
+                ),
+            )
 
             // Configure set ordering
             .configure_sets(Update, ShipSet::Input.run_if(in_state(GameState::Exploring)))

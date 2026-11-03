@@ -584,6 +584,7 @@ fn auto_assign_crew(
     ship_query: Query<Entity, With<Ship>>,
     ship_motion: Query<(&GlobalTransform, &ShipPhysics), With<Ship>>,
     hostiles: Query<&GlobalTransform, With<crate::ai_ship::components::AiShip>>,
+    keeping_range: Option<Res<crate::ship::keep_range::KeepRange>>,
     mut quiet: Local<StandDown>,
 ) {
     // Accumulated every frame, deliberately BEFORE the timer gate — the body
@@ -600,7 +601,11 @@ fn auto_assign_crew(
         } else {
             quiet.since_hostile += dt;
         }
-        if physics.throttle.abs() > 0.01 || physics.rudder.abs() > 0.01 {
+        // Holding range on a ship (ship::keep_range) is the helm at work even
+        // while it sits still: it needs the engines the moment the gap moves,
+        // and with no throttle on it the engineers stood down mid-fight.
+        let helm_busy = keeping_range.is_some_and(|k| k.ship.is_some());
+        if physics.throttle.abs() > 0.01 || physics.rudder.abs() > 0.01 || helm_busy {
             quiet.since_thrust = 0.0;
         } else {
             quiet.since_thrust += dt;

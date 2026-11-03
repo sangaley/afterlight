@@ -71,8 +71,11 @@ impl Plugin for VfxPlugin {
             // Zoomed out, the ship shows plating instead of its insides.
             .add_systems(
                 Update,
-                (ship_roof::update_ship_roof, ship_roof::raise_weapons_over_roof).run_if(in_state(GameState::Exploring)),
+                (ship_roof::toggle_see_inside, ship_roof::update_ship_roof, ship_roof::raise_weapons_over_roof)
+                    .chain()
+                    .run_if(in_state(GameState::Exploring)),
             )
+            .init_resource::<ship_roof::SeeInside>()
             .add_systems(OnExit(GameState::Exploring), (ship_roof::clear_ship_roof, ship_roof::lower_weapons))
             // Far out, every enemy carries its faction and class.
             .add_systems(

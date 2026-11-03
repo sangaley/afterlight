@@ -74,8 +74,9 @@ pub fn bank_stats(cavities: u32, q_switches: u32, doublers: u32, destabilisers: 
 const BEAM_FALLOFF: f32 = 15_000.0;
 /// What a charge is worth against a ship. Guns' damage was scaled up to make
 /// fights end, and beams were left behind at a tenth of a gun: a whole bank's
-/// pumps did what one 170 mm gun does in a few seconds.
-pub const BEAM_DAMAGE_SCALE: f32 = 16.0;
+/// pumps did what one 170 mm gun does in a few seconds. Doubled from 16 after
+/// the big-gun rework (2026-11-03): played, lasers felt weak beside the guns.
+pub const BEAM_DAMAGE_SCALE: f32 = 32.0;
 
 /// How much of the beam is left after `distance` units.
 pub fn reaching(distance: f32, lenses: u32, point_defence: bool) -> f32 {

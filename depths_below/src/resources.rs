@@ -848,6 +848,9 @@ pub struct InputState {
     /// after the stick releases so the nose holds heading; cleared when the
     /// mouse moves and takes aim back. See gamepad::gamepad_flight.
     pub gamepad_aim: Option<Vec2>,
+    /// World-space thrust, -1..1, from holding range on a locked ship
+    /// (ship::keep_range). Zero whenever the player is steering.
+    pub autopilot: Vec2,
 }
 
 // ============================================================================

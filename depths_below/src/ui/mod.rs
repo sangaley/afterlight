@@ -402,8 +402,10 @@ const fn act_mod(label: &'static str, key_disp: &'static str, key: KeyCode,
 /// stay keyboard-only, because a button cannot express "hold".
 fn toolbar_actions(game: &GameState, build: &BuildState) -> &'static [ToolbarAction] {
     use KeyCode as K;
-    const FLYING: [ToolbarAction; 11] = [
+    const FLYING: [ToolbarAction; 13] = [
         act("Map", "M", K::KeyM),
+        act("Inside", ".", crate::vfx::ship_roof::SEE_INSIDE_KEY),
+        act("Air", "Q", K::KeyQ),
         act("Warp", "G", K::KeyG),
         act("Systems", "N", K::KeyN),
         act("Radar", "Tab", K::Tab),
