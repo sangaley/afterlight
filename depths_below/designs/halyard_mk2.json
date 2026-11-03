@@ -11512,7 +11512,7 @@
   {
    "module_type": "TurretRingSmall",
    "grid_pos": [
-    6,
+    3,
     8
    ],
    "rotation": "North",
@@ -11523,7 +11523,7 @@
   {
    "module_type": "TraverseMotor",
    "grid_pos": [
-    5,
+    4,
     7
    ],
    "rotation": "North",
@@ -11534,8 +11534,8 @@
   {
    "module_type": "AmmoHoist",
    "grid_pos": [
-    6,
-    7
+    4,
+    8
    ],
    "rotation": "North",
    "custom_name": null,
@@ -11545,8 +11545,8 @@
   {
    "module_type": "Magazine",
    "grid_pos": [
-    7,
-    7
+    5,
+    8
    ],
    "rotation": "North",
    "custom_name": null,
@@ -11556,7 +11556,7 @@
   {
    "module_type": "TraverseMotor",
    "grid_pos": [
-    7,
+    2,
     8
    ],
    "rotation": "North",
@@ -11567,7 +11567,7 @@
   {
    "module_type": "TurretRingSmall",
    "grid_pos": [
-    6,
+    3,
     -8
    ],
    "rotation": "North",
@@ -11578,7 +11578,7 @@
   {
    "module_type": "TraverseMotor",
    "grid_pos": [
-    5,
+    4,
     -7
    ],
    "rotation": "North",
@@ -11589,8 +11589,8 @@
   {
    "module_type": "AmmoHoist",
    "grid_pos": [
-    6,
-    -7
+    4,
+    -8
    ],
    "rotation": "North",
    "custom_name": null,
@@ -11600,8 +11600,8 @@
   {
    "module_type": "Magazine",
    "grid_pos": [
-    7,
-    -7
+    5,
+    -8
    ],
    "rotation": "North",
    "custom_name": null,
@@ -11611,7 +11611,7 @@
   {
    "module_type": "TraverseMotor",
    "grid_pos": [
-    7,
+    2,
     -8
    ],
    "rotation": "North",
@@ -12451,7 +12451,7 @@
    ],
    "facing": "East",
    "turret": [
-    6,
+    3,
     8
    ]
   },
@@ -12463,7 +12463,7 @@
    ],
    "facing": "East",
    "turret": [
-    6,
+    3,
     -8
    ]
   },
