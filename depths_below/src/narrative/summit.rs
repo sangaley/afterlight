@@ -25,7 +25,7 @@ use crate::ai_ship::components::AiShipType;
 use crate::celestial::resources::GalaxyMap;
 use crate::diplomacy::contacts::{self, ContactDef, Contacts};
 use crate::diplomacy::jobs::{Jobs, StoryMark, SummitStepWon, MINUTES_PRICE};
-use crate::diplomacy::FactionStanding;
+use crate::diplomacy::{FactionStanding, StandingTier};
 use crate::resources::{Inventory, ItemType, Unlocks};
 use crate::states::GameState;
 
@@ -238,6 +238,25 @@ fn consequences(
     notes: &mut MessageWriter<crate::events::ShowNotification>,
 ) {
     use AiShipType::*;
+    // Done their way, a step makes you a friend of the faction that held it,
+    // and a friend can shop at their High Command's Military tab
+    // (diplomacy::signatures). Taken by force, that door stays shut.
+    if !mark.forced {
+        if let Some(who) = contact_of(mark.step) {
+            let v = standing.value(who.faction);
+            if v < StandingTier::FRIENDLY_FROM {
+                standing.change(who.faction, StandingTier::FRIENDLY_FROM - v, format!("{} vouches for you", who.name));
+                notes.write(crate::events::ShowNotification {
+                    message: format!(
+                        "{} counts you a friend now: their Military tab is open to you.",
+                        crate::ai_ship::components::faction_display_name(who.faction)
+                    ),
+                    notification_type: crate::events::NotificationType::Success,
+                    duration: 7.0,
+                });
+            }
+        }
+    }
     match (mark.step, mark.forced) {
         (1, true) => standing.change(MerchantPrinces, -20.0, "You robbed their summit courier"),
         (2, forced) => {
@@ -481,6 +500,22 @@ mod tests {
         win(&mut app, 4, true);
         assert!(app.world().resource::<Unlocks>().hull_types.iter().any(|h| h == "composite"));
         assert!(!app.world().resource::<Inventory>().items.contains_key(&ItemType::BioSample), "the Collective didn't take the ark");
+    }
+
+    /// The deal way makes you a friend of the step's faction, which opens its
+    /// military market; force leaves you short of it.
+    #[test]
+    fn a_deal_opens_the_market_and_force_does_not() {
+        let mut app = story_app(SummitProgress { hailed: true, commissioned: true, ..default() });
+        win(&mut app, 1, false);
+        let s = app.world().resource::<FactionStanding>();
+        assert_eq!(s.tier(AiShipType::MerchantPrinces), StandingTier::Friendly);
+        win(&mut app, 2, true);
+        let s = app.world().resource::<FactionStanding>();
+        assert_ne!(s.tier(AiShipType::FreeHaulersCompact), StandingTier::Friendly);
+        // The Choir, hostile at the start, become friends through the Cantor.
+        win(&mut app, 3, false);
+        assert_eq!(app.world().resource::<FactionStanding>().tier(AiShipType::BrokenChoir), StandingTier::Friendly);
     }
 
     /// The last step of the build closes with the end-of-demo card, once.

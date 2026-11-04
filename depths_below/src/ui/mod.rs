@@ -3984,7 +3984,7 @@ fn spawn_docking_menu(
                                 BackgroundColor(color.with_alpha(0.12)),
                                 BorderColor::all(color.with_alpha(0.7)),
                             )).with_children(|chip| {
-                                chip.spawn((Text::new(label.clone()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() }, TextColor(*color)));
+                                chip.spawn((Text::new(label.clone()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() }, TextColor(*color), crate::diplomacy::dock_tabs::DockStandingChip));
                             });
                         }
                         right.spawn((

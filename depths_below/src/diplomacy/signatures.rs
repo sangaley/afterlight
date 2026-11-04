@@ -119,6 +119,24 @@ pub const SIGNATURES: &[SignatureDef] = &[
     SignatureDef { id: "fleet_repair_bay", faction: TerranHegemony, name: "Fleet Repair Bay", base: M::RepairBay, edge: "30% faster repairs", cost: "More power", price: 4000, output: 1.3, power: 1.5, ..PLAIN },
 ];
 
+/// Where a faction's signatures come from, one line each, said in the
+/// Military tab: each delegation brought its own work to the summit.
+pub fn summit_line(faction: AiShipType) -> &'static str {
+    match faction {
+        TheSilence => "Their delegation sat at the back of the summit hall and wrote everything down. These were built from their notes.",
+        MerchantPrinces => "The Princes sold copies of these to every delegation at the summit. They kept the originals.",
+        FreeHaulersCompact => "Patterns the Compact's riggers drew on the summit station's loading docks, the week before it ended.",
+        RecursiveKingdom => "Their delegate came to the summit as a hundred copies of himself, and each copy brought a drawing.",
+        BrokenChoir => "Built to plans one of their voices remembers from the summit. They are not sure which voice.",
+        StellarPreserve => "The Preserve brought these to the summit to keep the delegates' specimens alive. Nobody asked which specimens.",
+        SynthesisCollective => "Grown from samples taken at the summit. With consent, they say.",
+        GildedThrone => "The Throne's bodyguards wore these patterns into the summit hall. Their clients walked out again.",
+        CorpseStars => "Laid down by the Corpse Stars' delegation, who came to the summit already in mourning.",
+        TerranHegemony => "Hegemony Command's patterns, filed at the summit as a gesture of trust and never withdrawn.",
+        _ => "",
+    }
+}
+
 /// A signature by id.
 pub fn get(id: &str) -> Option<&'static SignatureDef> {
     SIGNATURES.iter().find(|s| s.id == id)
@@ -211,6 +229,7 @@ mod tests {
         for f in crate::celestial::territory::TERRITORIAL {
             let n = of(f).count();
             assert!((3..=4).contains(&n), "{f:?} has {n}");
+            assert!(summit_line(f).is_ascii() && !summit_line(f).is_empty(), "{f:?} has no summit line");
         }
         for s in SIGNATURES {
             let cat = s.base.category();

@@ -194,7 +194,7 @@ pub fn refresh_dock_tabs(
             match panel.0 {
                 DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs()),
                 DockTab::Comm => fill_comm(&mut commands, entity, &galaxy, &contacts, &work, &streaming, owner, state.contact),
-                DockTab::Military => fill_military(&mut commands, entity, &galaxy, &standing, &streaming, owner, state.item),
+                DockTab::Military => fill_military(&mut commands, entity, &galaxy, &standing, &contacts, &streaming, owner, state.item),
                 DockTab::Market => {}
             }
         }
@@ -457,9 +457,44 @@ fn fill_comm(
     });
 }
 
+/// The standing chip in the station window's header.
+#[derive(Component)]
+pub struct DockStandingChip;
+
+/// Standing can change while you're docked (a story step taken the deal way
+/// makes you a friend on the spot): keep the header chip saying so. Prices
+/// stay as agreed until you dock again.
+pub fn refresh_standing_chip(
+    standing: Res<FactionStanding>,
+    mut market: ResMut<MarketEvents>,
+    mut chip: Query<(&mut Text, &mut TextColor), With<DockStandingChip>>,
+) {
+    if !standing.is_changed() {
+        return;
+    }
+    let Some(terms) = market.dock_terms.as_mut() else { return };
+    let Some(faction) = terms.faction else { return };
+    let label = standing.tier(faction).label();
+    if terms.standing == label {
+        return;
+    }
+    terms.standing = label;
+    let color = match label {
+        "Allied" => ThemeColors::ACCENT_GREEN,
+        "Friendly" => ThemeColors::STATUS_OK,
+        "Neutral" => ThemeColors::TEXT_SECONDARY,
+        "Unfriendly" => ThemeColors::ACCENT_ORANGE,
+        _ => ThemeColors::ACCENT_RED,
+    };
+    for (mut t, mut c) in &mut chip {
+        t.0 = label.to_uppercase();
+        c.0 = color;
+    }
+}
+
 /// Why this starport's military market won't sell to you, if it won't: only
 /// a capital's High Command keeps one, and only for its friends.
-pub fn military_closed(galaxy: &GalaxyMap, standing: &FactionStanding, system: Option<u32>, owner: Option<AiShipType>) -> Option<String> {
+pub fn military_closed(galaxy: &GalaxyMap, standing: &FactionStanding, contacts: &Contacts, system: Option<u32>, owner: Option<AiShipType>) -> Option<String> {
     let owner = owner?;
     let capital = system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)).is_some_and(|s| s.capital && s.faction == Some(owner));
     if !capital {
@@ -467,13 +502,20 @@ pub fn military_closed(galaxy: &GalaxyMap, standing: &FactionStanding, system: O
     }
     let tier = standing.tier(owner);
     if !matches!(tier, super::StandingTier::Friendly | super::StandingTier::Allied) {
-        return Some(format!(
+        let mut why = format!(
             "They sell this only to friends. You are {} with {} ({:.0}); Friendly starts at {:.0}.",
             tier.label(),
             faction_display_name(owner),
             standing.value(owner),
             super::StandingTier::FRIENDLY_FROM
-        ));
+        );
+        // The story's way in: their piece of the summit record, taken the deal way.
+        let progress = &contacts.summit;
+        let holder = (progress.done + 1..=summit::last_step()).filter_map(summit::contact_of).find(|c| c.faction == owner);
+        if let Some(who) = holder {
+            why.push_str(&format!(" {} holds a piece of the summit record: get it the deal way and they will count you a friend.", who.name));
+        }
+        return Some(why);
     }
     None
 }
@@ -489,6 +531,7 @@ pub fn military_keys(
     mut standing: ResMut<FactionStanding>,
     mut currency: ResMut<crate::resources::Currency>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
+    contacts: Res<Contacts>,
 ) {
     let Ok(mut state) = windows.single_mut() else { return };
     if !state.tabs || state.tab != DockTab::Military {
@@ -511,7 +554,7 @@ pub fn military_keys(
         return;
     }
     let sig = items[state.item];
-    let (message, kind) = if let Some(why) = military_closed(&galaxy, &standing, streaming.loaded_system, owner) {
+    let (message, kind) = if let Some(why) = military_closed(&galaxy, &standing, &contacts, streaming.loaded_system, owner) {
         (why, crate::events::NotificationType::Warning)
     } else if standing.signatures.iter().any(|s| s == sig.id) {
         (format!("{} is already in your build menu.", sig.name), crate::events::NotificationType::Info)
@@ -530,20 +573,23 @@ pub fn military_keys(
     state.set_changed();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fill_military(
     commands: &mut Commands,
     panel: Entity,
     galaxy: &GalaxyMap,
     standing: &FactionStanding,
+    contacts: &Contacts,
     streaming: &SystemStreamingManager,
     owner: Option<AiShipType>,
     selected: usize,
 ) {
     let Some(faction) = owner else { return };
     let items: Vec<_> = signatures::of(faction).collect();
-    let closed = military_closed(galaxy, standing, streaming.loaded_system, owner);
+    let closed = military_closed(galaxy, standing, contacts, streaming.loaded_system, owner);
     commands.entity(panel).with_children(|p| {
         p.spawn(line(format!("{} SIGNATURE MODULES", faction_display_name(faction).to_uppercase()), ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
+        p.spawn(line(signatures::summit_line(faction), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
         p.spawn(line(
             "Their own build of a block you know: one edge, one cost. Buy one and it stays in your build menu for this run.",
             ThemeFonts::BODY_SMALL,
@@ -730,6 +776,7 @@ mod tests {
             .insert_resource(galaxy)
             .insert_resource(SystemStreamingManager { loaded_system: Some(hegemony), ..default() })
             .init_resource::<FactionStanding>()
+            .init_resource::<Contacts>()
             .insert_resource(Currency { credits: 20_000 })
             .add_systems(Update, military_keys);
         app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Military, tabs: true, contact: 0, item: 0 }));
@@ -755,5 +802,25 @@ mod tests {
         // Bought once is bought.
         enter(&mut app);
         assert_eq!(app.world().resource::<Currency>().credits, 20_000 - first.price);
+    }
+
+    /// Becoming a friend while docked updates the header chip on the spot.
+    #[test]
+    fn the_standing_chip_follows_standing_while_docked() {
+        use crate::resources::DockTerms;
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<FactionStanding>()
+            .insert_resource(MarketEvents {
+                dock_terms: Some(DockTerms { faction: Some(AiShipType::MerchantPrinces), name: "x".into(), standing: "Neutral", buy: 1.0, sell: 1.0 }),
+                ..Default::default()
+            })
+            .add_systems(Update, refresh_standing_chip);
+        let chip = app.world_mut().spawn((Text::new("NEUTRAL"), TextColor(Color::WHITE), DockStandingChip)).id();
+        app.update();
+        app.world_mut().resource_mut::<FactionStanding>().change(AiShipType::MerchantPrinces, 40.0, "test");
+        app.update();
+        assert_eq!(app.world().get::<Text>(chip).unwrap().0, "FRIENDLY");
+        assert_eq!(app.world().resource::<MarketEvents>().dock_terms.as_ref().unwrap().standing, "Friendly");
     }
 }
