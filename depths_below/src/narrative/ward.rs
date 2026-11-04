@@ -189,6 +189,94 @@ fn run_ward(
     }
 }
 
+/// Darkness at which the system you're in counts as being reached: the
+/// warning to get out.
+const REACHING: f32 = 0.6;
+/// Seconds a ward has to be failing before the dark has you.
+const THROWN_AFTER: f32 = 60.0;
+/// What being thrown out of the dark costs: a share of every plate's full
+/// health, and a share of the crew.
+const THROWN_HULL: f32 = 0.25;
+const THROWN_CREW: f32 = 0.10;
+
+/// The dark had you: you stayed in it without a ward that held. The full
+/// game's ending hangs on this (the quiet one, when there's nowhere left to
+/// go); the demo throws you back to Haven instead.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct CascadeReachedYou {
+    pub system: u32,
+}
+
+/// The demo stops the story before its end, so the dark can't end a demo run.
+pub fn is_demo() -> bool {
+    super::summit::last_step() < super::summit::STEPS_IN_ALL
+}
+
+/// Warn once when the system you're in starts to go: you have a few minutes.
+fn warn_reaching(
+    galaxy: Res<GalaxyMap>,
+    streaming: Res<SystemStreamingManager>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut warned: Local<Option<u32>>,
+) {
+    let Some(sys) = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)) else { return };
+    if sys.dark < REACHING || is_taken(sys) || *warned == Some(sys.id) {
+        return;
+    }
+    *warned = Some(sys.id);
+    notes.write(crate::events::ShowNotification {
+        message: format!("The dark is reaching {}. Its light is going. Jump out while you can.", sys.name),
+        notification_type: crate::events::NotificationType::Danger,
+        duration: 10.0,
+    });
+}
+
+/// Stay in the dark long enough without a ward that holds and it has you.
+/// In the demo it spits you out at Haven, hurt.
+#[allow(clippy::too_many_arguments)]
+fn thrown_out(
+    mut commands: Commands,
+    state: Res<WardState>,
+    streaming: Res<SystemStreamingManager>,
+    ship: Query<Entity, (With<Ship>, Without<crate::celestial::components::WarpCharging>)>,
+    mut hull: Query<(&mut HullSegment, &ChildOf)>,
+    mut crew: Query<&mut CrewMember, Without<crate::ai_ship::components::OwnedByAiShip>>,
+    mut reached: MessageWriter<CascadeReachedYou>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    if state.failing < THROWN_AFTER {
+        return;
+    }
+    let (Ok(ship), Some(system)) = (ship.single(), streaming.loaded_system) else { return };
+    reached.write(CascadeReachedYou { system });
+    if !is_demo() {
+        return;
+    }
+    info!("WARD: the dark has the ship at {system}; thrown back to Haven");
+    for (mut seg, p) in &mut hull {
+        if p.parent() == ship && seg.health > 0.0 {
+            seg.health = (seg.health - seg.max_health * THROWN_HULL).max(1.0);
+        }
+    }
+    let mut lost = 0;
+    let total = crew.iter().count();
+    for mut c in crew.iter_mut().take(((total as f32) * THROWN_CREW).ceil() as usize) {
+        c.health = 0.0;
+        lost += 1;
+    }
+    // Home, the long way round: the jump costs nothing and you don't choose it.
+    commands.entity(ship).insert(crate::celestial::components::WarpCharging {
+        target: crate::celestial::resources::GalaxyWarpTarget::System(0),
+        charge_timer: Timer::from_seconds(0.5, TimerMode::Once),
+        fuel_cost: 0.0,
+    });
+    notes.write(crate::events::ShowNotification {
+        message: format!("The dark had you. It let go at Haven. {lost} of the crew didn't come back."),
+        notification_type: crate::events::NotificationType::Danger,
+        duration: 10.0,
+    });
+}
+
 /// The yard won't lay a ward until the Abbess has given you the pattern.
 pub fn pattern_known(contacts: &crate::diplomacy::contacts::Contacts) -> bool {
     contacts.summit.done >= PATTERN_STEP
@@ -199,7 +287,8 @@ pub struct WardPlugin;
 impl Plugin for WardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WardState>()
-            .add_systems(Update, run_ward.run_if(in_state(crate::states::GameState::Exploring)));
+            .add_message::<CascadeReachedYou>()
+            .add_systems(Update, (run_ward, warn_reaching, thrown_out).chain().run_if(in_state(crate::states::GameState::Exploring)));
     }
 }
 
@@ -232,6 +321,13 @@ mod tests {
             super::super::front::take(&mut galaxy, id);
         }
         assert!(depth(&galaxy, origin) > 1);
+    }
+
+    /// The demo stops before the story's end, so the dark throws you back
+    /// rather than ending the run.
+    #[test]
+    fn the_demo_throws_you_back() {
+        assert!(is_demo(), "the demo build would let the dark end a run");
     }
 
     /// The warp drive takes you into the dark only with a ward.
