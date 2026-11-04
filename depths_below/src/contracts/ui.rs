@@ -548,6 +548,18 @@ fn job_whereabouts(
                 .map(crate::ui::format_range_km)
         }
         JobKind::HoldTheLine { system, .. } | JobKind::Survey { system, .. } => (here != Some(*system)).then(|| elsewhere(*system)),
+        JobKind::Strike { system, target, .. } => {
+            if here != Some(*system) {
+                return Some(elsewhere(*system));
+            }
+            sim.ships
+                .iter()
+                .filter(|s| s.system_id == *system && s.faction == *target && s.behavior != crate::ai_ship::components::SimBehavior::Dead)
+                .map(|s| s.position.distance(ship_pos))
+                .min_by(|a, b| a.total_cmp(b))
+                .map(crate::ui::format_range_km)
+        }
+        JobKind::Handoff { system, .. } => Some(if here == Some(*system) { "wait here".to_string() } else { elsewhere(*system) }),
         JobKind::Delivery { to_system, .. } => Some(if here == Some(*to_system) { "dock to deliver".to_string() } else { format!("to {}", crate::celestial::galaxy::system_name(*to_system)) }),
     }
 }

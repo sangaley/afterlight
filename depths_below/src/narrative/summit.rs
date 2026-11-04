@@ -1,0 +1,509 @@
+//! The Summit Record: what the player is chasing.
+//!
+//! Before the Cascade there was a peace summit, and its record was cut into
+//! pieces that the factions each took home. The Abbess of the Silence, at the
+//! capital nearest Haven, asks the ship to bring them to her. Each step is
+//! held by one named contact at a faction capital further out, and each can be
+//! taken two ways: a deal, or by force. Both are ordinary contact work on the
+//! live galaxy (diplomacy::jobs::story_offer); what makes it the story is what
+//! happens when it's done. A piece of the record arrives as a reading card,
+//! the Abbess says what it means over the comm, and the HUD points at the
+//! next capital.
+//!
+//! The words are data (`data/summit.json`) so they can be edited without
+//! touching this file. The demo stops after `DEMO_LAST_STEP`.
+//!
+//! Progress is a few numbers on `Contacts` (it saves and resets with the
+//! people who hold the pieces), and the HUD line is derived from it every
+//! frame, so nothing here can drift out of step with a loaded save.
+
+use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+use crate::ai_ship::components::AiShipType;
+use crate::celestial::resources::GalaxyMap;
+use crate::diplomacy::contacts::{self, ContactDef, Contacts};
+use crate::diplomacy::jobs::{Jobs, StoryMark, SummitStepWon, MINUTES_PRICE};
+use crate::diplomacy::FactionStanding;
+use crate::resources::{Inventory, ItemType, Unlocks};
+use crate::states::GameState;
+
+use super::reader::LogQueue;
+
+/// The last step this build carries. One number, so the demo can stop at 3
+/// or at 4 after the playtest with friends.
+pub const DEMO_LAST_STEP: u8 = 4;
+/// Steps in the whole chain, as the player is told it ("1 of 7").
+pub const STEPS_IN_ALL: u8 = 7;
+/// The story's hub.
+pub const ABBESS: &str = "TheSilence_the_abbess";
+/// Seconds of flight before the Silence hail you. Long enough to have left
+/// the dock and looked around; the reader holds it until training is over.
+const HAIL_AFTER: f32 = 20.0;
+/// Where an Unfriendly faction sits once the Abbess has spoken for you:
+/// just inside Unfriendly, so their station will let you dock.
+const SPOKEN_FOR: f32 = -35.0;
+
+#[derive(Deserialize)]
+pub struct Card {
+    pub title: String,
+    pub text: String,
+}
+
+#[derive(Deserialize)]
+pub struct StepDef {
+    pub name: String,
+    /// Id of the contact who holds the step (data/contacts.json).
+    pub contact: String,
+    pub pitch: String,
+    pub deal: String,
+    pub force: String,
+    pub piece_title: String,
+    pub piece: String,
+    pub abbess: String,
+}
+
+#[derive(Deserialize)]
+pub struct SummitData {
+    pub hail: Card,
+    pub commission: String,
+    pub steps: Vec<StepDef>,
+    pub demo_end: Card,
+}
+
+/// Every word of the chain, from `data/summit.json`.
+pub fn data() -> &'static SummitData {
+    static DATA: OnceLock<SummitData> = OnceLock::new();
+    DATA.get_or_init(|| serde_json::from_str(include_str!("../../data/summit.json")).expect("data/summit.json is malformed"))
+}
+
+/// The last step this build plays.
+pub fn last_step() -> u8 {
+    DEMO_LAST_STEP.min(data().steps.len() as u8)
+}
+
+/// Step `n`, counted from 1.
+pub fn step(n: u8) -> Option<&'static StepDef> {
+    (n >= 1).then(|| data().steps.get(n as usize - 1)).flatten()
+}
+
+/// The contact who holds step `n`.
+pub fn contact_of(n: u8) -> Option<&'static ContactDef> {
+    let id = &step(n)?.contact;
+    contacts::all().iter().find(|c| &c.id == id)
+}
+
+/// How far along the chain the player is. Saved on `Contacts`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SummitProgress {
+    /// The Silence have called you.
+    pub hailed: bool,
+    /// The Abbess has asked you for the pieces.
+    pub commissioned: bool,
+    /// Steps finished.
+    pub done: u8,
+    /// The end-of-demo card has been shown.
+    pub ended: bool,
+}
+
+impl SummitProgress {
+    /// The step being worked on, once the Abbess has asked and while this
+    /// build has one left.
+    pub fn current(&self) -> Option<u8> {
+        (self.commissioned && self.done < last_step()).then_some(self.done + 1)
+    }
+
+    /// Whether `def` holds the step being worked on.
+    pub fn holds_current(&self, def: &ContactDef) -> bool {
+        self.current().and_then(contact_of).is_some_and(|c| c.id == def.id)
+    }
+}
+
+/// The system a faction's capital is in (or, if it has lost its capital,
+/// any it still holds).
+pub fn capital_of(galaxy: &GalaxyMap, faction: AiShipType) -> Option<(u32, String)> {
+    let mine = || galaxy.systems.iter().filter(|s| s.faction == Some(faction));
+    mine().find(|s| s.capital).or_else(|| mine().next()).map(|s| (s.id, s.name.clone()))
+}
+
+/// A line with its `{capital}` (that faction's) and `{price}` filled in.
+fn fill(text: &str, galaxy: &GalaxyMap, capital: Option<AiShipType>) -> String {
+    let place = capital.and_then(|f| capital_of(galaxy, f)).map_or("a station further out".to_string(), |(_, n)| n);
+    text.replace("{capital}", &place).replace("{price}", &MINUTES_PRICE.to_string())
+}
+
+/// What the step's contact says when they offer it.
+pub fn pitch(n: u8, galaxy: &GalaxyMap) -> String {
+    step(n).map_or(String::new(), |s| fill(&s.pitch, galaxy, contact_of(n).map(|c| c.faction)))
+}
+
+/// What the Abbess says when she asks for the pieces.
+pub fn commission(galaxy: &GalaxyMap) -> String {
+    fill(&data().commission, galaxy, contact_of(1).map(|c| c.faction))
+}
+
+/// What the Abbess says after piece `n`: what it means, and where to go next.
+pub fn abbess_after(n: u8, galaxy: &GalaxyMap) -> String {
+    step(n).map_or(String::new(), |s| fill(&s.abbess, galaxy, contact_of(n + 1).map(|c| c.faction)))
+}
+
+/// The story's line on the HUD, and the system it points at.
+#[derive(Resource, Debug, Default, Clone, PartialEq)]
+pub struct SummitObjective {
+    pub system: Option<u32>,
+    pub line: Option<String>,
+}
+
+/// Work out the HUD line from where the chain stands.
+pub fn objective(progress: &SummitProgress, work: &Jobs, galaxy: &GalaxyMap) -> SummitObjective {
+    let name_of = |id: u32| galaxy.systems.iter().find(|s| s.id == id).map_or("somewhere".to_string(), |s| s.name.clone());
+    if !progress.hailed && !progress.commissioned {
+        return SummitObjective::default();
+    }
+    let head = format!("SUMMIT RECORD  {} of {}", progress.done, STEPS_IN_ALL);
+    if !progress.commissioned {
+        let Some((system, name)) = capital_of(galaxy, AiShipType::TheSilence) else { return SummitObjective::default() };
+        return SummitObjective { system: Some(system), line: Some(format!("{head}   the Abbess wants you, at {name}")) };
+    }
+    let Some(n) = progress.current() else {
+        return SummitObjective { system: None, line: Some(format!("{head}   the rest lies beyond this demo")) };
+    };
+    if let Some(job) = work.story().filter(|j| j.story.is_some_and(|m| m.step == n)) {
+        let system = job.system();
+        return SummitObjective {
+            system: Some(system),
+            line: Some(format!("{head}   {} ({}), {}", job.title, job.progress(), name_of(system))),
+        };
+    }
+    let (Some(def), Some(who)) = (step(n), contact_of(n)) else { return SummitObjective::default() };
+    match capital_of(galaxy, who.faction) {
+        Some((system, name)) => SummitObjective {
+            system: Some(system),
+            line: Some(format!("{head}   {}: see {} at {name}", def.name, who.name)),
+        },
+        None => SummitObjective { system: None, line: Some(format!("{head}   {}: {} has gone to ground", def.name, who.name)) },
+    }
+}
+
+fn update_objective(contacts: Res<Contacts>, work: Res<Jobs>, galaxy: Res<GalaxyMap>, mut obj: ResMut<SummitObjective>) {
+    let want = objective(&contacts.summit, &work, &galaxy);
+    if *obj != want {
+        *obj = want;
+    }
+}
+
+/// A short while after you first fly, the Silence call.
+fn hail_from_the_silence(
+    time: Res<Time>,
+    mut contacts: ResMut<Contacts>,
+    galaxy: Res<GalaxyMap>,
+    mut queue: ResMut<LogQueue>,
+    mut waited: Local<f32>,
+) {
+    // Read through Deref so a quiet frame doesn't mark Contacts changed (the
+    // comm panel redraws on that).
+    if contacts.summit.hailed || contacts.summit.commissioned {
+        *waited = 0.0;
+        return;
+    }
+    *waited += time.delta_secs();
+    if *waited < HAIL_AFTER {
+        return;
+    }
+    contacts.summit.hailed = true;
+    let hail = &data().hail;
+    queue.push_card("INCOMING", hail.title.clone(), fill(&hail.text, &galaxy, Some(AiShipType::TheSilence)));
+}
+
+/// Plating that comes with a step.
+fn grant_plating(unlocks: &mut Unlocks, key: &str, label: &str, notes: &mut MessageWriter<crate::events::ShowNotification>) {
+    if unlocks.hull_types.iter().any(|h| h == key) {
+        return;
+    }
+    unlocks.hull_types.push(key.to_string());
+    notes.write(crate::events::ShowNotification {
+        message: format!("{label} plating unlocked."),
+        notification_type: crate::events::NotificationType::Success,
+        duration: 6.0,
+    });
+}
+
+/// What a won step costs and pays, beyond the piece itself.
+fn consequences(
+    mark: StoryMark,
+    standing: &mut FactionStanding,
+    unlocks: &mut Unlocks,
+    inventory: &mut Inventory,
+    notes: &mut MessageWriter<crate::events::ShowNotification>,
+) {
+    use AiShipType::*;
+    match (mark.step, mark.forced) {
+        (1, true) => standing.change(MerchantPrinces, -20.0, "You robbed their summit courier"),
+        (2, forced) => {
+            if forced {
+                standing.change(FreeHaulersCompact, -20.0, "You took their black box");
+            }
+            grant_plating(unlocks, "titanium", "Titanium", notes);
+            // The next piece is with the Choir, who shoot strangers on sight.
+            let v = standing.value(BrokenChoir);
+            if v < SPOKEN_FOR {
+                standing.change(BrokenChoir, SPOKEN_FOR - v, "The Abbess spoke for you");
+            }
+        }
+        (3, true) => standing.change(BrokenChoir, -15.0, "You robbed one of their ghost ships"),
+        (4, forced) => {
+            if forced {
+                inventory.remove_item(ItemType::BioSample, 1);
+                standing.change(StellarPreserve, -25.0, "You sold their specimen ark to the Collective");
+                standing.change(SynthesisCollective, 15.0, "You sold them the Preserve's specimen ark");
+            }
+            grant_plating(unlocks, "composite", "Composite", notes);
+        }
+        _ => {}
+    }
+}
+
+/// A step was won: the piece, the Abbess's reading of it, what it pays, and
+/// at the end of this build, the closing card.
+#[allow(clippy::too_many_arguments)]
+fn advance(
+    mut won: MessageReader<SummitStepWon>,
+    mut contacts: ResMut<Contacts>,
+    mut standing: ResMut<FactionStanding>,
+    mut unlocks: ResMut<Unlocks>,
+    mut inventory: ResMut<Inventory>,
+    mut queue: ResMut<LogQueue>,
+    galaxy: Res<GalaxyMap>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    for SummitStepWon(mark) in won.read().copied() {
+        // A second report of a step already counted (or one out of order)
+        // changes nothing.
+        if mark.step != contacts.summit.done + 1 {
+            continue;
+        }
+        let Some(def) = step(mark.step) else { continue };
+        info!("SUMMIT step {} won ({})", mark.step, if mark.forced { "by force" } else { "by deal" });
+        contacts.summit.done = mark.step;
+        queue.push_card("A PIECE OF THE SUMMIT RECORD", def.piece_title.clone(), def.piece.clone());
+        queue.push_card("OVER THE COMM", "THE ABBESS".into(), abbess_after(mark.step, &galaxy));
+        consequences(mark, &mut standing, &mut unlocks, &mut inventory, &mut notes);
+        notes.write(crate::events::ShowNotification {
+            message: format!("A piece of the summit record: {} of {}.", mark.step, STEPS_IN_ALL),
+            notification_type: crate::events::NotificationType::Success,
+            duration: 6.0,
+        });
+        if contacts.summit.done >= last_step() && !contacts.summit.ended {
+            contacts.summit.ended = true;
+            let end = &data().demo_end;
+            queue.push_card("END OF THE DEMO", end.title.clone(), end.text.clone());
+        }
+    }
+}
+
+/// Debug override, in the house style (`DEPTHS_CASCADE`): `DEPTHS_SUMMIT=2`
+/// starts with the Abbess met and two steps done, so a late step can be
+/// looked at without flying the whole chain. Applied once per launch.
+fn pin_from_env(mut contacts: ResMut<Contacts>, mut standing: ResMut<FactionStanding>, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    *done = true;
+    let Some(n) = std::env::var("DEPTHS_SUMMIT").ok().and_then(|v| v.parse::<u8>().ok()) else { return };
+    let n = n.min(last_step());
+    contacts.summit = SummitProgress { hailed: true, commissioned: true, done: n, ended: n >= last_step() };
+    // As step 2 would have: the Choir let you dock.
+    let choir = standing.value(AiShipType::BrokenChoir);
+    if n >= 2 && choir < SPOKEN_FOR {
+        standing.change(AiShipType::BrokenChoir, SPOKEN_FOR - choir, "DEPTHS_SUMMIT");
+    }
+    info!("SUMMIT pinned by DEPTHS_SUMMIT: {} steps done", n);
+}
+
+pub struct SummitPlugin;
+
+impl Plugin for SummitPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<SummitObjective>()
+            .add_systems(Update, (pin_from_env, hail_from_the_silence).chain().run_if(in_state(GameState::Exploring)))
+            .add_systems(Update, (advance, update_objective).chain());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diplomacy::contacts::ContactRole;
+
+    /// Every step this build plays must be written, held by a story contact
+    /// who exists, and have a capital to find them at.
+    #[test]
+    fn every_step_is_written_and_reachable() {
+        assert!(last_step() >= 1);
+        assert_eq!(last_step(), DEMO_LAST_STEP, "the demo stops before the steps that are written run out");
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        for n in 1..=last_step() {
+            let s = step(n).unwrap();
+            let who = contact_of(n).unwrap_or_else(|| panic!("step {n}'s contact {} is not in contacts.json", s.contact));
+            assert!(who.story, "{} holds a step but isn't marked as story", who.name);
+            assert!(capital_of(&galaxy, who.faction).is_some(), "nowhere to find {}", who.name);
+            for text in [&s.pitch, &s.piece, &s.abbess, &s.piece_title, &s.deal, &s.force] {
+                assert!(!text.is_empty(), "step {n} has an empty line");
+            }
+        }
+        let hub = contacts::all().iter().find(|c| c.id == ABBESS).expect("the Abbess is in contacts.json");
+        assert_eq!(hub.role, ContactRole::Hub);
+    }
+
+    /// The game's font has no em-dash or curly quotes; they render as boxes.
+    #[test]
+    fn the_words_are_plain_ascii() {
+        let d = data();
+        let mut all = vec![&d.hail.title, &d.hail.text, &d.commission, &d.demo_end.title, &d.demo_end.text];
+        for s in &d.steps {
+            all.extend([&s.name, &s.pitch, &s.deal, &s.force, &s.piece_title, &s.piece, &s.abbess]);
+        }
+        for text in all {
+            assert!(text.is_ascii(), "not plain ASCII: {text}");
+        }
+    }
+
+    /// Placeholders are always filled: the player must never read "{capital}".
+    #[test]
+    fn no_placeholder_reaches_the_player() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut said = vec![commission(&galaxy), fill(&data().hail.text, &galaxy, Some(AiShipType::TheSilence))];
+        for n in 1..=last_step() {
+            said.push(pitch(n, &galaxy));
+            said.push(abbess_after(n, &galaxy));
+        }
+        for line in said {
+            assert!(!line.contains('{'), "unfilled: {line}");
+        }
+    }
+
+    /// The story walks outward: each step's capital is no nearer Haven than
+    /// the Silence's, where it starts.
+    #[test]
+    fn the_chain_walks_outward_from_haven() {
+        for seed in [1u64, 42, 777] {
+            let galaxy = crate::celestial::galaxy::generate_galaxy_map(seed);
+            let dist = |f: AiShipType| {
+                let (id, _) = capital_of(&galaxy, f).unwrap();
+                galaxy.systems.iter().find(|s| s.id == id).unwrap().galaxy_pos.length()
+            };
+            let home = dist(AiShipType::TheSilence);
+            for n in 1..=last_step() {
+                assert!(dist(contact_of(n).unwrap().faction) >= home, "seed {seed}: step {n} is nearer Haven than the Abbess");
+            }
+        }
+    }
+
+    /// A fresh run has no story line until the Silence call, then points at
+    /// the Abbess, then at each step's contact in turn, and at the end says so.
+    #[test]
+    fn the_hud_line_follows_the_chain() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let work = Jobs::default();
+        let mut p = SummitProgress::default();
+        assert_eq!(objective(&p, &work, &galaxy), SummitObjective::default());
+        p.hailed = true;
+        let silence = capital_of(&galaxy, AiShipType::TheSilence).unwrap().0;
+        assert_eq!(objective(&p, &work, &galaxy).system, Some(silence));
+        p.commissioned = true;
+        for n in 1..=last_step() {
+            let o = objective(&p, &work, &galaxy);
+            let who = contact_of(n).unwrap();
+            assert!(o.line.as_ref().unwrap().contains(&who.name), "step {n}: {:?}", o.line);
+            assert_eq!(o.system, capital_of(&galaxy, who.faction).map(|c| c.0));
+            p.done = n;
+        }
+        let end = objective(&p, &work, &galaxy);
+        assert!(end.line.unwrap().contains("beyond this demo"));
+        assert_eq!(end.system, None);
+    }
+
+    fn story_app(progress: SummitProgress) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<SummitStepWon>()
+            .add_message::<crate::events::ShowNotification>()
+            .insert_resource(crate::celestial::galaxy::generate_galaxy_map(42))
+            .insert_resource(Contacts { summit: progress, ..default() })
+            .init_resource::<FactionStanding>()
+            .init_resource::<Unlocks>()
+            .init_resource::<Inventory>()
+            .init_resource::<LogQueue>()
+            .init_resource::<Jobs>()
+            .init_resource::<SummitObjective>()
+            .add_systems(Update, (advance, update_objective).chain());
+        app
+    }
+
+    fn win(app: &mut App, step: u8, forced: bool) {
+        app.world_mut().write_message(SummitStepWon(StoryMark { step, forced }));
+        app.update();
+    }
+
+    /// Winning a step delivers its piece and the Abbess's reading, in that
+    /// order, and moves the chain on. Winning it twice does nothing more.
+    #[test]
+    fn a_won_step_delivers_the_piece_then_the_abbess() {
+        let mut app = story_app(SummitProgress { hailed: true, commissioned: true, ..default() });
+        win(&mut app, 1, false);
+        let q = &app.world().resource::<LogQueue>().pending;
+        assert_eq!(q.len(), 2);
+        assert_eq!(q[0].0, step(1).unwrap().piece_title);
+        assert!(q[1].0.contains("ABBESS"));
+        assert_eq!(app.world().resource::<Contacts>().summit.done, 1);
+        win(&mut app, 1, false);
+        assert_eq!(app.world().resource::<LogQueue>().pending.len(), 2, "a step counted twice");
+        // Out of order is ignored too.
+        win(&mut app, 3, false);
+        assert_eq!(app.world().resource::<Contacts>().summit.done, 1);
+    }
+
+    /// Step 2 pays Titanium and gets you into the Choir's dock; step 4 pays
+    /// Composite. Force costs standing with the people you took it from.
+    #[test]
+    fn steps_pay_plating_and_force_costs_standing() {
+        let mut app = story_app(SummitProgress { hailed: true, commissioned: true, ..default() });
+        let princes = app.world().resource::<FactionStanding>().value(AiShipType::MerchantPrinces);
+        win(&mut app, 1, true);
+        assert!(app.world().resource::<FactionStanding>().value(AiShipType::MerchantPrinces) < princes);
+        win(&mut app, 2, false);
+        assert!(app.world().resource::<Unlocks>().hull_types.iter().any(|h| h == "titanium"));
+        let choir = app.world().resource::<FactionStanding>().tier(AiShipType::BrokenChoir);
+        assert_ne!(choir, crate::diplomacy::StandingTier::Hostile, "the Choir still won't let you dock for step 3");
+        win(&mut app, 3, false);
+        app.world_mut().resource_mut::<Inventory>().add_item(ItemType::BioSample, 1);
+        win(&mut app, 4, true);
+        assert!(app.world().resource::<Unlocks>().hull_types.iter().any(|h| h == "composite"));
+        assert!(!app.world().resource::<Inventory>().items.contains_key(&ItemType::BioSample), "the Collective didn't take the ark");
+    }
+
+    /// The last step of the build closes with the end-of-demo card, once.
+    #[test]
+    fn the_demo_ends_with_a_card_once() {
+        let mut app = story_app(SummitProgress { hailed: true, commissioned: true, done: last_step() - 1, ended: false });
+        win(&mut app, last_step(), false);
+        let q = &app.world().resource::<LogQueue>().pending;
+        assert_eq!(q.last().unwrap().0, data().demo_end.title);
+        assert!(app.world().resource::<Contacts>().summit.ended);
+        let o = app.world().resource::<SummitObjective>();
+        assert!(o.line.as_ref().unwrap().contains("beyond this demo"));
+    }
+
+    /// The progress survives a save: it rides on Contacts, which is saved.
+    #[test]
+    fn progress_round_trips_through_the_save_format() {
+        let mut c = Contacts::default();
+        c.summit = SummitProgress { hailed: true, commissioned: true, done: 2, ended: false };
+        let back: Contacts = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.summit, c.summit);
+        // And a save from before the story existed loads as a fresh chain.
+        let old: Contacts = serde_json::from_str(r#"{"known":[]}"#).unwrap();
+        assert_eq!(old.summit, SummitProgress::default());
+    }
+}

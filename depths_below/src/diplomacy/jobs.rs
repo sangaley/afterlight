@@ -49,7 +49,24 @@ pub enum JobKind {
     HoldTheLine { system: u32, kills: u32, needed: u32, left: f32 },
     Delivery { to_system: u32, item: ItemType, count: u32 },
     Survey { system: u32, seconds: f32 },
+    /// Destroy `needed` of one faction's ships in a system, no clock. The
+    /// story's way of saying "take it from them" when no convoy is handy.
+    Strike { system: u32, target: AiShipType, kills: u32, needed: u32 },
+    /// Spend a while in a system with cargo aboard, and someone there takes
+    /// it off your hands.
+    Handoff { system: u32, item: ItemType, count: u32, seconds: f32 },
 }
+
+/// A step of the Summit Record, and which way the player chose to take it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoryMark {
+    pub step: u8,
+    pub forced: bool,
+}
+
+/// One step of the story was won (narrative::summit turns it into the next).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct SummitStepWon(pub StoryMark);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JobStatus {
@@ -70,9 +87,27 @@ pub struct Job {
     pub brief: String,
     pub reward: u32,
     pub status: JobStatus,
+    /// Set on the Summit Record's own work. Story work doesn't count against
+    /// the three-job limit and isn't offered or lapsed like ordinary work.
+    #[serde(default)]
+    pub story: Option<StoryMark>,
 }
 
 impl Job {
+    /// The system the work happens in.
+    pub fn system(&self) -> u32 {
+        match self.kind {
+            JobKind::Bounty { system, .. }
+            | JobKind::Raid { system, .. }
+            | JobKind::Escort { system, .. }
+            | JobKind::HoldTheLine { system, .. }
+            | JobKind::Survey { system, .. }
+            | JobKind::Strike { system, .. }
+            | JobKind::Handoff { system, .. } => system,
+            JobKind::Delivery { to_system, .. } => to_system,
+        }
+    }
+
     /// One line on how it stands, for the tracker and the Comm directory.
     pub fn progress(&self) -> String {
         match &self.kind {
@@ -85,9 +120,14 @@ impl Job {
             }
             JobKind::Delivery { item, count, .. } => format!("{} aboard", cargo_count(*item, *count)),
             JobKind::Bounty { .. } | JobKind::Raid { .. } => "hunting".into(),
+            JobKind::Strike { kills, needed, .. } => format!("{kills}/{needed} destroyed"),
+            JobKind::Handoff { seconds, .. } => format!("{:.0}/{:.0}s waiting", seconds, HANDOFF_SECONDS),
         }
     }
 }
+
+/// How long you wait in a system for a handoff.
+pub const HANDOFF_SECONDS: f32 = 45.0;
 
 /// Every job offered to you, in hand, or just settled.
 #[derive(Resource, Clone, Debug, Default, Serialize, Deserialize)]
@@ -102,15 +142,46 @@ impl Jobs {
         self.list.iter().filter(|j| j.status == JobStatus::Active)
     }
 
-    /// The job a contact has open with you: offered or in hand.
+    /// Ordinary work in hand: what the three-job limit counts.
+    pub fn held(&self) -> usize {
+        self.active().filter(|j| j.story.is_none()).count()
+    }
+
+    /// The job a contact has open with you: offered or in hand. Story work is
+    /// asked for separately (`story`).
     pub fn of(&self, giver: &str) -> Option<&Job> {
-        self.list.iter().find(|j| j.giver == giver && matches!(j.status, JobStatus::Offered | JobStatus::Active))
+        self.list
+            .iter()
+            .find(|j| j.giver == giver && j.story.is_none() && matches!(j.status, JobStatus::Offered | JobStatus::Active))
+    }
+
+    /// The Summit Record work in hand, if any.
+    pub fn story(&self) -> Option<&Job> {
+        self.active().find(|j| j.story.is_some())
+    }
+
+    /// Take on a step of the story. Only one at a time: taking the other way
+    /// drops the first. Cargo goes aboard through `load`.
+    pub fn begin_story(&mut self, mut job: Job, load: impl FnOnce(ItemType, u32) -> bool) -> Result<(), &'static str> {
+        if let JobKind::Delivery { item, count, .. } | JobKind::Handoff { item, count, .. } = job.kind {
+            // Changing your mind about the same step keeps what's already aboard.
+            let aboard = self.story().is_some_and(|j| {
+                matches!(j.kind, JobKind::Delivery { item: i, .. } | JobKind::Handoff { item: i, .. } if i == item)
+            });
+            if !aboard && !load(item, count) {
+                return Err("There's no room in your hold for the cargo.");
+            }
+        }
+        self.list.retain(|j| j.story.is_none());
+        job.status = JobStatus::Active;
+        self.push(job);
+        Ok(())
     }
 
     /// Take a contact's offered job, if you have room. A delivery's cargo
     /// goes aboard through `load`, which says whether the hold took it.
     pub fn accept(&mut self, giver: &str, load: impl FnOnce(ItemType, u32) -> bool) -> Result<(), &'static str> {
-        if self.active().count() >= MAX_ACTIVE {
+        if self.held() >= MAX_ACTIVE {
             return Err("You already have three jobs in hand.");
         }
         let Some(job) = self.list.iter_mut().find(|j| j.giver == giver && j.status == JobStatus::Offered) else {
@@ -206,6 +277,7 @@ pub fn offer_for(def: &ContactDef, relationship: f32, world: &World, rng: &mut i
         brief,
         reward,
         status: JobStatus::Offered,
+        story: None,
     };
 
     let mut kinds: Vec<&str> = kinds_for(def.role).to_vec();
@@ -324,6 +396,175 @@ pub fn offer_for(def: &ContactDef, relationship: f32, world: &World, rng: &mut i
     None
 }
 
+/// What a step of the Summit Record asks of you, one way or the other.
+#[derive(Clone, Debug)]
+pub enum StoryOffer {
+    /// Pay this much, here, and it's done.
+    Pay(u32),
+    Work(Job),
+}
+
+/// Credits the Princes want for the summit minutes.
+pub const MINUTES_PRICE: u32 = 2500;
+
+/// The work for step `step` of the Summit Record, taken the deal way or by
+/// force, written against what the galaxy is doing right now. Every step
+/// prefers the fitting job on a real fleet and falls back to one that can
+/// always be done, so the story never waits on a convoy that isn't there.
+pub fn story_offer(step: u8, forced: bool, def: &ContactDef, world: &World, rng: &mut impl Rng) -> StoryOffer {
+    use AiShipType::*;
+    let name_of = |id: u32| world.galaxy.systems.iter().find(|s| s.id == id).map_or("somewhere".to_string(), |s| s.name.clone());
+    let mut near = vec![world.here];
+    near.extend(crate::celestial::galaxy::nearest_neighbors(world.galaxy, world.here, 3));
+    let alive = |fleet: u32| world.sim.ships.iter().filter(|s| s.fleet == fleet && s.behavior != SimBehavior::Dead).collect::<Vec<_>>();
+    let haulers = |fleet: u32| alive(fleet).iter().filter(|s| role_of(s.faction, s.class) == ClassRole::Civilian).count();
+    let here_pos = world.galaxy.systems.iter().find(|s| s.id == world.here).map_or(Vec2::ZERO, |s| s.galaxy_pos);
+    // A faction's systems, nearest first, and not this one if it has others.
+    let systems_of = |f: AiShipType| -> Vec<u32> {
+        let mut v: Vec<_> = world.galaxy.systems.iter().filter(|s| s.faction == Some(f)).collect();
+        v.sort_by(|a, b| a.galaxy_pos.distance(here_pos).total_cmp(&b.galaxy_pos.distance(here_pos)));
+        let ids: Vec<u32> = v.iter().map(|s| s.id).collect();
+        let away: Vec<u32> = ids.iter().copied().filter(|id| *id != world.here).collect();
+        if away.is_empty() { ids } else { away }
+    };
+    let convoy_of = |f: AiShipType, rng: &mut _| {
+        let convoys: Vec<_> = world
+            .sim
+            .fleets
+            .iter()
+            .filter(|c| near.contains(&c.system_id) && c.kind == FleetKind::Convoy && c.faction == f && haulers(c.id) > 0)
+            .collect();
+        convoys.choose(rng).map(|c| (c.id, c.system_id, c.destination, c.route.len()))
+    };
+    let mark = StoryMark { step, forced };
+    let job = |kind: JobKind, title: String, brief: String, reward: u32| {
+        StoryOffer::Work(Job { id: 0, giver: def.id.clone(), faction: def.faction, kind, title, brief, reward, status: JobStatus::Active, story: Some(mark) })
+    };
+    // Take it from them: their convoy if one is near, else their ships.
+    let take_from = |victim: AiShipType, needed: u32, what: &str, rng: &mut _| {
+        if let Some((fleet, system, _, _)) = convoy_of(victim, rng) {
+            return job(
+                JobKind::Raid { fleet, system },
+                format!("{what}: raid the convoy"),
+                format!("{} is running through {}. Stop every hauler in it and take what it carries.", a_fleet_of(victim, "convoy"), name_of(system)),
+                400,
+            );
+        }
+        let system = systems_of(victim).first().copied().unwrap_or(world.here);
+        job(
+            JobKind::Strike { system, target: victim, kills: 0, needed },
+            format!("{what}: by force"),
+            format!("Destroy {needed} {} ship{} in {} and take it from the wreckage.", faction_display_name(victim), if needed == 1 { "" } else { "s" }, name_of(system)),
+            400,
+        )
+    };
+    let listen = |rng: &mut _| {
+        let elsewhere: Vec<u32> = near.iter().copied().filter(|id| *id != world.here).collect();
+        let system = elsewhere.choose(rng).copied().unwrap_or(world.here);
+        (system, name_of(system))
+    };
+
+    match (step, forced) {
+        (1, false) => StoryOffer::Pay(MINUTES_PRICE),
+        (1, true) => take_from(MerchantPrinces, 2, "The Quiet Ones", rng),
+        (2, false) => {
+            if let Some((fleet, system, stop, _)) = convoy_of(FreeHaulersCompact, rng).filter(|c| c.3 >= 2) {
+                return job(
+                    JobKind::Escort { fleet, system, stop, kept_close: false },
+                    "Salvage Rights: see a convoy home".into(),
+                    format!("A Compact convoy is running through {}. Stay within 15 km of it until it makes its next stop.", name_of(system)),
+                    500,
+                );
+            }
+            let to = systems_of(FreeHaulersCompact).first().copied().unwrap_or(world.here);
+            job(
+                JobKind::Delivery { to_system: to, item: ItemType::ScrapMetal, count: 3 },
+                "Salvage Rights: carry the salvage".into(),
+                format!("Carry {}, sealed, to the Compact's station at {}.", cargo_count(ItemType::ScrapMetal, 3), name_of(to)),
+                500,
+            )
+        }
+        (2, true) => take_from(FreeHaulersCompact, 2, "Salvage Rights", rng),
+        (3, false) => {
+            let contested: Vec<u32> = near
+                .iter()
+                .copied()
+                .filter(|id| world.galaxy.systems.iter().any(|s| s.id == *id && s.faction == Some(BrokenChoir)))
+                .filter(|id| world.war.contest(*id).is_some())
+                .collect();
+            if let Some(&system) = contested.choose(rng) {
+                return job(
+                    JobKind::HoldTheLine { system, kills: 0, needed: 4, left: HOLD_SECONDS },
+                    format!("Isolated Frequency: hold {}", name_of(system)),
+                    format!("{} is slipping from the Choir. Destroy 4 of the ships fighting them for it within fifteen minutes.", name_of(system)),
+                    600,
+                );
+            }
+            // No border slipping today: a fleet that's after them, then.
+            let enemies: Vec<_> = world
+                .sim
+                .fleets
+                .iter()
+                .filter(|f| near.contains(&f.system_id) && f.mission == Mission::None)
+                .filter(|f| matches!(f.kind, FleetKind::Patrol | FleetKind::Raiders | FleetKind::BattleGroup))
+                .filter(|f| factions_hostile(BrokenChoir, f.faction) && !alive(f.id).is_empty())
+                .filter(|f| !crate::celestial::territory::ROAMING.contains(&f.faction))
+                .collect();
+            if let Some(f) = enemies.choose(rng) {
+                return job(
+                    JobKind::Bounty { fleet: f.id, system: f.system_id },
+                    format!("Isolated Frequency: clear {}", name_of(f.system_id)),
+                    format!("{} is pressing on the Choir in {}. Destroy every hull.", a_fleet_of(f.faction, "fleet"), name_of(f.system_id)),
+                    600,
+                );
+            }
+            // Nobody at all: sit on the border and listen instead.
+            let (system, name) = listen(rng);
+            job(
+                JobKind::Survey { system, seconds: 0.0 },
+                format!("Isolated Frequency: listen at {name}"),
+                format!("Sit a minute in {name} with your receivers open, so the Choir can tune you."),
+                400,
+            )
+        }
+        (3, true) => take_from(BrokenChoir, 1, "Isolated Frequency", rng),
+        (4, false) => {
+            let mut homes: Vec<_> = world.galaxy.systems.iter().filter(|s| s.faction == Some(StellarPreserve) && s.id != world.here).collect();
+            homes.sort_by(|a, b| b.galaxy_pos.distance(here_pos).total_cmp(&a.galaxy_pos.distance(here_pos)));
+            if let Some(to) = homes.first() {
+                return job(
+                    JobKind::Delivery { to_system: to.id, item: ItemType::BioSample, count: 1 },
+                    "What It Eats: carry the ark".into(),
+                    format!("Carry the ark to the Preserve's station at {}. Don't linger near other ships.", to.name),
+                    600,
+                );
+            }
+            let (system, name) = listen(rng);
+            job(
+                JobKind::Survey { system, seconds: 0.0 },
+                "What It Eats: keep it alone".into(),
+                format!("Take the ark to {name} and keep it there, alone, for a minute."),
+                400,
+            )
+        }
+        (4, true) => {
+            // The Collective come to you for it.
+            let system = systems_of(SynthesisCollective).first().copied().unwrap_or(world.here);
+            job(
+                JobKind::Handoff { system, item: ItemType::BioSample, count: 1, seconds: 0.0 },
+                "What It Eats: sell the ark".into(),
+                format!("Take the ark into {} and wait. The Collective will come for it.", name_of(system)),
+                1500,
+            )
+        }
+        // Steps past the demo aren't written yet.
+        _ => {
+            let (system, name) = listen(rng);
+            job(JobKind::Survey { system, seconds: 0.0 }, format!("Survey {name}"), format!("Take a minute in {name}."), 300)
+        }
+    }
+}
+
 /// What finishing (or failing) moves.
 const DONE_REGARD: f32 = 8.0;
 const DONE_STANDING: f32 = 3.0;
@@ -345,6 +586,7 @@ pub fn track_jobs(
     mut deaths: MessageReader<crate::events::AiShipDestroyed>,
     victims: Query<&crate::ai_ship::components::AiShipState>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut story: MessageWriter<SummitStepWon>,
 ) {
     let (sim, mut galaxy, mut war, streaming) = world;
     let dt = time.delta_secs();
@@ -410,17 +652,32 @@ pub fn track_jobs(
                 }
                 (*seconds >= SURVEY_SECONDS).then_some(true)
             }
+            JobKind::Strike { system, target, kills: k, needed } => {
+                if here == Some(*system) {
+                    *k += kills.iter().filter(|v| **v == *target).count() as u32;
+                }
+                (*k >= *needed).then_some(true)
+            }
+            JobKind::Handoff { system, seconds, .. } => {
+                if here == Some(*system) {
+                    *seconds += dt;
+                }
+                (*seconds >= HANDOFF_SECONDS).then_some(true)
+            }
             // Settled at the dock (deliver_cargo).
             JobKind::Delivery { .. } => None,
         };
         let Some(won) = outcome else { continue };
-        settle(job, won, &mut contacts, &mut standing, &mut currency, &mut galaxy, &mut war, &mut notes);
+        if let Some(mark) = settle(job, won, &mut contacts, &mut standing, &mut currency, &mut galaxy, &mut war, &mut notes) {
+            story.write(SummitStepWon(mark));
+        }
     }
     // Settled jobs leave the list; a contact offers new work next time.
     jobs.list.retain(|j| matches!(j.status, JobStatus::Offered | JobStatus::Active));
 }
 
-/// Pay out, or not, and say so.
+/// Pay out, or not, and say so. A won step of the story is handed back, for
+/// narrative::summit to carry on from.
 #[allow(clippy::too_many_arguments)]
 fn settle(
     job: &mut Job,
@@ -431,9 +688,21 @@ fn settle(
     galaxy: &mut GalaxyMap,
     war: &mut BorderWar,
     notes: &mut MessageWriter<crate::events::ShowNotification>,
-) {
+) -> Option<StoryMark> {
     let who = super::contacts::all().iter().find(|c| c.id == job.giver).map_or("Your contact".to_string(), |c| c.name.clone());
     info!("JOB {} for {who}: {} ({} cr)", if won { "done" } else { "failed" }, job.title, job.reward);
+    if won && job.story.is_some_and(|m| m.forced) {
+        // Taken from them, not done for them: the pay is what you took, and
+        // what it costs you is the story's to say (summit::advance).
+        job.status = JobStatus::Done;
+        currency.credits += job.reward;
+        notes.write(crate::events::ShowNotification {
+            message: format!("{} done: +{} credits", job.title, job.reward),
+            notification_type: crate::events::NotificationType::Success,
+            duration: 5.0,
+        });
+        return job.story;
+    }
     if won {
         job.status = JobStatus::Done;
         currency.credits += job.reward;
@@ -461,7 +730,9 @@ fn settle(
             notification_type: crate::events::NotificationType::Warning,
             duration: 5.0,
         });
+        return None;
     }
+    job.story
 }
 
 /// Docked at one of the giver's stations, in the system the cargo was
@@ -477,6 +748,7 @@ pub fn deliver_cargo(
     mut currency: ResMut<Currency>,
     world: (ResMut<GalaxyMap>, ResMut<BorderWar>),
     mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut story: MessageWriter<SummitStepWon>,
 ) {
     let (mut galaxy, mut war) = world;
     let Some(faction) = market.dock_terms.as_ref().and_then(|t| t.faction) else { return };
@@ -496,7 +768,9 @@ pub fn deliver_cargo(
             continue;
         }
         inventory.remove_item(item, count);
-        settle(job, true, &mut contacts, &mut standing, &mut currency, &mut galaxy, &mut war, &mut notes);
+        if let Some(mark) = settle(job, true, &mut contacts, &mut standing, &mut currency, &mut galaxy, &mut war, &mut notes) {
+            story.write(SummitStepWon(mark));
+        }
     }
     jobs.list.retain(|j| matches!(j.status, JobStatus::Offered | JobStatus::Active));
 }
@@ -559,7 +833,7 @@ mod tests {
             jobs.push(Job {
                 id: 0, giver: format!("c{i}"), faction: AiShipType::TerranHegemony,
                 kind: JobKind::Survey { system: 1, seconds: 0.0 },
-                title: "t".into(), brief: "b".into(), reward: 10, status: JobStatus::Offered,
+                title: "t".into(), brief: "b".into(), reward: 10, status: JobStatus::Offered, story: None,
             });
         }
         for i in 0..3 {
@@ -576,6 +850,7 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_message::<crate::events::AiShipDestroyed>()
             .add_message::<crate::events::ShowNotification>()
+            .add_message::<SummitStepWon>()
             .init_resource::<WorldSimulation>()
             .insert_resource(galaxy)
             .init_resource::<BorderWar>()
@@ -591,7 +866,7 @@ mod tests {
     fn active(kind: JobKind) -> Job {
         Job {
             id: 1, giver: "TerranHegemony_captain_idris_vale".into(), faction: AiShipType::TerranHegemony, kind,
-            title: "t".into(), brief: "b".into(), reward: 100, status: JobStatus::Active,
+            title: "t".into(), brief: "b".into(), reward: 100, status: JobStatus::Active, story: None,
         }
     }
 
@@ -655,6 +930,7 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_message::<crate::events::AiShipDestroyed>()
             .add_message::<crate::events::ShowNotification>()
+            .add_message::<SummitStepWon>()
             .insert_resource(sim)
             .insert_resource(galaxy)
             .init_resource::<BorderWar>()
@@ -669,5 +945,67 @@ mod tests {
         assert_eq!(app.world().resource::<Currency>().credits, before + job.reward);
         assert!(app.world().resource::<Jobs>().list.is_empty(), "a settled job leaves the list");
         assert!(app.world().resource::<Contacts>().relationship(&captain.id) > 0.0);
+    }
+
+    /// Every step of the story, both ways, at the contact's own capital in a
+    /// populated galaxy: the deal for step 1 is a price, everything else is
+    /// work marked as that step, in a system that exists, against the right
+    /// people.
+    #[test]
+    fn every_story_step_offers_both_ways_and_points_somewhere_real() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut rng = rand::thread_rng();
+        for step in 1..=crate::narrative::summit::last_step() {
+            let def = crate::narrative::summit::contact_of(step).unwrap();
+            let here = crate::celestial::territory::capital_of(&galaxy, def.faction).unwrap();
+            let mut sim = WorldSimulation::default();
+            crate::ai_ship::simulation::ensure_system_population(&mut sim, &galaxy, here);
+            for n in crate::celestial::galaxy::nearest_neighbors(&galaxy, here, 3) {
+                crate::ai_ship::simulation::ensure_system_population(&mut sim, &galaxy, n);
+            }
+            let war = BorderWar::default();
+            let world = World { sim: &sim, galaxy: &galaxy, war: &war, here };
+            for forced in [false, true] {
+                match story_offer(step, forced, def, &world, &mut rng) {
+                    StoryOffer::Pay(price) => assert!(step == 1 && !forced && price > 0, "step {step} asked for money"),
+                    StoryOffer::Work(job) => {
+                        assert_eq!(job.story, Some(StoryMark { step, forced }));
+                        assert_eq!(job.status, JobStatus::Active);
+                        assert!(galaxy.systems.iter().any(|s| s.id == job.system()), "step {step}: no such system");
+                        match job.kind {
+                            JobKind::Strike { system, target, .. } => {
+                                let owner = galaxy.systems.iter().find(|s| s.id == system).unwrap().faction;
+                                assert_eq!(owner, Some(target), "step {step}: striking {target:?} where they don't live");
+                            }
+                            JobKind::Delivery { to_system, .. } => assert_ne!(to_system, here),
+                            JobKind::Handoff { system, .. } => {
+                                let owner = galaxy.systems.iter().find(|s| s.id == system).unwrap().faction;
+                                assert_eq!(owner, Some(AiShipType::SynthesisCollective));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A strike counts only the named faction's ships, in its system.
+    #[test]
+    fn a_strike_counts_its_targets_only() {
+        let mut job = active(JobKind::Strike { system: 5, target: AiShipType::BrokenChoir, kills: 0, needed: 1 });
+        job.story = Some(StoryMark { step: 3, forced: true });
+        let mut app = app_with(vec![job], 5);
+        app.add_systems(Update, track_jobs);
+        app.update();
+        assert_eq!(app.world().resource::<Jobs>().active().count(), 1, "won with no kills");
+        let JobKind::Strike { kills, .. } = &mut app.world_mut().resource_mut::<Jobs>().list[0].kind else { unreachable!() };
+        *kills = 1;
+        app.update();
+        assert!(app.world().resource::<Jobs>().list.is_empty());
+        let won = app.world().resource::<Messages<SummitStepWon>>();
+        assert_eq!(won.len(), 1, "a won story job didn't report its step");
+        // Force earns no regard from the people you took it from.
+        assert_eq!(app.world().resource::<Contacts>().relationship("TerranHegemony_captain_idris_vale"), 0.0);
     }
 }

@@ -6,6 +6,7 @@ pub mod doppelganger;
 pub mod expedition;
 pub mod interference;
 pub mod reader;
+pub mod summit;
 pub mod trail;
 pub mod truth;
 
@@ -147,6 +148,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(doppelganger::DoppelgangerPlugin);
         app.add_plugins(interference::InterferencePlugin);
         app.add_plugins(expedition::ExpeditionPlugin);
+        app.add_plugins(summit::SummitPlugin);
         app.init_resource::<CascadeState>().add_systems(
             Update,
             (update_cascade, grant_hull_materials)
@@ -266,20 +268,17 @@ mod tests {
 /// Abyssal Alloy, which is three times the hull health and five times the
 /// absorption, on top of a difficulty multiplier.
 ///
-/// Distance is the axis the whole game already rides, so it is the axis this
-/// rides too: the further out you have actually been, the better the plate you
-/// are allowed to lay. `Unlocks` is deliberately not cleared by
-/// `reset_for_new_game` — this is the one thing that carries between runs.
+/// Titanium and Composite now come with the Summit Record (steps 2 and 4,
+/// narrative::summit), so going out *for* something is what earns them.
+/// Abyssal Alloy stays on distance until the step that would carry it (6)
+/// exists. `Unlocks` is deliberately not cleared by `reset_for_new_game` —
+/// this is the one thing that carries between runs.
 fn grant_hull_materials(
     cascade: Res<CascadeState>,
     mut unlocks: ResMut<crate::resources::Unlocks>,
     mut notifications: MessageWriter<crate::events::ShowNotification>,
 ) {
-    const TIERS: [(f32, &str, &str); 3] = [
-        (0.22, "titanium", "Titanium"),
-        (0.48, "composite", "Composite"),
-        (0.74, "abyssal_alloy", "Abyssal Alloy"),
-    ];
+    const TIERS: [(f32, &str, &str); 1] = [(0.74, "abyssal_alloy", "Abyssal Alloy")];
     for (at, key, label) in TIERS {
         if cascade.reach < at {
             continue;
@@ -299,7 +298,7 @@ fn grant_hull_materials(
 #[cfg(test)]
 mod progression_tests {
     /// Mirrors the tiers in grant_hull_materials.
-    const TIERS: [(f32, &str); 3] = [(0.22, "titanium"), (0.48, "composite"), (0.74, "abyssal_alloy")];
+    const TIERS: [(f32, &str); 1] = [(0.74, "abyssal_alloy")];
 
     fn unlocked_at(reach: f32) -> Vec<&'static str> {
         TIERS.iter().filter(|(at, _)| reach >= *at).map(|(_, k)| *k).collect()
@@ -318,15 +317,12 @@ mod progression_tests {
         assert_eq!(unlocked_at(1.0).len(), TIERS.len());
     }
 
-    /// And they must arrive in order, spread across the run rather than all at
-    /// once — otherwise the last leg of the journey grants nothing.
+    /// Distance alone no longer hands out the early plating: that is the
+    /// story's to give (narrative::summit), so the far edge is the only gate.
     #[test]
-    fn they_arrive_spread_out_and_in_order() {
-        let counts: Vec<usize> = [0.0, 0.3, 0.6, 0.9].iter().map(|r| unlocked_at(*r).len()).collect();
-        for w in counts.windows(2) {
-            assert!(w[1] >= w[0], "an unlock was revoked: {counts:?}");
-        }
-        assert_eq!(counts, vec![0, 1, 2, 3], "tiers are bunched: {counts:?}");
+    fn distance_only_grants_the_last_tier() {
+        assert!(unlocked_at(0.7).is_empty());
+        assert_eq!(unlocked_at(0.9), vec!["abyssal_alloy"]);
     }
 
     /// The strings must match what building::is_hull_material_unlocked looks

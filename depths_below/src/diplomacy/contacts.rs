@@ -92,6 +92,11 @@ pub struct ContactState {
 #[derive(Resource, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Contacts {
     pub known: Vec<ContactState>,
+    /// How far along the Summit Record you are. It rides here, with the
+    /// people who hold its pieces, so it saves and resets with them and the
+    /// save system (at Bevy's parameter limit) needs nothing new.
+    #[serde(default)]
+    pub summit: crate::narrative::summit::SummitProgress,
 }
 
 impl Contacts {

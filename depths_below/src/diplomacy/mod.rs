@@ -373,6 +373,7 @@ impl Plugin for DiplomacyPlugin {
                     .run_if(in_state(GameState::Docked)),
             )
             .init_resource::<jobs::Jobs>()
+            .add_message::<jobs::SummitStepWon>()
             .add_systems(OnExit(GameState::Docked), dock_tabs::lapse_offers)
             .add_systems(Update, (jobs::track_jobs, jobs::standing_from_contracts));
     }

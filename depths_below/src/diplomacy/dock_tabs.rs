@@ -7,7 +7,8 @@
 //!   wing someone put on you.
 //! - **Comm directory:** the contacts at this starport (contacts.rs): pick one,
 //!   talk, and they get to know you -- and offer you work (jobs.rs), which A
-//!   takes.
+//!   takes. The contact who holds the Summit Record's current step offers it
+//!   two ways, 1 for the deal and 2 for force (narrative::summit).
 
 use bevy::prelude::*;
 use rand::{seq::SliceRandom, Rng, SeedableRng};
@@ -21,10 +22,12 @@ use crate::celestial::resources::{GalaxyMap, SystemDiscovery, SystemStreamingMan
 use crate::celestial::territory::{border_factions, BorderWar};
 use crate::components::*;
 use crate::resources::MarketEvents;
+use crate::narrative::summit;
 use crate::ui::theme::{ThemeColors, ThemeFonts};
 
 /// Q / E switch tabs; in the Comm directory Up / Down pick a contact, Enter
-/// talks to them (and asks for work), A takes the work they offer.
+/// talks to them (and asks for work), A takes the work they offer, and 1 / 2
+/// take the story's step the deal way or by force.
 #[allow(clippy::too_many_arguments)]
 pub fn dock_tab_keys(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -37,6 +40,8 @@ pub fn dock_tab_keys(
     world: (Res<WorldSimulation>, Res<BorderWar>),
     mut inventory: ResMut<crate::resources::Inventory>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut currency: ResMut<crate::resources::Currency>,
+    mut story: MessageWriter<jobs::SummitStepWon>,
 ) {
     let Ok(mut state) = windows.single_mut() else { return };
     if !state.tabs {
@@ -69,6 +74,12 @@ pub fn dock_tab_keys(
     let def = here[state.contact];
     if keyboard.just_pressed(KeyCode::Enter) {
         contacts.talk(def);
+        // Meeting the Abbess opens the chain.
+        if def.id == summit::ABBESS && !contacts.summit.commissioned {
+            contacts.summit.commissioned = true;
+            contacts.summit.hailed = true;
+            info!("SUMMIT commissioned by the Abbess");
+        }
         if work.of(&def.id).is_none() {
             let (sim, war) = (&world.0, &world.1);
             let at = jobs::World { sim, galaxy: &galaxy, war, here: system };
@@ -78,6 +89,35 @@ pub fn dock_tab_keys(
             }
         }
         // Change-detection on the state is what redraws the panel.
+        state.set_changed();
+    }
+    let way = if keyboard.just_pressed(KeyCode::Digit1) {
+        Some(false)
+    } else if keyboard.just_pressed(KeyCode::Digit2) {
+        Some(true)
+    } else {
+        None
+    };
+    if let (Some(forced), Some(step)) = (way, contacts.summit.current().filter(|_| contacts.summit.holds_current(def))) {
+        let (sim, war) = (&world.0, &world.1);
+        let at = jobs::World { sim, galaxy: &galaxy, war, here: system };
+        let (message, kind) = match jobs::story_offer(step, forced, def, &at, &mut rand::thread_rng()) {
+            jobs::StoryOffer::Pay(price) if currency.credits >= price => {
+                currency.credits -= price;
+                story.write(jobs::SummitStepWon(jobs::StoryMark { step, forced }));
+                (format!("Paid {price} credits."), crate::events::NotificationType::Info)
+            }
+            jobs::StoryOffer::Pay(price) => (format!("That takes {price} credits. You have {}.", currency.credits), crate::events::NotificationType::Warning),
+            jobs::StoryOffer::Work(job) => {
+                let title = job.title.clone();
+                info!("SUMMIT step {step} taken ({}): {} - {}", if forced { "force" } else { "deal" }, job.title, job.brief);
+                match work.begin_story(job, |item, count| inventory.add_item(item, count)) {
+                    Ok(()) => (format!("Taken: {title}"), crate::events::NotificationType::Info),
+                    Err(why) => (why.to_string(), crate::events::NotificationType::Warning),
+                }
+            }
+        };
+        notes.write(crate::events::ShowNotification { message, notification_type: kind, duration: 4.0 });
         state.set_changed();
     }
     if keyboard.just_pressed(KeyCode::KeyA) && work.of(&def.id).is_some_and(|j| j.status == JobStatus::Offered) {
@@ -127,7 +167,7 @@ pub fn lapse_offers(mut work: ResMut<Jobs>) {
 #[allow(clippy::too_many_arguments)]
 pub fn refresh_dock_tabs(
     mut commands: Commands,
-    windows: Query<&DockTabState, (With<DockingOverlay>, Changed<DockTabState>)>,
+    windows: Query<Ref<DockTabState>, With<DockingOverlay>>,
     mut panels: Query<(Entity, &DockTabPanel, &mut Node)>,
     mut buttons: Query<(&DockTabButton, &mut BackgroundColor, &mut BorderColor, &Children)>,
     mut button_text: Query<&mut TextColor>,
@@ -138,6 +178,11 @@ pub fn refresh_dock_tabs(
     work: Res<Jobs>,
 ) {
     let Ok(state) = windows.single() else { return };
+    // A story step paid for at the counter is settled a system later
+    // (summit::advance), so a change to Contacts redraws too.
+    if !state.is_changed() && !contacts.is_changed() {
+        return;
+    }
     let (sim, galaxy, war, standing, streaming, time) = world;
     for (entity, panel, mut node) in panels.iter_mut() {
         let show = panel.0 == state.tab;
@@ -166,7 +211,7 @@ pub fn refresh_dock_tabs(
         let want = match state.tab {
             DockTab::Market => "Up/Down  select    Left/Right  cargo choice    Enter  buy    Esc  undock",
             DockTab::Bar => "Q / E  switch tab    Esc  undock",
-            DockTab::Comm => "Up/Down  pick a contact    Enter  talk    A  take the job    Q / E  switch tab    Esc  undock",
+            DockTab::Comm => "Up/Down  contact    Enter  talk    A  take the job    1 / 2  story: deal or force    Q / E  tab    Esc  undock",
         };
         if text.0 != want {
             text.0 = want.to_string();
@@ -377,11 +422,9 @@ fn fill_comm(
                         bar.spawn((Node { width: Val::Percent(rel.clamp(0.0, 100.0)), height: Val::Percent(100.0), ..default() }, BackgroundColor(ThemeColors::ACCENT_GREEN)));
                     });
                 d.spawn((line(format!("\"{said}\""), 17.0, ThemeColors::TEXT_PRIMARY), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
-                if def.story {
-                    d.spawn(line("*  Holds a piece of the summit record", ThemeFonts::CAPTION, ThemeColors::ACCENT_YELLOW));
-                }
+                story_box(d, def, contacts, work, galaxy);
                 // The work they have for you.
-                let held = work.active().count();
+                let held = work.held();
                 d.spawn((
                     Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), padding: UiRect::all(Val::Px(12.0)), margin: UiRect::top(Val::Px(10.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
                     BackgroundColor(ThemeColors::BG_ELEVATED),
@@ -411,6 +454,58 @@ fn fill_comm(
     });
 }
 
+/// What a contact has to do with the Summit Record: the Abbess's reading of
+/// where it stands, the current step's two ways, or a note that they hold a
+/// piece for later.
+fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts: &Contacts, work: &Jobs, galaxy: &GalaxyMap) {
+    let progress = &contacts.summit;
+    let boxed = (
+        Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(12.0)), margin: UiRect::top(Val::Px(10.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
+        BackgroundColor(ThemeColors::BG_ELEVATED),
+        BorderColor::all(ThemeColors::ACCENT_ORANGE),
+    );
+    let header = |n: u8| format!("THE SUMMIT RECORD   {n} of {}", summit::STEPS_IN_ALL);
+    if def.id == summit::ABBESS {
+        d.spawn(boxed).with_children(|b| {
+            b.spawn(line(header(progress.done), ThemeFonts::CAPTION, ThemeColors::ACCENT_ORANGE));
+            let said = if !progress.commissioned {
+                "Talk to her.".to_string()
+            } else if progress.done == 0 {
+                summit::commission(galaxy)
+            } else {
+                summit::abbess_after(progress.done, galaxy)
+            };
+            b.spawn(line(said, ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
+        });
+        return;
+    }
+    if !def.story {
+        return;
+    }
+    let Some(n) = progress.current().filter(|_| progress.holds_current(def)) else {
+        let had = (1..=progress.done).any(|n| summit::contact_of(n).is_some_and(|c| c.id == def.id));
+        let note = if had { "*  You have their piece of the summit record" } else { "*  Holds a piece of the summit record" };
+        d.spawn(line(note, ThemeFonts::CAPTION, ThemeColors::ACCENT_YELLOW));
+        return;
+    };
+    let Some(step) = summit::step(n) else { return };
+    d.spawn(boxed).with_children(|b| {
+        b.spawn(line(format!("{}   {}", header(progress.done), step.name), ThemeFonts::CAPTION, ThemeColors::ACCENT_ORANGE));
+        b.spawn(line(format!("\"{}\"", summit::pitch(n, galaxy)), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
+        if let Some(job) = work.story().filter(|j| j.story.is_some_and(|m| m.step == n)) {
+            b.spawn(line(format!("IN HAND   {}", job.title), 15.0, ThemeColors::TEXT_TITLE));
+            b.spawn(line(job.brief.clone(), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
+            b.spawn(line(format!("{}  |  pays {} cr", job.progress(), job.reward), ThemeFonts::CAPTION, ThemeColors::TEXT_SECONDARY));
+            let other = if job.story.is_some_and(|m| m.forced) { "1  change your mind: the deal" } else { "2  change your mind: force" };
+            b.spawn(line(other, ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
+        } else {
+            let deal = if n == 1 { format!("1  {}   ({} cr)", step.deal, crate::diplomacy::jobs::MINUTES_PRICE) } else { format!("1  {}", step.deal) };
+            b.spawn(line(deal, 15.0, ThemeColors::ACCENT_GREEN));
+            b.spawn(line(format!("2  {}", step.force), 15.0, ThemeColors::ACCENT_RED));
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,5 +527,64 @@ mod tests {
             heard_fleet |= said.iter().any(|s| s.contains("battle group") || s.contains("convoy"));
         }
         assert!(heard_fleet, "forty nights at the Hegemony's capital and nobody mentioned a fleet");
+    }
+
+    /// The comm keys drive the story: Enter on the Abbess opens the chain,
+    /// and 1 at the step's contact takes the deal (step 1: pay for the
+    /// minutes), which reports the step won.
+    #[test]
+    fn the_comm_keys_open_the_chain_and_take_a_step() {
+        use crate::resources::{Currency, DockTerms, Inventory};
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let capital = |f: AiShipType| galaxy.systems.iter().find(|s| s.capital && s.faction == Some(f)).unwrap().id;
+        let (silence, princes) = (capital(AiShipType::TheSilence), capital(AiShipType::MerchantPrinces));
+        let terms = |f: AiShipType| MarketEvents {
+            dock_terms: Some(DockTerms { faction: Some(f), name: "x".into(), standing: "Neutral", buy: 1.0, sell: 1.0 }),
+            ..Default::default()
+        };
+
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<crate::events::ShowNotification>()
+            .add_message::<jobs::SummitStepWon>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(terms(AiShipType::TheSilence))
+            .insert_resource(galaxy)
+            .insert_resource(SystemStreamingManager { loaded_system: Some(silence), ..default() })
+            .init_resource::<Contacts>()
+            .init_resource::<Jobs>()
+            .init_resource::<WorldSimulation>()
+            .init_resource::<BorderWar>()
+            .init_resource::<Inventory>()
+            .insert_resource(Currency { credits: 5_000 })
+            .add_systems(Update, dock_tab_keys);
+        app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0 }));
+        let press = |app: &mut App, key: KeyCode| {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+            app.update();
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release(key);
+            keys.clear();
+        };
+
+        // The Abbess is first in the Silence capital's directory.
+        press(&mut app, KeyCode::Enter);
+        assert!(app.world().resource::<Contacts>().summit.commissioned, "talking to the Abbess didn't open the chain");
+
+        // Fly to the Princes; the broker holds step 1 and is listed first.
+        app.insert_resource(terms(AiShipType::MerchantPrinces));
+        app.world_mut().resource_mut::<SystemStreamingManager>().loaded_system = Some(princes);
+        press(&mut app, KeyCode::Digit1);
+        let paid = 5_000 - app.world().resource::<Currency>().credits;
+        assert_eq!(paid, jobs::MINUTES_PRICE);
+        let won = app.world().resource::<Messages<jobs::SummitStepWon>>();
+        assert_eq!(won.len(), 1, "paying didn't report the step");
+
+        // 2 instead takes it by force: real work, in hand, outside the three-job limit.
+        press(&mut app, KeyCode::Digit2);
+        let work = app.world().resource::<Jobs>();
+        let story = work.story().expect("force gave no work");
+        assert_eq!(story.story, Some(jobs::StoryMark { step: 1, forced: true }));
+        assert_eq!(work.held(), 0);
     }
 }

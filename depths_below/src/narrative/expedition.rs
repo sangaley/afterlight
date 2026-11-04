@@ -115,6 +115,7 @@ fn update_expedition_hud(
     streaming: Res<crate::celestial::resources::SystemStreamingManager>,
     ship: Query<&Transform, With<crate::components::Ship>>,
     carriers: Query<(&Transform, &crate::components::LogEntry)>,
+    summit: Res<super::summit::SummitObjective>,
 ) {
     let Ok((mut text, mut colour, mut vis)) = hud.single_mut() else { return };
 
@@ -147,17 +148,22 @@ fn update_expedition_hud(
         Some((system, _)) => format!("next record: {}", crate::celestial::galaxy::system_name(system)),
         None => "find the rest".to_string(),
     };
-    let want = if exp.trail_exhausted {
+    let records = if exp.trail_exhausted {
         "EXPEDITION RECORDS   the trail ends here".to_string()
     } else {
         format!("EXPEDITION RECORDS  {}/{}   {}", exp.found, exp.total, lead)
+    };
+    // The story leads; the records are reading on the way.
+    let want = match &summit.line {
+        Some(story) => format!("{story}\n{records}"),
+        None => records,
     };
     if **text != want {
         **text = want;
     }
     // No em-dash: the default font has no glyph for it and it rendered as a
     // tofu box on screen. ASCII only in HUD strings.
-    colour.0 = if exp.trail_exhausted {
+    colour.0 = if exp.trail_exhausted && summit.line.is_none() {
         ThemeColors::ACCENT_ORANGE
     } else {
         ThemeColors::TEXT_PRIMARY

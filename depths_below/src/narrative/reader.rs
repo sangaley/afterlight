@@ -23,17 +23,33 @@ use crate::ui::theme::{ThemeColors, ThemeFonts, ThemeSpacing};
 #[derive(Resource, Default)]
 pub struct LogQueue {
     pub pending: Vec<(String, String)>,
+    /// The small line above a card's title, by title, for cards that aren't
+    /// recovered logs (the story's calls and pieces). Absent: "RECOVERED LOG".
+    pub kickers: Vec<(String, &'static str)>,
 }
 
 impl LogQueue {
     pub fn push(&mut self, title: String, text: String) {
         self.pending.push((title, text));
     }
+
+    /// A card that isn't a recovered log: `kicker` says what it is instead.
+    pub fn push_card(&mut self, kicker: &'static str, title: String, text: String) {
+        self.kickers.retain(|(t, _)| *t != title);
+        self.kickers.push((title.clone(), kicker));
+        self.pending.push((title, text));
+    }
+
+    fn kicker(&self, title: &str) -> &'static str {
+        self.kickers.iter().find(|(t, _)| t == title).map_or("RECOVERED LOG", |(_, k)| k)
+    }
 }
 
 /// Crate-visible so the autoplay director can see when a card is up.
 #[derive(Component)]
 pub(crate) struct LogCardRoot;
+#[derive(Component)]
+struct LogCardKicker;
 #[derive(Component)]
 struct LogCardTitle;
 #[derive(Component)]
@@ -46,7 +62,9 @@ fn spawn_log_card(mut commands: Commands) {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(110.0),
+                // Below the objective card (top-left, two lines since the
+                // story joined the records), which it used to overlap.
+                top: Val::Px(150.0),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 justify_content: JustifyContent::Center,
@@ -85,6 +103,7 @@ fn spawn_log_card(mut commands: Commands) {
                         Text::new("RECOVERED LOG"),
                         TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
                         TextColor(ThemeColors::ACCENT_ORANGE),
+                        LogCardKicker,
                     ));
                     card.spawn((
                         Text::new(""),
@@ -122,6 +141,7 @@ fn drive_log_card(
         Query<&mut Text, With<LogCardTitle>>,
         Query<&mut Text, With<LogCardBody>>,
         Query<&mut Text, With<LogCardFooter>>,
+        Query<&mut Text, With<LogCardKicker>>,
     )>,
     mut showing: Local<Option<String>>,
     tutorial: Option<Res<crate::tutorial::Tutorial>>,
@@ -158,9 +178,11 @@ fn drive_log_card(
     if showing.as_deref() != Some(title.as_str()) {
         if let Ok(mut t) = texts.p0().single_mut() { **t = title.clone(); }
         if let Ok(mut t) = texts.p1().single_mut() { **t = body.clone(); }
+        let kicker = queue.kicker(&title);
+        if let Ok(mut t) = texts.p3().single_mut() { **t = kicker.to_string(); }
         let remaining = queue.pending.len().saturating_sub(1);
         let footer = if remaining > 0 {
-            format!("[Space] close  ({remaining} more recovered)")
+            format!("[Space] close  ({remaining} more)")
         } else {
             "[Space] close".to_string()
         };
@@ -183,6 +205,7 @@ fn hide_log_card(mut root: Query<&mut Visibility, With<LogCardRoot>>) {
 /// Nothing should still be on screen once the run is over.
 fn clear_log_queue(mut queue: ResMut<LogQueue>) {
     queue.pending.clear();
+    queue.kickers.clear();
 }
 
 pub struct LogReaderPlugin;

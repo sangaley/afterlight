@@ -1,0 +1,54 @@
+{
+ "_note": "The Summit Record story chain (narrative::summit). Drafted 2026-11-03; edit any line freely. {capital} is replaced by the system the line points at (the next step's capital, or the Silence's for the hail). {price} is the deal's price in credits. Plain ASCII only: the game font has no em-dash or curly quotes. Steps 5-7 are not written yet; the demo stops after the last step listed here (or earlier, see DEMO_LAST_STEP in summit.rs).",
+ "hail": {
+  "title": "THE SILENCE",
+  "text": "A carrier wave from the Silence. For a long while, nothing on it.\n\nThen one voice, very close to the microphone:\n\n\"We can hear you from here. Most ships are one voice. You are not.\n\nCome to {capital}, and ask for the Abbess. Come slowly. We will wait.\""
+ },
+ "commission": "Before the Cascade there was a summit. Every power that mattered sent someone. The record of that meeting was cut into pieces, and every faction took one home. Bring me the pieces. The first is for sale: the Merchant Princes sell everything. Ask for Broker Anselm Quay at {capital}.",
+ "steps": [
+  {
+   "name": "The Quiet Ones",
+   "contact": "MerchantPrinces_broker_anselm_quay",
+   "pitch": "The minutes of the peace summit. Very rare. A buyer from the Silence, and now you. I'll take {price} credits and forget your face. Or you can try the courier. It has Gilded friends.",
+   "deal": "Buy the minutes",
+   "force": "Raid the courier",
+   "piece_title": "SUMMIT RECORD 1 of 7: the minutes",
+   "piece": "Minutes of the peace summit, closing session.\n\nDelegations present: eleven. Observers: one, a ship's intelligence, seated for the record.\n\n14:02  The chair calls the vote.\n14:03  A device in the hall begins to count down. No delegation brought it in.\n14:03  The observer is asked to confirm the time. The observer confirms the time.\n\nHere the minutes end.",
+   "abbess": "The observer was a ship's mind, seated for the record. Yours carries the same serial. I do not say it was you. I say the Princes were paid to forget it.\n\nThe Free Haulers pulled the station's black box out of the wreck. Maren Holt dispatches for them at {capital}."
+  },
+  {
+   "name": "Salvage Rights",
+   "contact": "FreeHaulersCompact_dispatcher_maren_holt",
+   "pitch": "Black box off the summit station. We cut it out of the wreck field ourselves, and the Princes want it. Help our people get where they're going and it's yours. Or take it. People have tried.",
+   "deal": "Help the Haulers",
+   "force": "Take the black box",
+   "piece_title": "SUMMIT RECORD 2 of 7: the black box",
+   "piece": "Station telemetry, the last ninety seconds.\n\nEleven delegations. Eleven drives running at once in one small place. Each drive bends the space around it a little. That is normal. The sum of them is not.\n\nHull strain rises with no load on it. The clocks in the east ring and the west ring stop agreeing.\n\nAt 14:03 the station reports that it is in two places at once. It does not report again.",
+   "abbess": "So it was not only the device. Every fleet in that hall was bending the room a little, and the room tore. Too many hands on one thread.\n\nI have spoken to the Choir for you. They will let you dock now. Their Cantor is at {capital}. She has something you should hear."
+  },
+  {
+   "name": "Isolated Frequency",
+   "contact": "BrokenChoir_the_cantor",
+   "pitch": "We kept every voice from the summit. Millions of them. I will play you one. Hold our border for us and I will play it for nothing. Or pull it out of one of our ghost ships. They will not mind. They mind nothing now.",
+   "deal": "Hold the Choir's border",
+   "force": "Rob a Choir ghost ship",
+   "piece_title": "SUMMIT RECORD 3 of 7: one frequency",
+   "piece": "One channel, recorded at 14:03.\n\nAt first it is static. Under the static there is a voice, saying the same short thing over and over, too fast to follow.\n\nSlowed down, it is a ship's status report. Hull. Power. Crew.\n\nIt is laid out the way you lay out yours. It ends with your call sign.",
+   "abbess": "The Choir say the summit never ended. They say something woke up in that hall, and the first thing it did was scream, and it screamed in the nearest voice it could find. I am sorry.\n\nThe Preserve have watched the Cascade longer than anyone. Warden Hesper Lune is at {capital}."
+  },
+  {
+   "name": "What It Eats",
+   "contact": "StellarPreserve_warden_hesper_lune",
+   "pitch": "This ark holds a living sample of the Cascade. Kept alone, it sleeps. Kept near a crowd, it grows. Carry it to our other station and do not linger near anyone. The Collective want it, and they would pay. I am asking you not to.",
+   "deal": "Carry the ark home",
+   "force": "Sell the ark to the Collective",
+   "piece_title": "SUMMIT RECORD 4 of 7: the specimen",
+   "piece": "Preserve specimen log.\n\nThe sample grows when ships pass near it. It grows faster when those ships are talking to each other. In an empty system it does not grow at all.\n\nWe kept it alone for sixty years and it did not move. We carried it past one convoy and it grew a hand's width in an hour.\n\nIt feeds on connection. The summit was eleven delegations, all talking at once.",
+   "abbess": "Crowds feed it. Being alone starves it. And you, ship, are not alone in there. I counted the voices in you once. I stopped at a billion.\n\nThe rest of the record lies further out, with the Gilded Throne and with Hegemony Command. Rest first. You have come a long way for one voice."
+  }
+ ],
+ "demo_end": {
+  "title": "THE SUMMIT RECORD",
+  "text": "Four pieces of seven.\n\nThe rest of the record lies further out than this demo goes.\n\nThank you for playing. The galaxy keeps running: fly, work and fight in it as long as you like."
+ }
+}
