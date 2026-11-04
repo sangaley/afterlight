@@ -95,11 +95,129 @@ fn dark_from_env(mut galaxy: ResMut<GalaxyMap>, mut done: Local<bool>) {
     info!("FRONT: DEPTHS_DARK took {n} systems");
 }
 
+/// How fast the dark moves: one system's worth per this many seconds of
+/// flight, shared across the whole front (so a wider front doesn't move
+/// faster, it moves less surely). Tuned so the first system after the edge
+/// goes dark about half an hour into a demo.
+pub const SECONDS_PER_SYSTEM: f32 = 1_800.0;
+/// What one finished Summit Record step pushes it on by, in systems.
+pub const STORY_LURCH: f32 = 0.5;
+
+/// The systems the dark is next to: not taken, not Haven, and a neighbour
+/// of something taken.
+pub fn frontier(galaxy: &GalaxyMap) -> Vec<u32> {
+    use crate::celestial::galaxy::nearest_neighbors;
+    let taken: Vec<u32> = galaxy.systems.iter().filter(|s| is_taken(s)).map(|s| s.id).collect();
+    galaxy
+        .systems
+        .iter()
+        .filter(|s| !is_taken(s) && !is_spared(s))
+        .filter(|s| {
+            nearest_neighbors(galaxy, s.id, 3).iter().any(|n| taken.contains(n))
+                || taken.iter().any(|t| nearest_neighbors(galaxy, *t, 3).contains(&s.id))
+        })
+        .map(|s| s.id)
+        .collect()
+}
+
+/// How strongly the dark pulls toward a system. It comes inward toward
+/// Haven, and it goes fastest where there are many ships and where you've
+/// been: it feeds on connection (the Summit Record's fourth piece). Never
+/// explained anywhere; there to be noticed.
+pub fn pull(sys: &StarSystemDef, ships_there: usize) -> f32 {
+    let radius = crate::celestial::galaxy::GALAXY_RADIUS.max(1.0);
+    let inward = 1.0 + 1.5 * (1.0 - (sys.galaxy_pos.length() / radius).min(1.0));
+    let crowd = (ships_there as f32 * 0.15).min(3.0);
+    let yours = if sys.discovery == crate::celestial::resources::SystemDiscovery::Visited { 2.0 } else { 0.0 };
+    (1.0 + crowd + yours) * inward
+}
+
+/// Share of the dark that pours into the most-pulled system at the front;
+/// the rest dims the others. Spread evenly, three neighbours would all fall
+/// at once after an hour and a half; this way one goes, then the next.
+const FOCUS: f32 = 0.85;
+
+/// Spread `systems` worth of dark across the front: most into the system
+/// that pulls hardest, the rest by pull. Returns the systems this took.
+pub fn spread(galaxy: &mut GalaxyMap, systems: f32, ships_in: impl Fn(u32) -> usize) -> Vec<u32> {
+    let front = frontier(galaxy);
+    let weights: Vec<(u32, f32)> = front
+        .iter()
+        .filter_map(|id| galaxy.systems.iter().find(|s| s.id == *id).map(|s| (*id, pull(s, ships_in(*id)))))
+        .collect();
+    let total: f32 = weights.iter().map(|(_, w)| w).sum();
+    if total <= 0.0 || systems <= 0.0 {
+        return Vec::new();
+    }
+    let focus = weights.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(id, _)| *id);
+    let mut took = Vec::new();
+    for (id, w) in weights {
+        let share = if Some(id) == focus { FOCUS } else { 0.0 } + (1.0 - FOCUS) * w / total;
+        let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) else { continue };
+        let before = is_taken(sys);
+        darken(sys, sys.dark + systems * share);
+        if !before && is_taken(sys) {
+            took.push(id);
+        }
+    }
+    took
+}
+
+/// The dark moves while you fly: never while you're docked or building
+/// (other states), never while a card is up to read, and never while the map
+/// is open (it pauses game time).
+#[allow(clippy::too_many_arguments)]
+fn advance_front(
+    time: Res<Time>,
+    mut galaxy: ResMut<GalaxyMap>,
+    sim: Res<crate::ai_ship::components::WorldSimulation>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
+    queue: Res<super::reader::LogQueue>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut steps_seen: Local<Option<u8>>,
+) {
+    if galaxy.systems.is_empty() {
+        return;
+    }
+    // A finished story step pushes it on. The first frame only notes where
+    // the chain stands, so loading a save doesn't count old steps again.
+    let done = contacts.summit.done;
+    let lurch = match *steps_seen {
+        Some(seen) if done > seen => (done - seen) as f32 * STORY_LURCH,
+        _ => 0.0,
+    };
+    *steps_seen = Some(done);
+    let reading = !queue.pending.is_empty();
+    let creep = if reading { 0.0 } else { time.delta_secs() / SECONDS_PER_SYSTEM * speed() };
+    if creep + lurch <= 0.0 {
+        return;
+    }
+    let ships_in = |id: u32| sim.ships.iter().filter(|s| s.system_id == id && s.behavior != crate::ai_ship::components::SimBehavior::Dead).count();
+    for id in spread(&mut galaxy, creep + lurch, ships_in) {
+        let name = galaxy.systems.iter().find(|s| s.id == id).map_or(String::new(), |s| s.name.clone());
+        info!("FRONT: {name} taken ({} gone)", taken_count(&galaxy));
+        notes.write(crate::events::ShowNotification {
+            message: format!("The dark has taken {name}. Nothing there answers."),
+            notification_type: crate::events::NotificationType::Danger,
+            duration: 8.0,
+        });
+    }
+}
+
+/// `DEPTHS_DARK_SPEED=20` runs the front twenty times faster, to watch it.
+fn speed() -> f32 {
+    static SPEED: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *SPEED.get_or_init(|| std::env::var("DEPTHS_DARK_SPEED").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0))
+}
+
 pub struct FrontPlugin;
 
 impl Plugin for FrontPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (dark_from_env, seed_front).chain());
+        app.add_systems(Update, (dark_from_env, seed_front).chain()).add_systems(
+            Update,
+            advance_front.after(seed_front).run_if(in_state(crate::states::GameState::Exploring)),
+        );
     }
 }
 
@@ -123,5 +241,44 @@ mod tests {
             // Seeding again does nothing: the front is already there.
             assert!(!seed_origin(&mut galaxy));
         }
+    }
+
+    /// Half an hour of flight takes about one system, never Haven, and
+    /// the dark goes where it's pulled.
+    #[test]
+    fn it_spreads_by_the_clock_and_never_takes_haven() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        seed_origin(&mut galaxy);
+        assert!(!frontier(&galaxy).is_empty());
+        // Thirty minutes in one-second steps.
+        let mut took = 0;
+        for _ in 0..SECONDS_PER_SYSTEM as usize {
+            took += spread(&mut galaxy, 1.0 / SECONDS_PER_SYSTEM, |_| 0).len();
+        }
+        assert!(took <= 1, "half an hour took {took} systems");
+        // Another quarter hour and the first one has gone.
+        for _ in 0..(SECONDS_PER_SYSTEM / 2.0) as usize {
+            took += spread(&mut galaxy, 1.0 / SECONDS_PER_SYSTEM, |_| 0).len();
+        }
+        assert_eq!(took, 1, "forty-five minutes took {took} systems");
+        // Run it far past the end of the galaxy: Haven stands.
+        spread(&mut galaxy, 100.0, |_| 0);
+        for _ in 0..200 {
+            spread(&mut galaxy, 1.0, |_| 0);
+        }
+        let haven = galaxy.systems.iter().find(|s| s.id == 0).unwrap();
+        assert_eq!(haven.dark, 0.0);
+        assert_eq!(taken_count(&galaxy), galaxy.systems.len() - 1, "the dark stalled short of everything else");
+    }
+
+    /// Crowds and your own route pull it; nearer Haven pulls it too.
+    #[test]
+    fn crowds_and_your_route_pull_it() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut sys = galaxy.systems[5].clone();
+        let quiet = pull(&sys, 0);
+        assert!(pull(&sys, 10) > quiet);
+        sys.discovery = crate::celestial::resources::SystemDiscovery::Visited;
+        assert!(pull(&sys, 0) > quiet);
     }
 }
