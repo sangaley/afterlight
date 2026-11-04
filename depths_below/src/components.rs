@@ -557,6 +557,7 @@ impl ModuleCategory {
                 ModuleType::ResearchLab,
                 ModuleType::DockingHub,
                             ModuleType::ShieldEmitter,
+                ModuleType::DarkWard,
                 ModuleType::DecoyLauncher,
                 ModuleType::ChaffDispenser,
                 ModuleType::PointDefenseDrone,
@@ -897,6 +898,7 @@ pub enum ModuleType {
     AngledAblativeArmor,       // Wedge of ablative: stops one shell, then breaks
     ReflectivePlate,           // Thin plate that turns lasers
     AngledReflectivePlate,     // Wedge of reflective plate
+    DarkWard,                  // Holds the ship together inside the Cascade (narrative::ward)
 }
 
 impl ModuleType {
@@ -1032,6 +1034,7 @@ impl ModuleType {
             ModuleType::EngineNozzle => ModuleCategory::Propulsion,
 
             ModuleType::ShieldEmitter |
+            ModuleType::DarkWard |
             ModuleType::DecoyLauncher |
             ModuleType::ChaffDispenser |
             ModuleType::PointDefenseDrone |
@@ -1246,6 +1249,7 @@ impl ModuleType {
             ModuleType::ReactorCooling => "Reactor Cooling",
             ModuleType::EngineNozzle => "Engine Nozzle",
             ModuleType::ShieldEmitter => "Shield Emitter",
+            ModuleType::DarkWard => "Dark Ward",
             // Advanced weapon enhancers
             ModuleType::MuzzleBrake => "Muzzle Brake",
             ModuleType::RecoilAbsorber => "Recoil Absorber",

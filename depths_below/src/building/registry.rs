@@ -1413,6 +1413,22 @@ pub fn build_registry() -> ModuleRegistry {
         crew_station: false,
     });
 
+    defs.insert(ModuleType::DarkWard, ModuleDef {
+        name: "Dark Ward",
+        description: "The Silence's pattern. Holds the ship together inside systems the Cascade has taken. Its draw climbs steeply with how deep you go, how long you stay and how big the ship is.",
+        category: ModuleCategory::Utility,
+        size: IVec2::new(1, 1),
+        health: 60.0,
+        power_generation: 0.0,
+        power_consumption: crate::narrative::ward::IDLE_DRAW,
+        color: Color::srgb(0.35, 0.20, 0.50),
+        companion: CompanionData::None,
+        customizable: false,
+        cost: 400,
+        base_stats: CalculatedStats::default(),
+        crew_station: false,
+    });
+
     // ========================================================================
     // ADVANCED WEAPON ENHANCERS (optional optimization blocks)
     // ========================================================================

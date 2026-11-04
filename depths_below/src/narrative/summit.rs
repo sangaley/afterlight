@@ -271,6 +271,11 @@ fn consequences(
                 standing.change(FreeHaulersCompact, -20.0, "You took their black box");
             }
             grant_plating(unlocks, "titanium", "Titanium", notes);
+            notes.write(crate::events::ShowNotification {
+                message: "The Abbess's Dark Ward pattern is in your build menu (Utility).".into(),
+                notification_type: crate::events::NotificationType::Success,
+                duration: 7.0,
+            });
             // The next piece is with the Choir, who shoot strangers on sight.
             let v = standing.value(BrokenChoir);
             if v < SPOKEN_FOR {

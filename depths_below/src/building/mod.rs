@@ -1736,10 +1736,22 @@ fn process_module_placement(
     mut notifications: MessageWriter<ShowNotification>,
     mut currency: ResMut<Currency>,
     mut history: ResMut<build_history::BuildHistory>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
 ) {
     let Ok(ship) = ship_query.single() else { return };
 
     for event in events.read() {
+        // The ward's pattern comes from the Abbess (narrative::ward); the yard
+        // can't lay one before. Rebuilds and loaded designs (free) are already
+        // known, so they pass.
+        if event.module_type == ModuleType::DarkWard && !event.free && !crate::narrative::ward::pattern_known(&contacts) {
+            notifications.write(ShowNotification {
+                message: "Nobody here knows how to build a Dark Ward. The Silence keep the pattern.".into(),
+                notification_type: NotificationType::Warning,
+                duration: 3.0,
+            });
+            continue;
+        }
         let signature = event.extras.as_ref().and_then(|e| e.signature.as_deref()).and_then(crate::diplomacy::signatures::get).filter(|s| s.base == event.module_type);
         let price = |registry: &ModuleRegistry| (registry.get(event.module_type).cost as f32 * signature.map_or(1.0, |s| s.build)).round() as u32;
         // Same guard as hull placement: never spawn a paid module on credit.

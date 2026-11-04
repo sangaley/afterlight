@@ -159,6 +159,8 @@ pub fn module_sprite_path(module_type: ModuleType) -> Option<&'static str> {
         ModuleType::ReactorCooling => "sprites/modules/repair_station.png",
         ModuleType::EngineNozzle => "sprites/modules/standard_engine.png",
         ModuleType::ShieldEmitter => "sprites/modules/battery.png",
+        // Stand-in art until the ward gets its own.
+        ModuleType::DarkWard => "sprites/modules/depth_sensor.png",
         // Advanced weapon enhancers
         // Gun parts. Placeholders drawn from the Gun Deck preview until the
         // Retro Diffusion art in GUN_PARTS_ART.md replaces them.

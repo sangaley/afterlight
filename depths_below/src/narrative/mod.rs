@@ -11,6 +11,7 @@ pub mod reader;
 pub mod summit;
 pub mod trail;
 pub mod truth;
+pub mod ward;
 
 use bevy::prelude::*;
 
@@ -166,6 +167,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(summit::SummitPlugin);
         app.add_plugins(leads::LeadsPlugin);
         app.add_plugins(front::FrontPlugin);
+        app.add_plugins(ward::WardPlugin);
         app.init_resource::<CascadeState>().add_systems(
             Update,
             (update_cascade, grant_hull_materials)

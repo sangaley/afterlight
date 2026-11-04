@@ -93,6 +93,7 @@ pub fn warp_input_system(
     mut charging_query: Query<(Entity, &mut WarpCharging), With<Ship>>,
     mut notifications: MessageWriter<ShowNotification>,
     mut jump_events: MessageWriter<WarpJumpStarted>,
+    ward: Option<Res<crate::narrative::ward::WardState>>,
 ) {
     // The key starts the charge and it runs on its own from there — no need
     // to hold it through the whole (up to 18s) charge. A second press while
@@ -110,6 +111,17 @@ pub fn warp_input_system(
             // local dash's (ui::warp_dash_input), and so is "no destination".
             let Some(target) = pending.0.filter(|_| !dash_charging) else { return };
             let Some(target_pos) = target_galaxy_pos(&galaxy_map, target) else { return };
+            // Into the dark only with a working Dark Ward aboard.
+            if let GalaxyWarpTarget::System(id) = target {
+                if !crate::narrative::ward::may_enter(&galaxy_map, id, ward.as_ref().is_some_and(|w| w.aboard)) {
+                    notifications.write(ShowNotification {
+                        message: "The warp drive won't jump into the dark. It needs a Dark Ward aboard.".into(),
+                        notification_type: NotificationType::Warning,
+                        duration: 5.0,
+                    });
+                    return;
+                }
+            }
 
             let dist = streaming.current_galaxy_pos.distance(target_pos);
             if dist < 1.0 {

@@ -1516,11 +1516,12 @@ pub fn update_celestial_hud(
     if let Ok((mut text, mut color)) = system_text_query.single_mut() {
         let (streaming, galaxy_map, standing) = &place;
         let name = crate::celestial::galaxy::system_name(galaxy.current_system);
-        let hostile = streaming.loaded_system
-            .and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id))
-            .is_some_and(|s| standing.system_hostile(s));
-        text.0 = if hostile { format!("{name} - HOSTILE") } else { name };
-        color.0 = if hostile { map::HOSTILE_TEXT } else { theme::ThemeColors::TEXT_TITLE };
+        let here = streaming.loaded_system.and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id));
+        // Taken by the Cascade (narrative::front): nobody here wants anything.
+        let dark = here.is_some_and(crate::narrative::front::is_taken);
+        let hostile = !dark && here.is_some_and(|s| standing.system_hostile(s));
+        text.0 = if dark { format!("{name} - DARK") } else if hostile { format!("{name} - HOSTILE") } else { name };
+        color.0 = if dark { theme::ThemeColors::TEXT_MUTED } else if hostile { map::HOSTILE_TEXT } else { theme::ThemeColors::TEXT_TITLE };
     }
 
     let ship_pos = ship_query.single()
