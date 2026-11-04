@@ -44,6 +44,19 @@ pub struct Interference {
     active: f32,
     /// 0 = honest, 1 = a single gauge drifts, 2 = several do, 3 = nothing reads true.
     pub phase: u8,
+    /// A glitch something else asked for (a log just read, narrative::leads):
+    /// seconds left, and how bad.
+    forced: f32,
+    forced_phase: u8,
+}
+
+impl Interference {
+    /// Make the instruments lie for `secs`, at least as badly as `phase`,
+    /// whatever the arc's level says.
+    pub fn jolt(&mut self, secs: f32, phase: u8) {
+        self.forced = secs;
+        self.forced_phase = phase.min(3);
+    }
 }
 
 fn phase_for(level: f32) -> u8 {
@@ -63,6 +76,12 @@ fn drive_interference(
     cascade: Res<CascadeState>,
     mut state: ResMut<Interference>,
 ) {
+    if state.forced > 0.0 {
+        state.forced -= time.delta_secs();
+        state.phase = phase_for(cascade.level).max(state.forced_phase);
+        state.active = state.forced.max(0.0);
+        return;
+    }
     state.phase = phase_for(cascade.level);
     if state.phase == 0 {
         state.active = 0.0;

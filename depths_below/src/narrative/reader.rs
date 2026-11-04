@@ -175,7 +175,10 @@ fn drive_log_card(
     *vis = Visibility::Visible;
 
     // Only rewrite the card when the entry actually changes.
-    if showing.as_deref() != Some(title.as_str()) {
+    // Keyed on the text as well as the title: a log's closing line
+    // (narrative::leads) can land a frame after the card first shows.
+    let key = format!("{title}\u{0}{}", body.len());
+    if showing.as_deref() != Some(key.as_str()) {
         if let Ok(mut t) = texts.p0().single_mut() { **t = title.clone(); }
         if let Ok(mut t) = texts.p1().single_mut() { **t = body.clone(); }
         let kicker = queue.kicker(&title);
@@ -187,7 +190,7 @@ fn drive_log_card(
             "[Space] close".to_string()
         };
         if let Ok(mut t) = texts.p2().single_mut() { **t = footer; }
-        *showing = Some(title);
+        *showing = Some(key);
     }
 
     if keys.just_pressed(KeyCode::Space) {

@@ -5,6 +5,7 @@ pub mod logs;
 pub mod doppelganger;
 pub mod expedition;
 pub mod interference;
+pub mod leads;
 pub mod reader;
 pub mod summit;
 pub mod trail;
@@ -149,6 +150,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(interference::InterferencePlugin);
         app.add_plugins(expedition::ExpeditionPlugin);
         app.add_plugins(summit::SummitPlugin);
+        app.add_plugins(leads::LeadsPlugin);
         app.init_resource::<CascadeState>().add_systems(
             Update,
             (update_cascade, grant_hull_materials)

@@ -590,6 +590,7 @@ fn discover_log_entries(
     mut statistics: ResMut<Statistics>,
     mut log_queue: ResMut<crate::narrative::reader::LogQueue>,
     mut finale: ResMut<crate::narrative::FinaleFound>,
+    mut read: MessageWriter<crate::narrative::leads::LogRead>,
 ) {
     let Ok(ship_gt) = ship_query.single() else { return };
     let ship_pos = ship_gt.translation().truncate();
@@ -619,6 +620,9 @@ fn discover_log_entries(
             // hundred characters and the toast is 340px wide with an eight
             // second life — they were unreadable by construction.
             log_queue.push(log.title.clone(), log.text.clone());
+            // What it does (narrative::leads): its closing line, and a mark,
+            // a cache, a patch or a glitch.
+            read.write(crate::narrative::leads::LogRead(log.title.clone()));
         }
     }
 }

@@ -463,6 +463,8 @@ pub struct MapWorld<'w, 's> {
     hull: Res<'w, HullState>,
     fuel: Res<'w, FuelState>,
     inventory: Res<'w, Inventory>,
+    /// The logs read so far, for the notes they leave on the map.
+    stats: Res<'w, crate::resources::Statistics>,
 }
 
 /// Off-screen ships of one system as fleets on the map.
@@ -509,6 +511,16 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         .filter(|s| s.discovery != SystemDiscovery::Unknown)
         .map(|s| chart_system(s, &world.galaxy_map, standing, &world.war, Some(s.id) == here_id))
         .collect();
+    // What the logs said about a system (narrative::leads), under its brief.
+    for (id, line, warning) in crate::narrative::leads::notes(&world.galaxy_map, &world.stats.logs_found) {
+        if let Some(sys) = systems.iter_mut().find(|s| s.id == id) {
+            sys.brief.push(BriefLine {
+                text: format!("From a log: {line}"),
+                color: if warning { C::ACCENT_ORANGE } else { C::ACCENT_YELLOW },
+                lead: false,
+            });
+        }
+    }
 
     let mut here = HereFrame {
         galaxy: world.streaming.current_galaxy_pos,
