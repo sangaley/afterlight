@@ -329,6 +329,34 @@ fn advance(
     }
 }
 
+/// One row of the Summit Record board (the Log window, L).
+#[derive(Debug, Clone, PartialEq)]
+pub enum BoardRow {
+    /// A piece you have: its number, name and bold line.
+    Found(u8, String, String),
+    /// The step you're on: its number, name and where to go.
+    Next(u8, String, String),
+    /// Not yet: its number.
+    Unknown(u8),
+}
+
+/// The board: what you've learned, what's next, and how much is left. Read
+/// at a glance by someone who never opens a card.
+pub fn board(progress: &SummitProgress, galaxy: &GalaxyMap) -> Vec<BoardRow> {
+    (1..=STEPS_IN_ALL)
+        .map(|n| match step(n) {
+            Some(s) if n <= progress.done => BoardRow::Found(n, s.name.clone(), s.gist.clone()),
+            Some(s) if progress.current() == Some(n) => {
+                let where_ = contact_of(n)
+                    .map(|c| format!("see {} at {}", c.name, capital_of(galaxy, c.faction).map_or("?".into(), |(_, name)| name)))
+                    .unwrap_or_default();
+                BoardRow::Next(n, s.name.clone(), where_)
+            }
+            _ => BoardRow::Unknown(n),
+        })
+        .collect()
+}
+
 /// Where the summit station was: out along the road to the Choir's capital
 /// (step 3), so the tear lies on the way outward and never over Haven (the
 /// middle of all the capitals sat right on top of it). Worked out from the
@@ -618,6 +646,18 @@ mod tests {
             assert!(site.length() < crate::celestial::galaxy::GALAXY_RADIUS);
             assert!(site.length() > scar_radius(last_step()).unwrap() * 0.8, "seed {seed}: the scar covers Haven");
         }
+    }
+
+    /// The board shows what's found, what's next, and hides the rest.
+    #[test]
+    fn the_board_reads_at_a_glance() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let p = SummitProgress { hailed: true, commissioned: true, done: 1, ended: false };
+        let rows = board(&p, &galaxy);
+        assert_eq!(rows.len(), STEPS_IN_ALL as usize);
+        assert!(matches!(&rows[0], BoardRow::Found(1, _, gist) if gist == &step(1).unwrap().gist));
+        assert!(matches!(&rows[1], BoardRow::Next(2, _, w) if w.contains(&contact_of(2).unwrap().name)));
+        assert!(rows[2..].iter().all(|r| matches!(r, BoardRow::Unknown(_))));
     }
 
     /// The progress survives a save: it rides on Contacts, which is saved.

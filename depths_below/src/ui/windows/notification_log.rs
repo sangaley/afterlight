@@ -60,6 +60,8 @@ pub fn toggle_notification_log(
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<(Entity, &FloatingWindow)>,
     history: Res<NotificationHistory>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
+    galaxy: Res<crate::celestial::resources::GalaxyMap>,
 ) {
     if !keyboard.just_pressed(KeyCode::KeyL) {
         return;
@@ -75,10 +77,41 @@ pub fn toggle_notification_log(
     let content = spawn_floating_window(
         &mut commands,
         "notif_log",
-        "Notification Log",
-        Vec2::new(350.0, 300.0),
-        Vec2::new(900.0, 50.0),
+        "Log",
+        Vec2::new(420.0, 470.0),
+        Vec2::new(840.0, 50.0),
     );
+
+    // The Summit Record board, once the Silence have called: what you've
+    // learned, what's next, how much is left (narrative::summit::board).
+    let progress = &contacts.summit;
+    if progress.hailed || progress.commissioned {
+        use crate::narrative::summit::BoardRow;
+        let board = commands.spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(3.0),
+            margin: UiRect::bottom(Val::Px(10.0)),
+            ..default()
+        }).id();
+        let line = |text: String, size: f32, color: Color| (Text::new(text), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color));
+        let head = commands.spawn(line("THE SUMMIT RECORD".into(), 12.0, Color::srgb(0.95, 0.55, 0.20))).id();
+        commands.entity(board).add_child(head);
+        if !progress.commissioned {
+            let row = commands.spawn(line("The Abbess of the Silence wants to hear you.".into(), 13.0, Color::srgb(0.85, 0.85, 0.9))).id();
+            commands.entity(board).add_child(row);
+        }
+        for row in crate::narrative::summit::board(progress, &galaxy) {
+            let (text, color) = match row {
+                BoardRow::Found(n, name, gist) => (format!("{n}  {name}: {gist}"), Color::srgb(0.85, 0.85, 0.9)),
+                BoardRow::Next(n, name, where_) => (format!("{n}  {name}: {where_}"), Color::srgb(0.95, 0.75, 0.35)),
+                BoardRow::Unknown(n) => (format!("{n}  ..."), Color::srgb(0.4, 0.4, 0.45)),
+            };
+            let row = commands.spawn(line(text, 13.0, color)).id();
+            commands.entity(board).add_child(row);
+        }
+        commands.entity(content).add_child(board);
+    }
 
     // Find root window and mark it
     commands.entity(content).insert(NotificationLogWindow);
@@ -136,6 +169,8 @@ mod toggle_tests {
         let mut app = App::new();
         app.init_resource::<ButtonInput<KeyCode>>();
         app.init_resource::<NotificationHistory>();
+        app.init_resource::<crate::diplomacy::contacts::Contacts>();
+        app.insert_resource(crate::celestial::galaxy::generate_galaxy_map(42));
         app.add_systems(Update, toggle_notification_log);
         let press = |app: &mut App| {
             let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
@@ -150,5 +185,23 @@ mod toggle_tests {
         assert!(nodes(&mut app) > 0, "L did not open the log");
         press(&mut app);
         assert_eq!(nodes(&mut app), 0, "the window frame outlived the close");
+    }
+
+    /// Once the Silence have called, the log opens on the Summit Record board.
+    #[test]
+    fn the_log_opens_on_the_summit_record() {
+        let mut app = App::new();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<NotificationHistory>();
+        let mut contacts = crate::diplomacy::contacts::Contacts::default();
+        contacts.summit.hailed = true;
+        app.insert_resource(contacts);
+        app.insert_resource(crate::celestial::galaxy::generate_galaxy_map(42));
+        app.add_systems(Update, toggle_notification_log);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyL);
+        app.update();
+        let texts: Vec<String> = app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect();
+        assert!(texts.iter().any(|t| t == "THE SUMMIT RECORD"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("Abbess")));
     }
 }
