@@ -92,6 +92,51 @@ pub fn go_dark(galaxy: &mut GalaxyMap, id: u32) -> Option<(AiShipType, bool)> {
     Some((loser, was_capital))
 }
 
+/// How many jumps a system is from the nearest one the dark has taken: 0 if
+/// it's taken, None if nothing is.
+pub fn hops_from_dark(galaxy: &GalaxyMap, id: u32) -> Option<u32> {
+    use crate::celestial::galaxy::nearest_neighbors;
+    let taken = |id: u32| galaxy.systems.iter().find(|s| s.id == id).is_some_and(is_taken);
+    if taken(id) {
+        return Some(0);
+    }
+    let neighbours = |id: u32| {
+        let mut n = nearest_neighbors(galaxy, id, 3);
+        n.extend(galaxy.systems.iter().filter(|s| nearest_neighbors(galaxy, s.id, 3).contains(&id)).map(|s| s.id));
+        n
+    };
+    let (mut seen, mut ring) = (vec![id], vec![id]);
+    for d in 1..=galaxy.systems.len() as u32 {
+        let mut next = Vec::new();
+        for at in &ring {
+            for n in neighbours(*at) {
+                if taken(n) {
+                    return Some(d);
+                }
+                if !seen.contains(&n) {
+                    seen.push(n);
+                    next.push(n);
+                }
+            }
+        }
+        if next.is_empty() {
+            return None;
+        }
+        ring = next;
+    }
+    None
+}
+
+/// What the dark does to prices: a station next to it charges 40% more and
+/// pays 20% less; one jump further, 20% and 10%.
+pub fn front_prices(galaxy: &GalaxyMap, id: Option<u32>) -> (f32, f32) {
+    match id.and_then(|id| hops_from_dark(galaxy, id)) {
+        Some(1) => (1.4, 0.8),
+        Some(2) => (1.2, 0.9),
+        _ => (1.0, 1.0),
+    }
+}
+
 /// How many systems the dark has taken.
 pub fn taken_count(galaxy: &GalaxyMap) -> usize {
     galaxy.systems.iter().filter(|s| is_taken(s)).count()
@@ -201,6 +246,7 @@ fn advance_front(
     mut galaxy: ResMut<GalaxyMap>,
     mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
     mut contacts: ResMut<crate::diplomacy::contacts::Contacts>,
+    mut standing: ResMut<crate::diplomacy::FactionStanding>,
     queue: Res<super::reader::LogQueue>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
     mut steps_seen: Local<Option<u8>>,
@@ -238,6 +284,7 @@ fn advance_front(
         // Its holder loses it; if it was their capital, they move, and some
         // of their people don't get out.
         if let Some((loser, true)) = go_dark(&mut galaxy, id) {
+            standing.break_alliance(loser, format!("With {name} gone, they break every pact"));
             for who in crate::diplomacy::contacts::lose_in_the_fall(&mut contacts, loser, &mut rand::thread_rng()) {
                 notes.write(crate::events::ShowNotification {
                     message: format!("{who} did not make it out of {name}."),
@@ -245,6 +292,48 @@ fn advance_front(
                     duration: 6.0,
                 });
             }
+        }
+    }
+}
+
+/// How often the factions on the front push away from it, in seconds of
+/// flight, and how hard.
+const FLEE_EVERY: f32 = 300.0;
+const FLEE_PUSH: f32 = 8.0;
+
+/// Factions with ground next to the dark push into their hostile neighbours
+/// further from it, to make room: borders move faster near the front.
+fn war_away_from_the_dark(
+    time: Res<Time>,
+    mut galaxy: ResMut<GalaxyMap>,
+    mut war: ResMut<crate::celestial::territory::BorderWar>,
+    mut flips: MessageWriter<crate::celestial::territory::SystemChangedHands>,
+    mut clock: Local<f32>,
+) {
+    *clock += time.delta_secs();
+    if *clock < FLEE_EVERY {
+        return;
+    }
+    *clock = 0.0;
+    let mut moves: Vec<(u32, AiShipType)> = Vec::new();
+    for sys in galaxy.systems.iter().filter(|s| hops_from_dark(&galaxy, s.id) == Some(1)) {
+        let Some(owner) = sys.faction else { continue };
+        let here = hops_from_dark(&galaxy, sys.id).unwrap_or(0);
+        let target = crate::celestial::galaxy::nearest_neighbors(&galaxy, sys.id, 3)
+            .into_iter()
+            .filter_map(|n| galaxy.systems.iter().find(|s| s.id == n))
+            .filter(|n| n.faction.is_some_and(|f| crate::ai_ship::components::factions_hostile(owner, f)))
+            .filter(|n| hops_from_dark(&galaxy, n.id).is_none_or(|d| d > here))
+            .map(|n| n.id)
+            .next();
+        if let Some(t) = target {
+            moves.push((t, owner));
+        }
+    }
+    for (target, by) in moves {
+        info!("FRONT: {by:?} pushes into {target}, away from the dark");
+        for flip in war.push(&mut galaxy, target, by, FLEE_PUSH) {
+            flips.write(flip);
         }
     }
 }
@@ -279,7 +368,7 @@ impl Plugin for FrontPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (dark_from_env, seed_front).chain()).add_systems(
             Update,
-            advance_front.after(seed_front).run_if(in_state(crate::states::GameState::Exploring)),
+            (advance_front.after(seed_front), war_away_from_the_dark).run_if(in_state(crate::states::GameState::Exploring)),
         )
         .add_systems(OnEnter(crate::states::GameState::Docked), refuse_dark_docking);
     }
@@ -364,6 +453,20 @@ mod tests {
         app.update();
         let next = app.world().resource::<NextState<crate::states::GameState>>();
         assert!(matches!(next, NextState::Pending(crate::states::GameState::Exploring)), "{next:?}");
+    }
+
+    /// Prices climb next to the dark and ease further off.
+    #[test]
+    fn prices_climb_near_the_dark() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        assert_eq!(front_prices(&galaxy, Some(5)), (1.0, 1.0), "no dark, no markup");
+        seed_origin(&mut galaxy);
+        let origin = origin(&galaxy).unwrap();
+        let next = frontier(&galaxy)[0];
+        assert_eq!(hops_from_dark(&galaxy, origin), Some(0));
+        assert_eq!(hops_from_dark(&galaxy, next), Some(1));
+        assert!(front_prices(&galaxy, Some(next)).0 > 1.0);
+        assert!(front_prices(&galaxy, Some(next)).1 < 1.0);
     }
 
     /// Crowds and your own route pull it; nearer Haven pulls it too.

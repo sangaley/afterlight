@@ -166,6 +166,15 @@ impl FactionStanding {
         self.entry(faction).map_or(starting_standing(faction), |e| e.value)
     }
 
+    /// An alliance ends, and says why (the dark took their capital:
+    /// narrative::front).
+    pub fn break_alliance(&mut self, faction: AiShipType, reason: impl Into<String>) {
+        if self.is_allied(faction) {
+            self.entry_mut(faction).allied = false;
+            self.change(faction, -15.0, reason);
+        }
+    }
+
     pub fn is_allied(&self, faction: AiShipType) -> bool {
         self.entry(faction).is_some_and(|e| e.allied)
     }

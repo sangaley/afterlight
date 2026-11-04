@@ -267,6 +267,14 @@ pub fn rumours(
     let mut near: Vec<u32> = vec![system_id];
     near.extend(crate::celestial::galaxy::nearest_neighbors(galaxy, system_id, 3));
     let mut said: Vec<String> = Vec::new();
+    // The dark next door, first: it's all anyone talks about.
+    if crate::narrative::front::hops_from_dark(galaxy, system_id) == Some(1) {
+        let from = crate::celestial::galaxy::nearest_neighbors(galaxy, system_id, 3)
+            .into_iter()
+            .find(|n| galaxy.systems.iter().find(|s| s.id == *n).is_some_and(crate::narrative::front::is_taken));
+        let place = from.map_or("next door".to_string(), name_of);
+        said.push(format!("Refugees from {place} keep coming through. Nobody is escorting them, and nobody is going back."));
+    }
     let members = |fleet: u32| sim.ships.iter().filter(|s| s.fleet == fleet && s.behavior != SimBehavior::Dead).collect::<Vec<_>>();
 
     // A battle group nearby.

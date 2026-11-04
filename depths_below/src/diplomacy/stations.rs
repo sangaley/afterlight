@@ -352,7 +352,9 @@ fn faction_station_docking(
     };
     let tier = standing.tier(faction);
     let (lean_buy, lean_sell) = price_lean(faction);
-    let prices = tier.station_prices().map(|(b, s)| (b * lean_buy, s * lean_sell));
+    // Near the dark everything costs more and fetches less (narrative::front).
+    let (dark_buy, dark_sell) = crate::narrative::front::front_prices(&galaxy, streaming.loaded_system);
+    let prices = tier.station_prices().map(|(b, s)| (b * lean_buy * dark_buy, s * lean_sell * dark_sell));
     if !*prompted {
         *prompted = true;
         let message = match prices {
@@ -580,6 +582,7 @@ fn free_port_docking(
     stats: Res<crate::resources::Statistics>,
     player: Query<&Transform, With<Ship>>,
     stations: Res<crate::world::home_base::SystemStations>,
+    where_: (Res<GalaxyMap>, Res<SystemStreamingManager>),
 ) {
     if market.dock_terms.is_some() {
         return;
@@ -590,6 +593,8 @@ fn free_port_docking(
         .and_then(|t| stations.nearest_index(t.translation.truncate()))
         .unwrap_or(0);
     let (buy, sell) = free_port_terms(stats.play_time_seconds);
+    let (dark_buy, dark_sell) = crate::narrative::front::front_prices(&where_.0, where_.1.loaded_system);
+    let (buy, sell) = (buy * dark_buy, sell * dark_sell);
     market.dock_terms = Some(DockTerms {
         faction: None,
         name: crate::world::home_base::station_display_name(index),
@@ -952,6 +957,8 @@ mod tests {
         app.init_resource::<MarketEvents>();
         app.insert_resource(crate::resources::Statistics { play_time_seconds: 5.0 * 3600.0, ..Default::default() });
         app.init_resource::<crate::world::home_base::SystemStations>();
+        app.init_resource::<GalaxyMap>();
+        app.init_resource::<SystemStreamingManager>();
         app.world_mut().spawn((Ship, Transform::default()));
         app.world_mut().run_system_once(free_port_docking).unwrap();
         let terms = app.world().resource::<MarketEvents>().dock_terms.clone().expect("free-port terms set");
