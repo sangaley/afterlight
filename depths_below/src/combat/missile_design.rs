@@ -145,7 +145,7 @@ impl MissileBody {
         match self {
             Self::Fuel => "Burns longer: +0.7 s on a booster, +2.2 s on a sustainer.",
             Self::Fins => "+1,700 sideways pull. Each costs 5% top speed and a little drag.",
-            Self::He => "Blast. 260k damage, falling off to the rim. Armour takes 70%.",
+            Self::He => "Blast. 325k damage, falling off to the rim. Armour takes 70%.",
             Self::Frag => "Wide and weak against plate, but shreds exposed weapon mounts.",
             Self::ShapedCharge => "A jet that punches through block after block. Needs to touch the hull.",
             Self::Emp => "No damage. Everything in the burst is switched off for 6 s.",
@@ -345,6 +345,10 @@ pub const COAST_LIFE: f32 = 6.0;
 pub const STALL_SPEED: f32 = 250.0;
 pub const MAX_SPEED: f32 = 2600.0 * RANGE_SCALE;
 pub const EMP_SECONDS: f32 = 6.0;
+/// On every warhead's damage (HE, frag, shaped charge), on top of the
+/// Missile Bay's figures. Played 2026-11-03: missiles felt a little light
+/// beside the slower, harder guns. Enemy missiles too, as with guns.
+pub const WARHEAD_SCALE: f32 = 1.25;
 
 pub fn stats(d: &MissileDesign, launcher: LauncherSpec) -> MissileStats {
     use MissileBody::*;
@@ -419,11 +423,11 @@ pub fn stats(d: &MissileDesign, launcher: LauncherSpec) -> MissileStats {
         seeker,
         fool_chance: fool_base * 0.45f32.powi(procs),
         reload_s: (2.0 + 0.8 * parts as f32) * (launcher.gauge_mm / 250.0).powf(0.6) * launcher.reload_mult,
-        he_damage: 260.0 * k * n_he,
+        he_damage: 260.0 * WARHEAD_SCALE * k * n_he,
         he_radius: if n_he > 0.0 { 90.0 + 70.0 * (n_he * k).sqrt() } else { 0.0 },
-        frag_damage: 110.0 * k * n_frag,
+        frag_damage: 110.0 * WARHEAD_SCALE * k * n_frag,
         frag_radius: if n_frag > 0.0 { 160.0 + 110.0 * (n_frag * k).sqrt() } else { 0.0 },
-        shaped_damage: 380.0 * k * n_shaped,
+        shaped_damage: 380.0 * WARHEAD_SCALE * k * n_shaped,
         emp_radius: if n_emp > 0.0 { 150.0 + 90.0 * (n_emp * k).sqrt() } else { 0.0 },
         ram_damage: 40.0 * k,
         proximity: d.count(ProximityFuse) > 0,
@@ -503,7 +507,7 @@ mod tests {
         // The Missile Bay's figures (1430 u/s, 6942 u), with the fight's scale.
         assert!((2.5..3.1).contains(&(s.top_speed / 1430.0)), "{}", s.top_speed);
         assert!((2.4..3.1).contains(&(s.reach / 6942.0)), "{}", s.reach);
-        assert!((s.he_damage - 260.0).abs() < 1e-3);
+        assert!((s.he_damage - 260.0 * WARHEAD_SCALE).abs() < 1e-3);
     }
 
     #[test]
