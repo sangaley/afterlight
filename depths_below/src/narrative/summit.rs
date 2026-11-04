@@ -49,6 +49,9 @@ const SPOKEN_FOR: f32 = -35.0;
 pub struct Card {
     pub title: String,
     pub text: String,
+    /// The one bold line for a player who doesn't read the card.
+    #[serde(default)]
+    pub gist: String,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +63,9 @@ pub struct StepDef {
     pub deal: String,
     pub force: String,
     pub piece_title: String,
+    /// The piece in one bold line, under ten words: what a player who skips
+    /// the card still takes away. Also flashed on the HUD.
+    pub gist: String,
     pub piece: String,
     pub abbess: String,
 }
@@ -214,6 +220,7 @@ fn hail_from_the_silence(
     contacts.summit.hailed = true;
     let hail = &data().hail;
     queue.push_card("INCOMING", hail.title.clone(), fill(&hail.text, &galaxy, Some(AiShipType::TheSilence)));
+    queue.set_gist(&hail.title, hail.gist.clone());
 }
 
 /// Plating that comes with a step.
@@ -306,12 +313,13 @@ fn advance(
         info!("SUMMIT step {} won ({})", mark.step, if mark.forced { "by force" } else { "by deal" });
         contacts.summit.done = mark.step;
         queue.push_card("A PIECE OF THE SUMMIT RECORD", def.piece_title.clone(), def.piece.clone());
+        queue.set_gist(&def.piece_title, def.gist.clone());
         queue.push_card("OVER THE COMM", "THE ABBESS".into(), abbess_after(mark.step, &galaxy));
         consequences(mark, &mut standing, &mut unlocks, &mut inventory, &mut notes);
         notes.write(crate::events::ShowNotification {
-            message: format!("A piece of the summit record: {} of {}.", mark.step, STEPS_IN_ALL),
+            message: format!("Summit record {} of {}: {}", mark.step, STEPS_IN_ALL, def.gist),
             notification_type: crate::events::NotificationType::Success,
-            duration: 6.0,
+            duration: 10.0,
         });
         if contacts.summit.done >= last_step() && !contacts.summit.ended {
             contacts.summit.ended = true;
@@ -381,7 +389,8 @@ mod tests {
         let d = data();
         let mut all = vec![&d.hail.title, &d.hail.text, &d.commission, &d.demo_end.title, &d.demo_end.text];
         for s in &d.steps {
-            all.extend([&s.name, &s.pitch, &s.deal, &s.force, &s.piece_title, &s.piece, &s.abbess]);
+            all.extend([&s.name, &s.pitch, &s.deal, &s.force, &s.piece_title, &s.piece, &s.abbess, &s.gist]);
+            assert!(!s.gist.is_empty() && s.gist.split_whitespace().count() <= 10, "{}: the bold line must be under ten words", s.name);
         }
         for text in all {
             assert!(text.is_ascii(), "not plain ASCII: {text}");

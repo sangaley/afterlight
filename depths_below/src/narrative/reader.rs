@@ -26,6 +26,9 @@ pub struct LogQueue {
     /// The small line above a card's title, by title, for cards that aren't
     /// recovered logs (the story's calls and pieces). Absent: "RECOVERED LOG".
     pub kickers: Vec<(String, &'static str)>,
+    /// The one bold line under a card's title, by title (the story's cards):
+    /// what a player who doesn't read the card still takes away.
+    pub gists: Vec<(String, String)>,
 }
 
 impl LogQueue {
@@ -40,6 +43,18 @@ impl LogQueue {
         self.pending.push((title, text));
     }
 
+    /// Give a queued card its bold line.
+    pub fn set_gist(&mut self, title: &str, gist: String) {
+        self.gists.retain(|(t, _)| t != title);
+        if !gist.is_empty() {
+            self.gists.push((title.to_string(), gist));
+        }
+    }
+
+    fn gist(&self, title: &str) -> Option<&str> {
+        self.gists.iter().find(|(t, _)| t == title).map(|(_, g)| g.as_str())
+    }
+
     fn kicker(&self, title: &str) -> &'static str {
         self.kickers.iter().find(|(t, _)| t == title).map_or("RECOVERED LOG", |(_, k)| k)
     }
@@ -52,6 +67,8 @@ pub(crate) struct LogCardRoot;
 struct LogCardKicker;
 #[derive(Component)]
 struct LogCardTitle;
+#[derive(Component)]
+struct LogCardGist;
 #[derive(Component)]
 struct LogCardBody;
 #[derive(Component)]
@@ -113,6 +130,13 @@ fn spawn_log_card(mut commands: Commands) {
                     ));
                     card.spawn((
                         Text::new(""),
+                        TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() },
+                        TextColor(ThemeColors::ACCENT_ORANGE),
+                        Node { display: Display::None, margin: UiRect::vertical(Val::Px(ThemeSpacing::XS)), ..default() },
+                        LogCardGist,
+                    ));
+                    card.spawn((
+                        Text::new(""),
                         TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() },
                         TextColor(ThemeColors::TEXT_SECONDARY),
                         LogCardBody,
@@ -142,6 +166,7 @@ fn drive_log_card(
         Query<&mut Text, With<LogCardBody>>,
         Query<&mut Text, With<LogCardFooter>>,
         Query<&mut Text, With<LogCardKicker>>,
+        Query<(&mut Text, &mut Node), With<LogCardGist>>,
     )>,
     mut showing: Local<Option<String>>,
     tutorial: Option<Res<crate::tutorial::Tutorial>>,
@@ -183,6 +208,11 @@ fn drive_log_card(
         if let Ok(mut t) = texts.p1().single_mut() { **t = body.clone(); }
         let kicker = queue.kicker(&title);
         if let Ok(mut t) = texts.p3().single_mut() { **t = kicker.to_string(); }
+        let gist = queue.gist(&title).map(str::to_string);
+        if let Ok((mut t, mut node)) = texts.p4().single_mut() {
+            node.display = if gist.is_some() { Display::Flex } else { Display::None };
+            **t = gist.unwrap_or_default();
+        }
         let remaining = queue.pending.len().saturating_sub(1);
         let footer = if remaining > 0 {
             format!("[Space] close  ({remaining} more)")
@@ -209,6 +239,7 @@ fn hide_log_card(mut root: Query<&mut Visibility, With<LogCardRoot>>) {
 fn clear_log_queue(mut queue: ResMut<LogQueue>) {
     queue.pending.clear();
     queue.kickers.clear();
+    queue.gists.clear();
 }
 
 pub struct LogReaderPlugin;

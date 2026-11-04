@@ -71,6 +71,18 @@ impl CascadeState {
 const REACH_WEIGHT: f32 = 0.6;
 const READ_WEIGHT: f32 = 0.4;
 
+/// What each finished step of the Summit Record guarantees the arc, however
+/// little you've flown or read: the story getting worse as you learn more.
+/// Four steps put it past the first lying instruments (0.30) and the ship
+/// built like yours (0.45).
+pub const LEVEL_PER_STEP: f32 = 0.12;
+
+/// The arc's level from its three drivers: distance and reading as before,
+/// with the story chain as a floor under them.
+pub fn level_from(reach: f32, read: f32, steps_done: u8) -> f32 {
+    (REACH_WEIGHT * reach + READ_WEIGHT * read).max(steps_done as f32 * LEVEL_PER_STEP).clamp(0.0, 1.0)
+}
+
 /// How far out the player has actually been, as a fraction of the galaxy's
 /// radius. A high-water mark, so retreating never rewinds the story.
 ///
@@ -97,6 +109,7 @@ fn update_cascade(
     galaxy: Res<GalaxyMap>,
     streaming: Res<SystemStreamingManager>,
     stats: Res<Statistics>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
     mut cascade: ResMut<CascadeState>,
     mut last_trace: Local<f32>,
 ) {
@@ -110,7 +123,7 @@ fn update_cascade(
     cascade.reach = reach;
     cascade.read = read;
     cascade.level = CascadeState::override_level()
-        .unwrap_or_else(|| (REACH_WEIGHT * reach + READ_WEIGHT * read).clamp(0.0, 1.0));
+        .unwrap_or_else(|| level_from(reach, read, contacts.summit.done));
 
     // DEPTHS_CASCADE_TRACE=1 prints the arc's state as it moves. Kept rather
     // than deleted because the open question about this system is pacing --
@@ -191,6 +204,17 @@ mod tests {
             last_updated: 0.0,
             resource_fraction_remaining: 1.0,
         }
+    }
+
+    /// Each finished story step raises the floor, and never lowers what
+    /// distance and reading already reached.
+    #[test]
+    fn the_chain_raises_the_floor() {
+        assert_eq!(level_from(0.0, 0.0, 0), 0.0);
+        assert!(level_from(0.0, 0.0, 3) >= 0.30, "three steps and the instruments still never lie");
+        assert!(level_from(0.0, 0.0, 4) >= 0.45, "four steps and the ship built like yours can't come");
+        assert_eq!(level_from(1.0, 1.0, 1), 1.0);
+        assert!(level_from(0.5, 0.0, 1) >= REACH_WEIGHT * 0.5);
     }
 
     /// Sitting at Haven must read as zero however long you sit there. Haven is
