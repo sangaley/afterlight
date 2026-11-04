@@ -1706,6 +1706,9 @@ pub struct SystemSaveData {
     /// (celestial::territory). None on older saves: the generated owner stands.
     #[serde(default)]
     pub held: Option<HeldBy>,
+    /// How far the Cascade has it (narrative::front). 0 on older saves.
+    #[serde(default)]
+    pub dark: f32,
 }
 
 /// A system's owner as saved.
@@ -2054,6 +2057,7 @@ mod save_tests {
             resource_fraction_remaining: 0.5,
             looted_pois: vec![0, 2],
             held: Some(HeldBy { owner: Some(crate::ai_ship::components::AiShipType::TerranHegemony), capital: true }),
+            dark: 0.5,
         }];
         save.uncharted_galaxy_pos = Some(Vec2::new(1_200_000.0, -40_000.0));
         save.fuel = Some(321.0);

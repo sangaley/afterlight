@@ -66,6 +66,9 @@ pub struct StarSystemDef {
     /// 1.0 = untouched, 0.0 = fully depleted. No floor — real depletion,
     /// driven by real Warm-tier simulation or the Cold-tier lazy formula.
     pub resource_fraction_remaining: f32,
+    /// How far the Cascade has it (narrative::front): 0.0 untouched,
+    /// between 0 and 1 the dark is reaching it, 1.0 taken.
+    pub dark: f32,
 }
 
 /// The persistent galaxy layout — generated once per session. Replaces the

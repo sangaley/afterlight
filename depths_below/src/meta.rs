@@ -332,6 +332,7 @@ fn collect_save_data(
             resource_fraction_remaining: s.resource_fraction_remaining,
             looted_pois: looted.for_system(s.id).to_vec(),
             held: Some(crate::resources::HeldBy { owner: s.faction, capital: s.capital }),
+            dark: s.dark,
         }).collect(),
         uncharted_galaxy_pos: streaming.loaded_system.is_none().then_some(streaming.current_galaxy_pos),
         fuel: Some(fuel.current_fuel),
@@ -707,6 +708,7 @@ fn rebuild_entities_from_save(
                 sys.discovery = SystemDiscovery::from_u8(sd.discovery);
                 sys.last_updated = sd.last_updated;
                 sys.resource_fraction_remaining = sd.resource_fraction_remaining;
+                sys.dark = sd.dark;
                 if let Some(held) = sd.held {
                     sys.faction = held.owner;
                     sys.capital = held.capital;

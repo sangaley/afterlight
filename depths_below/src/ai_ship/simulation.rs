@@ -1448,6 +1448,7 @@ mod population_tests {
             discovery: crate::celestial::resources::SystemDiscovery::Visited,
             last_updated: 0.0,
             resource_fraction_remaining: 1.0,
+            dark: 0.0,
         };
         spawn_system_faction_population(&mut sim, &system);
         let ships = &sim.ships;

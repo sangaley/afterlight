@@ -256,6 +256,8 @@ struct SceneSystem {
     contested: bool,
     hostile: bool,
     here: bool,
+    /// How far the Cascade has it (narrative::front): 1.0 taken.
+    dark: f32,
     brief: Vec<BriefLine>,
     star: String,
     frame: SystemFrame,
@@ -331,6 +333,21 @@ fn planet_color(kind: crate::celestial::components::PlanetType) -> Color {
 
 /// Whose a system is, what they think of you, and what haunts it.
 fn system_brief(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &FactionStanding, war: &BorderWar) -> Vec<BriefLine> {
+    // The Cascade first: nothing else about a taken system matters now.
+    if crate::narrative::front::is_taken(sys) {
+        return vec![
+            BriefLine { text: "Taken by the Cascade".into(), color: C::TEXT_MUTED, lead: true },
+            BriefLine { text: "Nothing there moves. Nothing answers.".into(), color: C::TEXT_MUTED, lead: false },
+        ];
+    }
+    let mut lines = system_brief_living(sys, galaxy_map, standing, war);
+    if sys.dark > 0.0 {
+        lines.insert(0, BriefLine { text: format!("The dark is reaching it ({:.0}%)", sys.dark * 100.0), color: C::ACCENT_ORANGE, lead: true });
+    }
+    lines
+}
+
+fn system_brief_living(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &FactionStanding, war: &BorderWar) -> Vec<BriefLine> {
     let line = |text: String, color: Color| BriefLine { text, color, lead: false };
     let mut lines = vec![if standing.system_hostile(sys) {
         BriefLine { text: "HOSTILE - they attack on sight".to_string(), color: HOSTILE_TEXT, lead: true }
@@ -407,14 +424,17 @@ fn chart_system(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &FactionS
         name: sys.name.clone(),
         galaxy: sys.galaxy_pos,
         owner: sys.faction,
-        color: sys.faction.map_or(MAP_YOU, faction_map_color),
+        // A taken system has no colour left.
+        color: if crate::narrative::front::is_taken(sys) { Color::srgb(0.32, 0.32, 0.36) } else { sys.faction.map_or(MAP_YOU, faction_map_color) },
         visited: sys.discovery == SystemDiscovery::Visited,
         capital: sys.capital,
         haunted: sys.haunt.is_some(),
         // A rival holds a real share: a quarter or more.
         contested: war.contest(sys.id).is_some_and(|c| c.claims.iter().any(|(_, share)| *share >= 25.0)),
-        hostile: standing.system_hostile(sys),
+        // A taken system threatens nobody any more; it's simply gone.
+        hostile: !crate::narrative::front::is_taken(sys) && standing.system_hostile(sys),
         here,
+        dark: sys.dark,
         brief: system_brief(sys, galaxy_map, standing, war),
         star: format!("{:?}", roll.star_class),
         frame,
@@ -1079,7 +1099,7 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
 
     // Territory, under everything: a soft wash of each holder's colour.
     if layers.territory && open < 0.9 {
-        for sys in &scene.systems {
+        for sys in scene.systems.iter().filter(|s| s.dark < 1.0) {
             let Some(owner) = sys.owner else { continue };
             let at = cam.to_px(sys.galaxy, stage);
             let radius = (560_000.0 * cam.scale).max(30.0);
@@ -1105,6 +1125,17 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
                 paint.glow(at, r * 1.25, Color::srgb(0.35, 0.18, 0.45), 0.10);
                 paint.disc(at, r, Color::srgba(0.01, 0.0, 0.02, 0.55));
             }
+        }
+    }
+
+    // The Cascade: taken systems are a hole in the light, systems it's
+    // reaching are dimming. No outline, as in the prologue.
+    for sys in scene.systems.iter().filter(|s| s.dark > 0.0) {
+        let at = cam.to_px(sys.galaxy, stage);
+        let r = (420_000.0 * cam.scale).max(10.0) * (0.6 + 0.4 * sys.dark.min(1.0));
+        if paint.on_stage(at, r) {
+            paint.glow(at, r * 1.3, Color::srgb(0.30, 0.15, 0.40), 0.08 * sys.dark.min(1.0));
+            paint.disc(at, r, Color::srgba(0.0, 0.0, 0.01, 0.75 * sys.dark.min(1.0)));
         }
     }
 

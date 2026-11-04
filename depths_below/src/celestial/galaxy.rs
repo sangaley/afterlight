@@ -89,6 +89,7 @@ pub fn haven_def() -> StarSystemDef {
         discovery: SystemDiscovery::Visited,
         last_updated: 0.0,
         resource_fraction_remaining: 1.0,
+        dark: 0.0,
     }
 }
 
@@ -291,6 +292,7 @@ pub fn generate_galaxy_map(galaxy_seed: u64) -> GalaxyMap {
             discovery: SystemDiscovery::Unknown,
             last_updated: 0.0,
             resource_fraction_remaining: 1.0,
+            dark: 0.0,
         });
     }
 
