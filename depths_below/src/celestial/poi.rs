@@ -214,6 +214,9 @@ impl KeepClear<'_> {
 }
 
 /// Spawn POIs when a new star system is generated
+/// How much richer a wreck is in a system the dark has taken.
+pub const DARK_HAUL: u32 = 4;
+
 pub fn spawn_system_pois(
     commands: &mut Commands,
     keep_clear: &KeepClear,
@@ -228,7 +231,11 @@ pub fn spawn_system_pois(
     records: &[&'static crate::narrative::logs::LogEntryDef],
     // Slots already stripped on an earlier visit (LootedPois::for_system).
     looted: &[u32],
+    // Taken by the Cascade (narrative::front): everything here stopped where
+    // it was, and nobody has stripped it since. Rich, if you can stand it.
+    in_the_dark: bool,
 ) {
+    let haul = if in_the_dark { DARK_HAUL } else { 1 };
     let system_center = keep_clear.center;
     // Derelict ships (1-3 per system, and at least one per record held)
     let derelict_count = rng.gen_range(1..=3).max(records.len());
@@ -263,7 +270,7 @@ pub fn spawn_system_pois(
                 looted: looted.contains(&(i as u32)),
                 discovered: false,
                 name: format!("{} derelict", super::galaxy::system_name(system_id)),
-                loot_value: rng.gen_range(50..200),
+                loot_value: rng.gen_range(50..200) * haul,
             },
             PoiSlot(i as u32),
             StarSystemMember { system_id },
@@ -307,7 +314,7 @@ pub fn spawn_system_pois(
                 looted: looted.contains(&slot),
                 discovered: false,
                 name: format!("{} anomaly", super::galaxy::system_name(system_id)),
-                loot_value: rng.gen_range(100..500),
+                loot_value: rng.gen_range(100..500) * haul,
             },
             StarSystemMember { system_id },
         )).id();
@@ -550,7 +557,7 @@ mod loot_memory_tests {
             .run_system_once(move |mut commands: Commands| {
                 let keep_clear = KeepClear { center: Vec2::ZERO, star_radius: 40_000.0, planets: &[] };
                 let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-                spawn_system_pois(&mut commands, &keep_clear, SYSTEM, None, &[], &mut rng, &[], &looted);
+                spawn_system_pois(&mut commands, &keep_clear, SYSTEM, None, &[], &mut rng, &[], &looted, false);
             })
             .unwrap();
         let mut q = world.query::<(&PoiSlot, &SpacePoi)>();

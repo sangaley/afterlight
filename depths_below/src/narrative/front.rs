@@ -42,11 +42,18 @@ pub fn seed_origin(galaxy: &mut GalaxyMap) -> bool {
         return false;
     }
     let Some(id) = origin(galaxy) else { return false };
-    if let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) {
-        darken(sys, TAKEN);
-        return true;
+    take(galaxy, id)
+}
+
+/// Take a system outright: dark, and nobody's.
+pub fn take(galaxy: &mut GalaxyMap, id: u32) -> bool {
+    let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) else { return false };
+    if is_spared(sys) {
+        return false;
     }
-    false
+    darken(sys, TAKEN);
+    go_dark(galaxy, id);
+    true
 }
 
 /// Take a system (or darken it this far), and put it on the map: the front
@@ -59,6 +66,30 @@ pub fn darken(sys: &mut StarSystemDef, to: f32) {
     if sys.discovery == crate::celestial::resources::SystemDiscovery::Unknown {
         sys.discovery = crate::celestial::resources::SystemDiscovery::Located;
     }
+}
+
+/// What a system loses when the dark takes it: its owner, and the owner's
+/// capital moves to their nearest system still standing. Returns who held
+/// it, and whether it was their capital.
+pub fn go_dark(galaxy: &mut GalaxyMap, id: u32) -> Option<(AiShipType, bool)> {
+    let i = galaxy.systems.iter().position(|s| s.id == id)?;
+    let (from, was_capital, pos) = (galaxy.systems[i].faction, galaxy.systems[i].capital, galaxy.systems[i].galaxy_pos);
+    galaxy.systems[i].faction = None;
+    galaxy.systems[i].capital = false;
+    let loser = from?;
+    if was_capital {
+        let next = galaxy
+            .systems
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.faction == Some(loser) && !is_taken(s))
+            .min_by(|(_, a), (_, b)| a.galaxy_pos.distance(pos).total_cmp(&b.galaxy_pos.distance(pos)))
+            .map(|(j, _)| j);
+        if let Some(j) = next {
+            galaxy.systems[j].capital = true;
+        }
+    }
+    Some((loser, was_capital))
 }
 
 /// How many systems the dark has taken.
@@ -88,9 +119,7 @@ fn dark_from_env(mut galaxy: ResMut<GalaxyMap>, mut done: Local<bool>) {
     let mut far: Vec<(u32, f32)> = galaxy.systems.iter().filter(|s| !is_spared(s)).map(|s| (s.id, s.galaxy_pos.length())).collect();
     far.sort_by(|a, b| b.1.total_cmp(&a.1));
     for (id, _) in far.into_iter().take(n) {
-        if let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) {
-            darken(sys, TAKEN);
-        }
+        take(&mut galaxy, id);
     }
     info!("FRONT: DEPTHS_DARK took {n} systems");
 }
@@ -170,8 +199,8 @@ pub fn spread(galaxy: &mut GalaxyMap, systems: f32, ships_in: impl Fn(u32) -> us
 fn advance_front(
     time: Res<Time>,
     mut galaxy: ResMut<GalaxyMap>,
-    sim: Res<crate::ai_ship::components::WorldSimulation>,
-    contacts: Res<crate::diplomacy::contacts::Contacts>,
+    mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
+    mut contacts: ResMut<crate::diplomacy::contacts::Contacts>,
     queue: Res<super::reader::LogQueue>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
     mut steps_seen: Local<Option<u8>>,
@@ -193,13 +222,47 @@ fn advance_front(
         return;
     }
     let ships_in = |id: u32| sim.ships.iter().filter(|s| s.system_id == id && s.behavior != crate::ai_ship::components::SimBehavior::Dead).count();
-    for id in spread(&mut galaxy, creep + lurch, ships_in) {
+    let took = spread(&mut galaxy, creep + lurch, ships_in);
+    for id in took {
         let name = galaxy.systems.iter().find(|s| s.id == id).map_or(String::new(), |s| s.name.clone());
         info!("FRONT: {name} taken ({} gone)", taken_count(&galaxy));
         notes.write(crate::events::ShowNotification {
             message: format!("The dark has taken {name}. Nothing there answers."),
             notification_type: crate::events::NotificationType::Danger,
             duration: 8.0,
+        });
+        // Everyone there stops where they are.
+        for ship in sim.ships.iter_mut().filter(|s| s.system_id == id) {
+            ship.behavior = crate::ai_ship::components::SimBehavior::Dead;
+        }
+        // Its holder loses it; if it was their capital, they move, and some
+        // of their people don't get out.
+        if let Some((loser, true)) = go_dark(&mut galaxy, id) {
+            for who in crate::diplomacy::contacts::lose_in_the_fall(&mut contacts, loser, &mut rand::thread_rng()) {
+                notes.write(crate::events::ShowNotification {
+                    message: format!("{who} did not make it out of {name}."),
+                    notification_type: crate::events::NotificationType::Warning,
+                    duration: 6.0,
+                });
+            }
+        }
+    }
+}
+
+/// Nobody docks in the dark: a station there is shut, whoever built it.
+fn refuse_dark_docking(
+    galaxy: Res<GalaxyMap>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    mut next: ResMut<NextState<crate::states::GameState>>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    let dark = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)).is_some_and(is_taken);
+    if dark {
+        next.set(crate::states::GameState::Exploring);
+        notes.write(crate::events::ShowNotification {
+            message: "The station is dark. Nothing answers the docking call.".into(),
+            notification_type: crate::events::NotificationType::Warning,
+            duration: 5.0,
         });
     }
 }
@@ -217,7 +280,8 @@ impl Plugin for FrontPlugin {
         app.add_systems(Update, (dark_from_env, seed_front).chain()).add_systems(
             Update,
             advance_front.after(seed_front).run_if(in_state(crate::states::GameState::Exploring)),
-        );
+        )
+        .add_systems(OnEnter(crate::states::GameState::Docked), refuse_dark_docking);
     }
 }
 
@@ -237,6 +301,7 @@ mod tests {
             let gone = galaxy.systems.iter().find(|s| is_taken(s)).unwrap();
             assert!(!is_spared(gone), "seed {seed}: the dark started at Haven");
             assert_eq!(gone.haunt, Some(AiShipType::Shepherd), "seed {seed}: not the far edge");
+            assert_eq!(gone.faction, None, "seed {seed}: the origin still has an owner");
             assert_ne!(gone.discovery, crate::celestial::resources::SystemDiscovery::Unknown, "the front can't be seen");
             // Seeding again does nothing: the front is already there.
             assert!(!seed_origin(&mut galaxy));
@@ -269,6 +334,36 @@ mod tests {
         let haven = galaxy.systems.iter().find(|s| s.id == 0).unwrap();
         assert_eq!(haven.dark, 0.0);
         assert_eq!(taken_count(&galaxy), galaxy.systems.len() - 1, "the dark stalled short of everything else");
+    }
+
+    /// A taken capital moves to its holder's nearest standing system.
+    #[test]
+    fn a_taken_capital_moves() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let capital = crate::celestial::territory::capital_of(&galaxy, AiShipType::BrokenChoir).unwrap();
+        galaxy.systems.iter_mut().find(|s| s.id == capital).unwrap().dark = TAKEN;
+        assert_eq!(go_dark(&mut galaxy, capital), Some((AiShipType::BrokenChoir, true)));
+        let moved = crate::celestial::territory::capital_of(&galaxy, AiShipType::BrokenChoir);
+        assert!(moved.is_some_and(|m| m != capital), "the Choir have no capital");
+        let gone = galaxy.systems.iter().find(|s| s.id == capital).unwrap();
+        assert_eq!(gone.faction, None);
+    }
+
+    /// Docking in a taken system bounces you straight back out.
+    #[test]
+    fn nobody_docks_in_the_dark() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        take(&mut galaxy, 5);
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<crate::events::ShowNotification>()
+            .insert_resource(galaxy)
+            .insert_resource(crate::celestial::resources::SystemStreamingManager { loaded_system: Some(5), ..default() })
+            .init_resource::<NextState<crate::states::GameState>>()
+            .add_systems(Update, refuse_dark_docking);
+        app.update();
+        let next = app.world().resource::<NextState<crate::states::GameState>>();
+        assert!(matches!(next, NextState::Pending(crate::states::GameState::Exploring)), "{next:?}");
     }
 
     /// Crowds and your own route pull it; nearer Haven pulls it too.

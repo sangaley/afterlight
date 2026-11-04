@@ -313,6 +313,11 @@ pub fn ensure_system_population(sim: &mut WorldSimulation, galaxy_map: &crate::c
         return;
     }
     if let Some(system) = galaxy_map.systems.iter().find(|s| s.id == system_id) {
+        // Nothing new arrives in the dark (narrative::front): what was there
+        // when it was taken stays where it stopped.
+        if crate::narrative::front::is_taken(system) {
+            return;
+        }
         let borders = crate::celestial::territory::border_factions(galaxy_map, system_id);
         spawn_system_faction_population(sim, system);
         spawn_visitors(sim, system, &borders);

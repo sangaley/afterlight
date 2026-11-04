@@ -312,7 +312,11 @@ fn advance(
         let Some(def) = step(mark.step) else { continue };
         info!("SUMMIT step {} won ({})", mark.step, if mark.forced { "by force" } else { "by deal" });
         contacts.summit.done = mark.step;
-        queue.push_card("A PIECE OF THE SUMMIT RECORD", def.piece_title.clone(), def.piece.clone());
+        // A faction the dark took entirely can't hand its piece over: the
+        // Abbess pulls it out herself, and not all of it comes.
+        let lost = contact_of(mark.step).is_some_and(|c| capital_of(&galaxy, c.faction).is_none());
+        let piece = if lost { format!("{}\n\n(Recovered from the dark by the Abbess. Some of it did not come back.)", def.piece) } else { def.piece.clone() };
+        queue.push_card("A PIECE OF THE SUMMIT RECORD", def.piece_title.clone(), piece);
         queue.set_gist(&def.piece_title, def.gist.clone());
         queue.push_card("OVER THE COMM", "THE ABBESS".into(), abbess_after(mark.step, &galaxy));
         consequences(mark, &mut standing, &mut unlocks, &mut inventory, &mut notes);
@@ -372,6 +376,21 @@ pub fn summit_site(galaxy: &GalaxyMap) -> Vec2 {
 /// galaxy units of radius, or None before step 2.
 pub fn scar_radius(steps_done: u8) -> Option<f32> {
     (steps_done >= 2).then(|| 250_000.0 + (steps_done - 2) as f32 * 200_000.0)
+}
+
+/// The step's faction is gone (the dark took all of it): nobody is left to
+/// trade the piece or take it from, so the Abbess recovers it, broken.
+fn pieces_from_the_dark(contacts: Res<Contacts>, galaxy: Res<GalaxyMap>, mut won: MessageWriter<SummitStepWon>, mut sent: Local<Option<u8>>) {
+    let Some(n) = contacts.summit.current() else { return };
+    if *sent == Some(n) {
+        return;
+    }
+    let Some(who) = contact_of(n) else { return };
+    if capital_of(&galaxy, who.faction).is_none() && !galaxy.systems.is_empty() {
+        *sent = Some(n);
+        info!("SUMMIT step {n}: {:?} is gone; the Abbess recovers the piece", who.faction);
+        won.write(SummitStepWon(StoryMark { step: n, forced: false }));
+    }
 }
 
 /// What the old, rich factions call you once the summit minutes are out
@@ -436,7 +455,7 @@ pub struct SummitPlugin;
 impl Plugin for SummitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SummitObjective>()
-            .add_systems(Update, (pin_from_env, hail_from_the_silence, old_ones_hail).chain().run_if(in_state(GameState::Exploring)))
+            .add_systems(Update, (pin_from_env, hail_from_the_silence, old_ones_hail, pieces_from_the_dark).chain().run_if(in_state(GameState::Exploring)))
             .add_systems(Update, (advance, update_objective).chain());
     }
 }
@@ -658,6 +677,23 @@ mod tests {
         assert!(matches!(&rows[0], BoardRow::Found(1, _, gist) if gist == &step(1).unwrap().gist));
         assert!(matches!(&rows[1], BoardRow::Next(2, _, w) if w.contains(&contact_of(2).unwrap().name)));
         assert!(rows[2..].iter().all(|r| matches!(r, BoardRow::Unknown(_))));
+    }
+
+    /// A step whose faction the dark took entirely arrives anyway, broken.
+    #[test]
+    fn a_lost_faction_still_gives_up_its_piece() {
+        let mut app = story_app(SummitProgress { hailed: true, commissioned: true, ..default() });
+        app.add_systems(Update, pieces_from_the_dark.before(advance));
+        let princes = contact_of(1).unwrap().faction;
+        for s in app.world_mut().resource_mut::<GalaxyMap>().systems.iter_mut().filter(|s| s.faction == Some(princes)) {
+            s.faction = None;
+            s.capital = false;
+        }
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<Contacts>().summit.done, 1);
+        let q = &app.world().resource::<LogQueue>().pending;
+        assert!(q[0].1.contains("Recovered from the dark"), "{}", q[0].1);
     }
 
     /// The progress survives a save: it rides on Contacts, which is saved.

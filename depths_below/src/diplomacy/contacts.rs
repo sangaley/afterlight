@@ -170,6 +170,24 @@ pub fn present_at<'a>(
     here
 }
 
+/// A faction's capital fell (to a rival, or to the dark): one in three of its
+/// people don't get out. Story contacts always do. Returns the names of the
+/// lost the player had met.
+pub fn lose_in_the_fall(contacts: &mut Contacts, loser: AiShipType, rng: &mut impl Rng) -> Vec<String> {
+    let mut lost = Vec::new();
+    for def in all().iter().filter(|c| c.faction == loser && c.role != ContactRole::Outpost && !c.story) {
+        if contacts.is_lost(&def.id) || !rng.gen_bool(LOST_IN_THE_FALL) {
+            continue;
+        }
+        let met = contacts.state(&def.id).is_some_and(|s| s.met);
+        contacts.state_mut(&def.id).lost = true;
+        if met {
+            lost.push(def.name.clone());
+        }
+    }
+    lost
+}
+
 /// A capital fell: its people run for the faction's next capital, and some
 /// don't make it. Story contacts always do.
 pub fn contacts_flee_fallen_capitals(
@@ -187,19 +205,12 @@ pub fn contacts_flee_fallen_capitals(
             continue;
         }
         let name = galaxy.systems.iter().find(|s| s.id == flip.system_id).map_or(String::new(), |s| s.name.clone());
-        for def in all().iter().filter(|c| c.faction == loser && c.role != ContactRole::Outpost && !c.story) {
-            if contacts.is_lost(&def.id) || !rng.gen_bool(LOST_IN_THE_FALL) {
-                continue;
-            }
-            let met = contacts.state(&def.id).is_some_and(|s| s.met);
-            contacts.state_mut(&def.id).lost = true;
-            if met {
-                notes.write(crate::events::ShowNotification {
-                    message: format!("{} did not make it out of {}", def.name, name),
-                    notification_type: crate::events::NotificationType::Warning,
-                    duration: 5.0,
-                });
-            }
+        for who in lose_in_the_fall(&mut contacts, loser, &mut rng) {
+            notes.write(crate::events::ShowNotification {
+                message: format!("{who} did not make it out of {name}"),
+                notification_type: crate::events::NotificationType::Warning,
+                duration: 5.0,
+            });
         }
     }
     // Where every faction rules from now, for the next fall.

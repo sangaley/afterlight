@@ -602,7 +602,7 @@ pub fn spawn_system_contents(
         star_radius: system_info.star_radius,
         planets: &system_info.planet_paths,
     };
-    super::poi::spawn_system_pois(commands, &keep_clear, def.id, Some(station), &planet_positions, &mut rng, records, looted);
+    super::poi::spawn_system_pois(commands, &keep_clear, def.id, Some(station), &planet_positions, &mut rng, records, looted, crate::narrative::front::is_taken(def));
 
     system_info
 }
