@@ -71,10 +71,41 @@ fn phase_for(level: f32) -> u8 {
     }
 }
 
+/// How near ships have to be to count as a crowd.
+const CROWD_RANGE: f32 = 30_000.0;
+
+/// Once the Preserve's specimen log has said it (Summit Record step 4: it
+/// feeds on connection), the instruments act it out: no ships near, they stay
+/// honest; the more ships near, the more often and the worse they lie.
+/// Returns (attempt at all, extra chance, worst phase).
+pub fn crowd_effect(crowd: usize) -> (bool, f32, u8) {
+    let phase = if crowd >= 8 { 3 } else if crowd >= 3 { 2 } else { 1 };
+    (crowd > 0, (crowd as f32 * 0.08).min(0.6), phase)
+}
+
+#[cfg(test)]
+mod crowd_tests {
+    use super::crowd_effect;
+
+    /// Alone, honest; in a crowd, worse the bigger it is.
+    #[test]
+    fn crowds_feed_it() {
+        assert!(!crowd_effect(0).0);
+        assert!(crowd_effect(1).0);
+        assert!(crowd_effect(3).2 > crowd_effect(1).2);
+        assert!(crowd_effect(10).1 > crowd_effect(2).1);
+        assert_eq!(crowd_effect(20).2, 3);
+    }
+}
+
+#[allow(clippy::type_complexity)]
 fn drive_interference(
     time: Res<Time>,
     cascade: Res<CascadeState>,
     mut state: ResMut<Interference>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
+    player: Query<&GlobalTransform, With<crate::components::Ship>>,
+    ships: Query<&GlobalTransform, (With<crate::ai_ship::components::AiShip>, Without<crate::ai_ship::components::AiShipWreck>)>,
 ) {
     if state.forced > 0.0 {
         state.forced -= time.delta_secs();
@@ -82,11 +113,17 @@ fn drive_interference(
         state.active = state.forced.max(0.0);
         return;
     }
+    // After step 4 the crowd around you decides how bad it gets (crowd_effect).
+    let crowd = (contacts.summit.done >= 4).then(|| {
+        let at = player.single().map(|t| t.translation().truncate()).unwrap_or_default();
+        crowd_effect(ships.iter().filter(|t| t.translation().truncate().distance(at) < CROWD_RANGE).count())
+    });
     state.phase = phase_for(cascade.level);
     if state.phase == 0 {
         state.active = 0.0;
         return;
     }
+    state.phase = state.phase.max(crowd.map_or(0, |c| c.2));
 
     if state.active > 0.0 {
         state.active -= time.delta_secs();
@@ -100,6 +137,11 @@ fn drive_interference(
     state.timer = 0.0;
 
     let mut rng = rand::thread_rng();
+    // Alone, after step 4, they stay honest.
+    if crowd.is_some_and(|c| !c.0) {
+        return;
+    }
+    let extra = crowd.map_or(0.0, |c| c.1);
     // Longer and more certain the further along the run is. Phase 1 is a
     // flicker you might put down to your own eyes.
     let (chance, dur) = match state.phase {
@@ -107,7 +149,7 @@ fn drive_interference(
         2 => (0.55, rng.gen_range(0.4..1.0)),
         _ => (0.75, rng.gen_range(0.9..2.0)),
     };
-    if rng.gen::<f32>() < chance {
+    if rng.gen::<f32>() < (chance + extra).min(0.95) {
         state.active = dur;
     }
 }

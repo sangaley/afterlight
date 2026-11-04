@@ -329,6 +329,61 @@ fn advance(
     }
 }
 
+/// Where the summit station was: out along the road to the Choir's capital
+/// (step 3), so the tear lies on the way outward and never over Haven (the
+/// middle of all the capitals sat right on top of it). Worked out from the
+/// galaxy, never saved.
+pub fn summit_site(galaxy: &GalaxyMap) -> Vec2 {
+    capital_of(galaxy, AiShipType::BrokenChoir)
+        .and_then(|(id, _)| galaxy.systems.iter().find(|s| s.id == id))
+        .map_or(Vec2::new(1_500_000.0, 0.0), |s| s.galaxy_pos * 0.55)
+}
+
+/// The tear on the galaxy map where the summit station was, once the black
+/// box has said what happened there (step 2), wider with each step after:
+/// galaxy units of radius, or None before step 2.
+pub fn scar_radius(steps_done: u8) -> Option<f32> {
+    (steps_done >= 2).then(|| 250_000.0 + (steps_done - 2) as f32 * 200_000.0)
+}
+
+/// What the old, rich factions call you once the summit minutes are out
+/// (step 1): they know what happened to your people, and you are the last.
+fn the_last_one(faction: AiShipType) -> Option<&'static str> {
+    match faction {
+        AiShipType::GildedThrone => Some("Gilded Throne patrol: \"So the last one is still flying. Our clients will want to know.\""),
+        AiShipType::MerchantPrinces => Some("Merchant Princes harbourmaster: \"The last one. We had you priced as lost.\""),
+        AiShipType::EternalHegemony => Some("Eternal Hegemony, on every channel: \"The last one. Stand down and be counted.\""),
+        _ => None,
+    }
+}
+
+/// After step 1, the first time each old faction sees you, it says so.
+fn old_ones_hail(
+    contacts: Res<Contacts>,
+    galaxy: Res<GalaxyMap>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+    mut last: Local<Option<u32>>,
+    mut heard: Local<Vec<AiShipType>>,
+) {
+    if streaming.loaded_system == *last {
+        return;
+    }
+    *last = streaming.loaded_system;
+    if contacts.summit.done < 1 {
+        return;
+    }
+    let Some(sys) = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)) else { return };
+    let Some(who) = sys.haunt.or(sys.faction).filter(|f| !heard.contains(f)) else { return };
+    let Some(line) = the_last_one(who) else { return };
+    heard.push(who);
+    notes.write(crate::events::ShowNotification {
+        message: line.to_string(),
+        notification_type: crate::events::NotificationType::Warning,
+        duration: 9.0,
+    });
+}
+
 /// Debug override, in the house style (`DEPTHS_CASCADE`): `DEPTHS_SUMMIT=2`
 /// starts with the Abbess met and two steps done, so a late step can be
 /// looked at without flying the whole chain. Applied once per launch.
@@ -353,7 +408,7 @@ pub struct SummitPlugin;
 impl Plugin for SummitPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SummitObjective>()
-            .add_systems(Update, (pin_from_env, hail_from_the_silence).chain().run_if(in_state(GameState::Exploring)))
+            .add_systems(Update, (pin_from_env, hail_from_the_silence, old_ones_hail).chain().run_if(in_state(GameState::Exploring)))
             .add_systems(Update, (advance, update_objective).chain());
     }
 }
@@ -537,6 +592,32 @@ mod tests {
         assert!(app.world().resource::<Contacts>().summit.ended);
         let o = app.world().resource::<SummitObjective>();
         assert!(o.line.as_ref().unwrap().contains("beyond this demo"));
+    }
+
+    /// Only the old, rich factions call you the last one, in plain words.
+    #[test]
+    fn only_the_old_ones_know() {
+        for f in crate::celestial::territory::TERRITORIAL {
+            let line = the_last_one(f);
+            assert_eq!(line.is_some(), matches!(f, AiShipType::GildedThrone | AiShipType::MerchantPrinces), "{f:?}");
+        }
+        let eternal = the_last_one(AiShipType::EternalHegemony).unwrap();
+        assert!(eternal.is_ascii() && eternal.contains("last one"));
+    }
+
+    /// No scar until the black box (step 2); after it, wider every step.
+    #[test]
+    fn the_scar_opens_at_step_two_and_grows() {
+        assert_eq!(scar_radius(0), None);
+        assert_eq!(scar_radius(1), None);
+        assert!(scar_radius(3).unwrap() > scar_radius(2).unwrap());
+        // Never over Haven, at its widest in the demo.
+        for seed in [1u64, 42, 777] {
+            let galaxy = crate::celestial::galaxy::generate_galaxy_map(seed);
+            let site = summit_site(&galaxy);
+            assert!(site.length() < crate::celestial::galaxy::GALAXY_RADIUS);
+            assert!(site.length() > scar_radius(last_step()).unwrap() * 0.8, "seed {seed}: the scar covers Haven");
+        }
     }
 
     /// The progress survives a save: it rides on Contacts, which is saved.

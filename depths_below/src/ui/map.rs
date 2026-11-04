@@ -281,6 +281,9 @@ struct Scene {
     hull: f32,
     hold: (f32, f32),
     cargo: Vec<(String, u32)>,
+    /// The tear where the summit station was (narrative::summit): galaxy
+    /// position and radius, once the black box has been found.
+    scar: Option<(Vec2, f32)>,
 }
 
 /// Where you are on the map: your system, or open space after a blind jump.
@@ -465,6 +468,8 @@ pub struct MapWorld<'w, 's> {
     inventory: Res<'w, Inventory>,
     /// The logs read so far, for the notes they leave on the map.
     stats: Res<'w, crate::resources::Statistics>,
+    /// How far the Summit Record has come (the scar).
+    contacts: Res<'w, crate::diplomacy::contacts::Contacts>,
 }
 
 /// Off-screen ships of one system as fleets on the map.
@@ -618,6 +623,8 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         hull: world.hull.hull_integrity,
         hold: (world.inventory.current_weight, world.inventory.max_capacity),
         cargo: world.inventory.items.iter().map(|(item, count)| (item.name().to_string(), *count)).collect(),
+        scar: crate::narrative::summit::scar_radius(world.contacts.summit.done)
+            .map(|r| (crate::narrative::summit::summit_site(&world.galaxy_map), r)),
     }
 }
 
@@ -1081,6 +1088,23 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
             }
             let alpha = (if sys.visited { 0.11 } else { 0.07 }) * (1.0 - open);
             paint.glow(at, radius, faction_map_color(owner), alpha);
+        }
+    }
+
+    // The tear where the summit was: a cluster of dark lobes, no outline,
+    // light simply gone (the prologue's Cascade look).
+    if let Some((site, radius)) = scene.scar {
+        const LOBES: [(f32, f32, f32); 7] = [
+            (0.0, 0.0, 1.0), (0.6, 0.45, 0.7), (2.1, 0.55, 0.6), (3.3, 0.4, 0.75),
+            (4.4, 0.6, 0.5), (5.4, 0.35, 0.65), (1.3, 0.8, 0.35),
+        ];
+        for (angle, out, size) in LOBES {
+            let at = cam.to_px(site + Vec2::from_angle(angle) * radius * out, stage);
+            let r = (radius * size * cam.scale).max(6.0);
+            if paint.on_stage(at, r) {
+                paint.glow(at, r * 1.25, Color::srgb(0.35, 0.18, 0.45), 0.10);
+                paint.disc(at, r, Color::srgba(0.01, 0.0, 0.02, 0.55));
+            }
         }
     }
 

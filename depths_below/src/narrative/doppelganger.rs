@@ -74,8 +74,12 @@ fn maybe_send_it(
     mut notifications: MessageWriter<ShowNotification>,
     stations: Res<crate::world::home_base::SystemStations>,
     faction_stations: Res<crate::diplomacy::stations::FactionStations>,
+    contacts: Res<crate::diplomacy::contacts::Contacts>,
 ) {
-    if state.spent || cascade.level < EARLIEST {
+    // Once the Choir have played you your own voice (Summit Record step 3),
+    // it comes for certain: what the piece said, the game now does.
+    let certain = contacts.summit.done >= 3;
+    if state.spent || (cascade.level < EARLIEST && !certain) {
         return;
     }
     if !crate::ai_ship::spawner::has_mirror_design() {
@@ -89,7 +93,7 @@ fn maybe_send_it(
     state.timer = 0.0;
 
     let mut rng = rand::thread_rng();
-    if rng.gen::<f32>() > CHANCE {
+    if !certain && rng.gen::<f32>() > CHANCE {
         return;
     }
 
