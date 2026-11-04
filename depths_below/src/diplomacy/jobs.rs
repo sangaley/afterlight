@@ -55,6 +55,10 @@ pub enum JobKind {
     /// Spend a while in a system with cargo aboard, and someone there takes
     /// it off your hands.
     Handoff { system: u32, item: ItemType, count: u32, seconds: f32 },
+    /// Steal one of `victim`'s signature modules (diplomacy::signatures) for
+    /// the giver: destroy one of their ships in `system`, and the sealed
+    /// crate comes aboard; then dock at the giver's station in `to_system`.
+    Theft { system: u32, victim: AiShipType, signature: String, taken: bool, to_system: u32 },
 }
 
 /// A step of the Summit Record, and which way the player chose to take it.
@@ -105,6 +109,7 @@ impl Job {
             | JobKind::Strike { system, .. }
             | JobKind::Handoff { system, .. } => system,
             JobKind::Delivery { to_system, .. } => to_system,
+            JobKind::Theft { system, taken, to_system, .. } => if taken { to_system } else { system },
         }
     }
 
@@ -122,6 +127,8 @@ impl Job {
             JobKind::Bounty { .. } | JobKind::Raid { .. } => "hunting".into(),
             JobKind::Strike { kills, needed, .. } => format!("{kills}/{needed} destroyed"),
             JobKind::Handoff { seconds, .. } => format!("{:.0}/{:.0}s waiting", seconds, HANDOFF_SECONDS),
+            JobKind::Theft { taken: false, victim, .. } => format!("take it off a {} ship", faction_display_name(*victim)),
+            JobKind::Theft { taken: true, .. } => "crate aboard: dock to hand it over".into(),
         }
     }
 }
@@ -241,7 +248,7 @@ fn kinds_for(role: ContactRole) -> &'static [&'static str] {
     match role {
         ContactRole::Military => &["bounty", "hold"],
         ContactRole::Trade => &["escort", "delivery"],
-        ContactRole::Underworld => &["raid", "survey"],
+        ContactRole::Underworld => &["raid", "survey", "theft"],
         ContactRole::Outpost => &["bounty", "delivery", "survey"],
         ContactRole::Hub => &["survey"],
     }
@@ -377,6 +384,35 @@ pub fn offer_for(def: &ContactDef, relationship: f32, world: &World, rng: &mut i
                         format!("Carry {}, sealed, to our station at {}. Don't sell them.", cargo_count(item, count), name_of(to)),
                         pay(250.0 + count as f32 * 60.0),
                     ));
+                }
+            }
+            "theft" => {
+                // An enemy of theirs with a military market worth robbing,
+                // and the nearest system it holds.
+                let here_pos = world.galaxy.systems.iter().find(|s| s.id == world.here).map_or(Vec2::ZERO, |s| s.galaxy_pos);
+                let targets: Vec<_> = world
+                    .galaxy
+                    .systems
+                    .iter()
+                    .filter_map(|s| s.faction.map(|f| (s, f)))
+                    .filter(|(s, f)| s.id != world.here && factions_hostile(faction, *f) && super::signatures::of(*f).next().is_some())
+                    .collect();
+                let nearest = targets.iter().min_by(|a, b| a.0.galaxy_pos.distance(here_pos).total_cmp(&b.0.galaxy_pos.distance(here_pos)));
+                if let Some(&(sys, victim)) = nearest {
+                    let wares: Vec<_> = super::signatures::of(victim).collect();
+                    if let Some(sig) = wares.choose(rng) {
+                        return Some(job(
+                            JobKind::Theft { system: sys.id, victim, signature: sig.id.to_string(), taken: false, to_system: world.here },
+                            format!("Theft: a {} {}", faction_display_name(victim), sig.name),
+                            format!(
+                                "We want to know how {} builds a {}. Take one off one of their ships in {} and bring it here, sealed.",
+                                faction_display_name(victim),
+                                sig.name,
+                                sys.name
+                            ),
+                            pay(900.0 + sig.price as f32 * 0.3),
+                        ));
+                    }
                 }
             }
             "survey" => {
@@ -664,6 +700,19 @@ pub fn track_jobs(
                 }
                 (*seconds >= HANDOFF_SECONDS).then_some(true)
             }
+            // Taken in a fight here; handed over at the dock (deliver_cargo).
+            JobKind::Theft { system, victim, taken, signature, .. } => {
+                if !*taken && here == Some(*system) && kills.contains(victim) {
+                    *taken = true;
+                    let name = super::signatures::get(signature).map_or("module", |s| s.name);
+                    notes.write(crate::events::ShowNotification {
+                        message: format!("A sealed crate is aboard: their {name}. Take it back to be paid."),
+                        notification_type: crate::events::NotificationType::Success,
+                        duration: 5.0,
+                    });
+                }
+                None
+            }
             // Settled at the dock (deliver_cargo).
             JobKind::Delivery { .. } => None,
         };
@@ -754,6 +803,15 @@ pub fn deliver_cargo(
     let Some(faction) = market.dock_terms.as_ref().and_then(|t| t.faction) else { return };
     let Some(here) = streaming.loaded_system else { return };
     for job in jobs.list.iter_mut().filter(|j| j.status == JobStatus::Active && j.faction == faction) {
+        if let JobKind::Theft { taken: true, to_system, victim, .. } = job.kind {
+            if to_system == here {
+                standing.change(victim, -6.0, "Their work was stolen and sold");
+                if let Some(mark) = settle(job, true, &mut contacts, &mut standing, &mut currency, &mut galaxy, &mut war, &mut notes) {
+                    story.write(SummitStepWon(mark));
+                }
+            }
+            continue;
+        }
         let JobKind::Delivery { to_system, item, count } = job.kind else { continue };
         if to_system != here {
             continue;
@@ -988,6 +1046,46 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A theft: the crate comes aboard when one of the victim's ships dies
+    /// in the right system, and it pays at the giver's dock, at the cost of
+    /// the victim's standing.
+    #[test]
+    fn a_theft_is_taken_in_a_fight_and_paid_at_the_dock() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let here = crate::celestial::territory::capital_of(&galaxy, AiShipType::RecursiveKingdom).unwrap();
+        let world_sim = WorldSimulation::default();
+        let war = BorderWar::default();
+        let world = World { sim: &world_sim, galaxy: &galaxy, war: &war, here };
+        let underworld = super::super::contacts::all()
+            .iter()
+            .find(|c| c.faction == AiShipType::RecursiveKingdom && c.role == ContactRole::Underworld)
+            .unwrap();
+        let mut rng = rand::thread_rng();
+        let job = (0..60)
+            .find_map(|_| offer_for(underworld, 0.0, &world, &mut rng).filter(|j| matches!(j.kind, JobKind::Theft { .. })))
+            .expect("an underworld contact never offered a theft");
+        let JobKind::Theft { victim, ref signature, to_system, .. } = job.kind else { unreachable!() };
+        assert!(factions_hostile(AiShipType::RecursiveKingdom, victim));
+        assert_eq!(super::super::signatures::get(signature).unwrap().faction, victim);
+        assert_eq!(to_system, here);
+
+        let mut job = job.clone();
+        job.status = JobStatus::Active;
+        let JobKind::Theft { taken, .. } = &mut job.kind else { unreachable!() };
+        *taken = true;
+        let mut app = app_with(vec![job.clone()], here);
+        let mut market = crate::resources::MarketEvents::default();
+        market.dock_terms = Some(crate::resources::DockTerms {
+            faction: Some(AiShipType::RecursiveKingdom), name: "x".into(), standing: "Neutral", buy: 1.0, sell: 1.0,
+        });
+        let before = app.world().resource::<FactionStanding>().value(victim);
+        app.insert_resource(market).add_systems(Update, deliver_cargo);
+        app.update();
+        assert!(app.world().resource::<Jobs>().list.is_empty(), "the theft wasn't handed over");
+        assert_eq!(app.world().resource::<Currency>().credits, Currency::default().credits + job.reward);
+        assert!(app.world().resource::<FactionStanding>().value(victim) < before);
     }
 
     /// A strike counts only the named faction's ships, in its system.

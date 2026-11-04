@@ -356,16 +356,17 @@ fn spawn_built_skin(
 pub fn attach_player_shield(
     mut commands: Commands,
     ship_query: Query<Entity, (With<Ship>, Without<ShipShield>)>,
-    module_query: Query<(&Module, &ChildOf)>,
+    module_query: Query<(&Module, &ChildOf, Option<&crate::diplomacy::signatures::Signature>)>,
     transform_query: Query<(&Transform, &ChildOf), LiveBlockFilter>,
 ) {
     let Ok(ship) = ship_query.single() else { return };
 
     // Wait until the ship actually has modules so the extent is real
     let emitters = module_query.iter()
-        .filter(|(m, p)| p.parent() == ship && m.module_type == ModuleType::ShieldEmitter && m.health > 0.0)
-        .count() as f32;
-    let module_count = module_query.iter().filter(|(_, p)| p.parent() == ship).count();
+        .filter(|(m, p, _)| p.parent() == ship && m.module_type == ModuleType::ShieldEmitter && m.health > 0.0)
+        .map(|(_, _, sig)| emitter_weight(sig))
+        .sum::<f32>();
+    let module_count = module_query.iter().filter(|(_, p, _)| p.parent() == ship).count();
     if module_count == 0 { return; }
 
     let max = SHIELD_BASE_HP + emitters * SHIELD_HP_PER_EMITTER;
@@ -604,6 +605,12 @@ pub fn toggle_player_shield(
     });
 }
 
+/// How much shield one emitter is worth: one, or its signature's share more
+/// (diplomacy::signatures).
+fn emitter_weight(sig: Option<&crate::diplomacy::signatures::Signature>) -> f32 {
+    sig.map_or(1.0, |s| s.0.output)
+}
+
 /// Keeps the player's shield capacity in step with its live Shield Emitter
 /// count, so building an emitter at the dock grows the bubble and losing one in
 /// a fight shrinks it — instead of the capacity being frozen at first-launch.
@@ -611,16 +618,17 @@ pub fn toggle_player_shield(
 /// power HP flex on top and re-clamps `current`. AI shields keep their fixed
 /// faction capacity (this only runs for the Ship-marked player shield).
 pub fn refresh_player_shield_capacity(
-    module_query: Query<(&Module, &ChildOf)>,
+    module_query: Query<(&Module, &ChildOf, Option<&crate::diplomacy::signatures::Signature>)>,
     mut shield_query: Query<(Entity, &mut ShipShield), With<Ship>>,
 ) {
     let Ok((ship, mut shield)) = shield_query.single_mut() else { return };
     let emitters = module_query
         .iter()
-        .filter(|(m, p)| {
+        .filter(|(m, p, _)| {
             p.parent() == ship && m.module_type == ModuleType::ShieldEmitter && m.health > 0.0
         })
-        .count() as f32;
+        .map(|(_, _, sig)| emitter_weight(sig))
+        .sum::<f32>();
     let new_base = SHIELD_BASE_HP + emitters * SHIELD_HP_PER_EMITTER;
     if (shield.base_max - new_base).abs() > f32::EPSILON {
         shield.base_max = new_base;

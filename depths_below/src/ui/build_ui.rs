@@ -1342,7 +1342,14 @@ pub fn update_build_panel(
             text.0 = match build_state.premade_index().and_then(|i| kits.0.get(i)) {
                 Some(kit) => kit.name.clone(),
                 None if category == BuildCategory::Premade => "No pre-made weapons in designs/kits".to_string(),
-                None => build_state.selection_name().to_string(),
+                None => match build_state.current_selection() {
+                    // A signature version picked with V (diplomacy::signatures).
+                    BuildSelection::Module(mt) => match build_state.signature_for(mt) {
+                        Some(sig) => format!("{} ({})", sig.name, mt.name()),
+                        None => build_state.selection_name().to_string(),
+                    },
+                    _ => build_state.selection_name().to_string(),
+                },
             };
             // Color the name with the category color
             text_color.0 = category_color(category);
@@ -1369,6 +1376,15 @@ pub fn update_build_panel(
                         mat.radiation_shielding(),
                         mat.cost()
                     ), mat.cost())
+                }
+                (None, BuildSelection::Module(mt)) if build_state.signature_for(mt).is_some() => {
+                    let def = registry.get(mt);
+                    let sig = build_state.signature_for(mt).unwrap();
+                    let cost = (def.cost as f32 * sig.build).round() as u32;
+                    (format!(
+                        "HP: {:.0} | Cost: {}c | + {} | - {} | V: next version",
+                        def.health * sig.health, cost, sig.edge, sig.cost
+                    ), cost)
                 }
                 (None, BuildSelection::Module(mt)) => {
                     let def = registry.get(mt);
@@ -1455,10 +1471,11 @@ pub fn update_build_info(
         if let Ok((mut text, mut text_color)) = text_query.get_mut(entity) {
             let mut total_gen = 0.0_f32;
             let mut total_use = 0.0_f32;
+            // The blocks' own figures, not the registry's: a signature block
+            // (diplomacy::signatures) makes or draws its own share.
             for module in module_query.iter() {
-                let def = registry.get(module.module_type);
-                total_gen += def.power_generation;
-                total_use += def.power_consumption;
+                total_gen += module.power_generation;
+                total_use += module.power_consumption;
             }
 
             let weakest_hull = hull_query.iter()
@@ -1522,7 +1539,7 @@ pub fn update_controls_help(
         hint.0 = if building {
             match current_build_state.get() {
                 BuildState::Placing => {
-                    "Click to place\nDrag to paint\nRight-click to remove\n\nR  rotate\nM  material\nTab  category\nPgUp/PgDn  turret / hull deck\nF2  power view\nEsc  done"
+                    "Click to place\nDrag to paint\nRight-click to remove\n\nR  rotate\nM  material\nV  signature version\nTab  category\nPgUp/PgDn  turret / hull deck\nF2  power view\nEsc  done"
                 }
                 BuildState::Deleting => "Click or drag to remove\n\nX  leave delete mode\nEsc  done",
                 BuildState::PlacingComponent => {

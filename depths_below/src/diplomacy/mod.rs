@@ -27,6 +27,7 @@ use crate::states::GameState;
 pub mod contacts;
 pub mod dock_tabs;
 pub mod jobs;
+pub mod signatures;
 pub mod stations;
 pub mod ui;
 
@@ -127,6 +128,11 @@ pub struct FactionStanding {
     /// once), for ai_ship::standing_spawns to answer with a war fleet.
     #[serde(skip)]
     pub provocations: Vec<AiShipType>,
+    /// Signature modules bought at military markets this run (ids, see
+    /// signatures.rs). They ride here because the market is the faction's,
+    /// and this saves and resets with the run.
+    #[serde(default)]
+    pub signatures: Vec<String>,
 }
 
 impl Default for FactionStanding {
@@ -138,6 +144,7 @@ impl Default for FactionStanding {
                 .collect(),
             log: Vec::new(),
             provocations: Vec::new(),
+            signatures: Vec::new(),
         }
     }
 }
@@ -368,12 +375,13 @@ impl Plugin for DiplomacyPlugin {
             .add_systems(Update, contacts::contacts_flee_fallen_capitals)
             .add_systems(
                 Update,
-                (dock_tabs::dock_tab_keys, dock_tabs::refresh_dock_tabs, jobs::deliver_cargo, dock_tabs::refresh_dock_hold)
+                (dock_tabs::dock_tab_keys, dock_tabs::military_keys, dock_tabs::refresh_dock_tabs, jobs::deliver_cargo, dock_tabs::refresh_dock_hold)
                     .chain()
                     .run_if(in_state(GameState::Docked)),
             )
             .init_resource::<jobs::Jobs>()
             .add_message::<jobs::SummitStepWon>()
+            .add_systems(Update, (signatures::grant_from_env, signatures::regrow, signatures::fuel_capacity))
             .add_systems(OnExit(GameState::Docked), dock_tabs::lapse_offers)
             .add_systems(Update, (jobs::track_jobs, jobs::standing_from_contracts));
     }

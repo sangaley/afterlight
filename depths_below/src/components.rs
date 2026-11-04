@@ -2591,16 +2591,18 @@ pub struct DockingServiceItem(pub usize);
 pub enum DockTab {
     #[default]
     Market,
+    Military,
     Bar,
     Comm,
 }
 
 impl DockTab {
-    pub const ALL: [DockTab; 3] = [DockTab::Market, DockTab::Bar, DockTab::Comm];
+    pub const ALL: [DockTab; 4] = [DockTab::Market, DockTab::Military, DockTab::Bar, DockTab::Comm];
 
     pub fn label(self) -> &'static str {
         match self {
             DockTab::Market => "Market",
+            DockTab::Military => "Military",
             DockTab::Bar => "Bar",
             DockTab::Comm => "Comm directory",
         }
@@ -2608,12 +2610,14 @@ impl DockTab {
 }
 
 /// On the station window: which tab is open, whether tabs exist here (a
-/// faction starport), and the comm directory's selected contact.
+/// faction starport), the comm directory's selected contact, and the
+/// military market's selected row.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DockTabState {
     pub tab: DockTab,
     pub tabs: bool,
     pub contact: usize,
+    pub item: usize,
 }
 
 /// The card around a service row (DockingServiceItem of the same index).

@@ -1368,7 +1368,7 @@ const MEDBAY_HEAL_RATE: f32 = 1.0;
 /// a `Transform` — so AI-ship crew fall out of this for free.
 fn medbay_healing(
     time: Res<Time>,
-    facility_query: Query<(&CrewFacility, &Module, &ChildOf), Without<DestroyedModule>>,
+    facility_query: Query<(&CrewFacility, &Module, &ChildOf, Option<&crate::diplomacy::signatures::Signature>), Without<DestroyedModule>>,
     room_map: Res<RoomMap>,
     ships: Query<(Entity, &GlobalTransform), (With<Ship>, Without<crate::ai_ship::components::OwnedByAiShip>)>,
     hostiles: Query<&GlobalTransform, With<crate::ai_ship::components::AiShip>>,
@@ -1386,7 +1386,7 @@ fn medbay_healing(
 
     let dt = time.delta_secs();
 
-    for (facility, module, parent) in facility_query.iter() {
+    for (facility, module, parent, signature) in facility_query.iter() {
         if facility.facility_type != FacilityType::MedBay || !module.is_active {
             continue;
         }
@@ -1406,7 +1406,8 @@ fn medbay_healing(
             continue;
         };
 
-        let heal_rate = MEDBAY_HEAL_RATE * condition * dt;
+        // A signature ward (diplomacy::signatures) heals its share faster.
+        let heal_rate = MEDBAY_HEAL_RATE * condition * signature.map_or(1.0, |s| s.0.output) * dt;
 
         for (mut crew, location) in crew_query.iter_mut() {
             if crew.health <= 0.0 || crew.health >= crew.max_health {

@@ -467,9 +467,11 @@ fn radar_ping_system(
 
     let Ok(ship_transform) = ship_query.single() else { return };
 
-    // Find active radar module
+    // The longest-reaching active radar answers, so a better one fitted
+    // beside the old one (a signature build) actually pings further.
     let radar_data = radar_query.iter()
-        .find(|(_, module)| module.is_active)
+        .filter(|(_, module)| module.is_active)
+        .max_by(|a, b| a.0.range.total_cmp(&b.0.range))
         .map(|(radar, _)| (radar.range, radar.noise_on_ping));
 
     let Some((range, noise)) = radar_data else {

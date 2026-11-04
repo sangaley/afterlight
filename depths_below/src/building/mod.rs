@@ -821,7 +821,36 @@ fn handle_build_input(
     registry: Res<ModuleRegistry>,
     unlocks: Res<crate::resources::Unlocks>,
     mut notifications: MessageWriter<ShowNotification>,
+    standing: Res<crate::diplomacy::FactionStanding>,
 ) {
+    // V: switch the selected block between plain and the signature versions
+    // you've bought (diplomacy::signatures).
+    if keyboard.just_pressed(KeyCode::KeyV) && *current_state.get() != BuildState::Inactive {
+        if let BuildSelection::Module(module_type) = build_state.current_selection() {
+            let owned: Vec<_> = standing
+                .signatures
+                .iter()
+                .filter_map(|id| crate::diplomacy::signatures::get(id))
+                .filter(|s| s.base == module_type)
+                .collect();
+            let message = if owned.is_empty() {
+                format!("No signature {} bought. Military markets sell them.", module_type.name())
+            } else {
+                let at = build_state.signature_for(module_type).and_then(|cur| owned.iter().position(|s| s.id == cur.id));
+                let next = match at {
+                    None => Some(owned[0]),
+                    Some(i) if i + 1 < owned.len() => Some(owned[i + 1]),
+                    Some(_) => None,
+                };
+                build_state.signature = next.map(|s| s.id);
+                match next {
+                    Some(s) => format!("Building {}: {}, {}", s.name, s.edge.to_lowercase(), s.cost.to_lowercase()),
+                    None => format!("Building plain {}", module_type.name()),
+                }
+            };
+            notifications.write(ShowNotification { message, notification_type: NotificationType::Info, duration: 3.0 });
+        }
+    }
     // B: Toggle build mode
     if keyboard.just_pressed(KeyCode::KeyB) {
         match current_state.get() {
@@ -1411,13 +1440,15 @@ fn handle_module_placement(
                 }
             }
             BuildSelection::Module(module_type) => {
+                // A signature version, if one is picked for this block (V).
+                let signed = build_state.signature_for(module_type).map(|s| blueprint::ModuleExtras { signature: Some(s.id.to_string()), ..default() });
                 place_module_events.write(PlaceModuleRequest {
                     module_type,
                     grid_position: pos,
                     rotation: rot,
                     custom_name: None,
                     subcomponents: None,
-            extras: None,
+                    extras: signed.clone(),
                     free: false,
                 });
                 // Symmetry: mirror module placement. The copy gets the same
@@ -1441,7 +1472,7 @@ fn handle_module_placement(
                             rotation: mirror_rot,
                             custom_name: None,
                             subcomponents: None,
-            extras: None,
+                            extras: signed,
                             free: false,
                         });
                     }
@@ -1709,9 +1740,11 @@ fn process_module_placement(
     let Ok(ship) = ship_query.single() else { return };
 
     for event in events.read() {
+        let signature = event.extras.as_ref().and_then(|e| e.signature.as_deref()).and_then(crate::diplomacy::signatures::get).filter(|s| s.base == event.module_type);
+        let price = |registry: &ModuleRegistry| (registry.get(event.module_type).cost as f32 * signature.map_or(1.0, |s| s.build)).round() as u32;
         // Same guard as hull placement: never spawn a paid module on credit.
         if !event.free {
-            let cost = registry.get(event.module_type).cost;
+            let cost = price(&registry);
             if currency.credits < cost {
                 notifications.write(ShowNotification {
                     message: format!("Not enough credits ({}c needed)", cost),
@@ -1738,7 +1771,7 @@ fn process_module_placement(
             )
         } else {
             // Spawn regular module
-            spawn_module(
+            crate::ship::spawn_module_signed(
                 &mut commands,
                 &asset_server,
                 ship,
@@ -1746,6 +1779,7 @@ fn process_module_placement(
                 event.grid_position,
                 event.rotation,
                 &registry,
+                signature,
             )
         };
 
@@ -1762,7 +1796,7 @@ fn process_module_placement(
         });
 
         if !event.free {
-            let cost = registry.get(event.module_type).cost;
+            let cost = price(&registry);
             currency.credits = currency.credits.saturating_sub(cost);
             history.record(build_history::BuildAction::PlaceModule {
                 entity,
@@ -1770,7 +1804,9 @@ fn process_module_placement(
                 cost,
             });
 
-            let message = if event.custom_name.is_some() {
+            let message = if let Some(sig) = signature {
+                format!("Placed {} -{}c", sig.name, cost)
+            } else if event.custom_name.is_some() {
                 format!("Placed Custom {} -{}c", event.module_type.name(), cost)
             } else {
                 format!("Placed {} -{}c", event.module_type.name(), cost)

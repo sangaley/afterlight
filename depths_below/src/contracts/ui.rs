@@ -560,6 +560,8 @@ fn job_whereabouts(
                 .map(crate::ui::format_range_km)
         }
         JobKind::Handoff { system, .. } => Some(if here == Some(*system) { "wait here".to_string() } else { elsewhere(*system) }),
+        JobKind::Theft { system, taken: false, .. } => (here != Some(*system)).then(|| elsewhere(*system)),
+        JobKind::Theft { to_system, taken: true, .. } => Some(if here == Some(*to_system) { "dock to hand it over".to_string() } else { format!("to {}", crate::celestial::galaxy::system_name(*to_system)) }),
         JobKind::Delivery { to_system, .. } => Some(if here == Some(*to_system) { "dock to deliver".to_string() } else { format!("to {}", crate::celestial::galaxy::system_name(*to_system)) }),
     }
 }

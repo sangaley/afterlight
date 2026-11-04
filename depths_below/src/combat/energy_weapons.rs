@@ -905,6 +905,7 @@ pub fn fire_emp_missiles(
     ), Without<DestroyedModule>>,
     target_query: Query<&Transform, Without<Ship>>,
     machine_stats: Query<&crate::building::multiblock::components::MachineStats>,
+    signatures: Query<&crate::diplomacy::signatures::Signature>,
     mut fuel_state: ResMut<FuelState>,
     mut commands: Commands,
 ) {
@@ -945,7 +946,8 @@ pub fn fire_emp_missiles(
             .map(|s| s.barrel_count.max(1))
             .unwrap_or(1) as f32;
 
-        let emp_radius = 100.0 + bay_count * 60.0;
+        // A signature pulse (diplomacy::signatures) reaches its share wider.
+        let emp_radius = (100.0 + bay_count * 60.0) * signatures.get(entity).map_or(1.0, |s| s.0.output);
 
         // Fuel cost
         let fuel_cost = 8.0 * bay_count;

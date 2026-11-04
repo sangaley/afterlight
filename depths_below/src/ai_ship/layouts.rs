@@ -80,6 +80,7 @@ impl AiShipLayout {
                     shell: None,
                     missile: None,
                     point_defence: false,
+                    signature: None,
                 });
                 BlueprintModule {
                     module_type: m.module_type,

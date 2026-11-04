@@ -15,6 +15,7 @@ use rand::{seq::SliceRandom, Rng, SeedableRng};
 
 use super::contacts::{self, Contacts};
 use super::jobs::{self, JobStatus, Jobs};
+use super::signatures;
 use super::FactionStanding;
 use crate::ai_ship::components::{faction_display_name, AiShipType, SimBehavior, WorldSimulation};
 use crate::ai_ship::fleet::{FleetKind, Mission};
@@ -193,6 +194,7 @@ pub fn refresh_dock_tabs(
             match panel.0 {
                 DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs()),
                 DockTab::Comm => fill_comm(&mut commands, entity, &galaxy, &contacts, &work, &streaming, owner, state.contact),
+                DockTab::Military => fill_military(&mut commands, entity, &galaxy, &standing, &streaming, owner, state.item),
                 DockTab::Market => {}
             }
         }
@@ -211,6 +213,7 @@ pub fn refresh_dock_tabs(
         let want = match state.tab {
             DockTab::Market => "Up/Down  select    Left/Right  cargo choice    Enter  buy    Esc  undock",
             DockTab::Bar => "Q / E  switch tab    Esc  undock",
+            DockTab::Military => "Up/Down  select    Enter  buy    Q / E  switch tab    Esc  undock",
             DockTab::Comm => "Up/Down  contact    Enter  talk    A  take the job    1 / 2  story: deal or force    Q / E  tab    Esc  undock",
         };
         if text.0 != want {
@@ -454,6 +457,125 @@ fn fill_comm(
     });
 }
 
+/// Why this starport's military market won't sell to you, if it won't: only
+/// a capital's High Command keeps one, and only for its friends.
+pub fn military_closed(galaxy: &GalaxyMap, standing: &FactionStanding, system: Option<u32>, owner: Option<AiShipType>) -> Option<String> {
+    let owner = owner?;
+    let capital = system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)).is_some_and(|s| s.capital && s.faction == Some(owner));
+    if !capital {
+        return Some(format!("Only {}'s High Command, at its capital, keeps a military market.", faction_display_name(owner)));
+    }
+    let tier = standing.tier(owner);
+    if !matches!(tier, super::StandingTier::Friendly | super::StandingTier::Allied) {
+        return Some(format!(
+            "They sell this only to friends. You are {} with {} ({:.0}); Friendly starts at {:.0}.",
+            tier.label(),
+            faction_display_name(owner),
+            standing.value(owner),
+            super::StandingTier::FRIENDLY_FROM
+        ));
+    }
+    None
+}
+
+/// Up/Down pick a signature module, Enter buys it into the build menu.
+#[allow(clippy::too_many_arguments)]
+pub fn military_keys(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut windows: Query<&mut DockTabState, With<DockingOverlay>>,
+    market: Res<MarketEvents>,
+    galaxy: Res<GalaxyMap>,
+    streaming: Res<SystemStreamingManager>,
+    mut standing: ResMut<FactionStanding>,
+    mut currency: ResMut<crate::resources::Currency>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    let Ok(mut state) = windows.single_mut() else { return };
+    if !state.tabs || state.tab != DockTab::Military {
+        return;
+    }
+    let owner = market.dock_terms.as_ref().and_then(|t| t.faction);
+    let Some(faction) = owner else { return };
+    let items: Vec<_> = signatures::of(faction).collect();
+    if items.is_empty() {
+        return;
+    }
+    if keyboard.just_pressed(KeyCode::ArrowDown) {
+        state.item = (state.item + 1) % items.len();
+    }
+    if keyboard.just_pressed(KeyCode::ArrowUp) {
+        state.item = (state.item + items.len() - 1) % items.len();
+    }
+    state.item = state.item.min(items.len() - 1);
+    if !keyboard.just_pressed(KeyCode::Enter) {
+        return;
+    }
+    let sig = items[state.item];
+    let (message, kind) = if let Some(why) = military_closed(&galaxy, &standing, streaming.loaded_system, owner) {
+        (why, crate::events::NotificationType::Warning)
+    } else if standing.signatures.iter().any(|s| s == sig.id) {
+        (format!("{} is already in your build menu.", sig.name), crate::events::NotificationType::Info)
+    } else if currency.credits < sig.price {
+        (format!("{} costs {} credits. You have {}.", sig.name, sig.price, currency.credits), crate::events::NotificationType::Warning)
+    } else {
+        currency.credits -= sig.price;
+        standing.signatures.push(sig.id.to_string());
+        info!("SIGNATURE bought: {} ({} cr)", sig.name, sig.price);
+        (
+            format!("{} is in your build menu: select {} and press V.", sig.name, sig.base.name()),
+            crate::events::NotificationType::Success,
+        )
+    };
+    notes.write(crate::events::ShowNotification { message, notification_type: kind, duration: 5.0 });
+    state.set_changed();
+}
+
+fn fill_military(
+    commands: &mut Commands,
+    panel: Entity,
+    galaxy: &GalaxyMap,
+    standing: &FactionStanding,
+    streaming: &SystemStreamingManager,
+    owner: Option<AiShipType>,
+    selected: usize,
+) {
+    let Some(faction) = owner else { return };
+    let items: Vec<_> = signatures::of(faction).collect();
+    let closed = military_closed(galaxy, standing, streaming.loaded_system, owner);
+    commands.entity(panel).with_children(|p| {
+        p.spawn(line(format!("{} SIGNATURE MODULES", faction_display_name(faction).to_uppercase()), ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
+        p.spawn(line(
+            "Their own build of a block you know: one edge, one cost. Buy one and it stays in your build menu for this run.",
+            ThemeFonts::BODY_SMALL,
+            ThemeColors::TEXT_SECONDARY,
+        ));
+        if let Some(why) = &closed {
+            p.spawn((
+                Node { padding: UiRect::all(Val::Px(12.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
+                BackgroundColor(ThemeColors::BG_ELEVATED),
+                BorderColor::all(ThemeColors::ACCENT_ORANGE),
+            ))
+            .with_children(|b| {
+                b.spawn(line(why.clone(), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
+            });
+        }
+        for (i, sig) in items.iter().enumerate() {
+            let on = i == selected.min(items.len().saturating_sub(1));
+            let owned = standing.signatures.iter().any(|s| s == sig.id);
+            p.spawn((
+                Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
+                BackgroundColor(if on { ThemeColors::BG_ELEVATED } else { ThemeColors::BG_CARD }),
+                BorderColor::all(if on { ThemeColors::ACCENT_CYAN } else { Color::NONE }),
+            ))
+            .with_children(|row| {
+                let price = if owned { "owned".to_string() } else { format!("{} cr", sig.price) };
+                row.spawn(line(format!("{}   ({})   {price}", sig.name, sig.base.name()), 16.0, if closed.is_some() { ThemeColors::TEXT_MUTED } else { ThemeColors::TEXT_TITLE }));
+                row.spawn(line(format!("+ {}      - {}", sig.edge, sig.cost), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_SECONDARY));
+            });
+        }
+    });
+}
+
 /// What a contact has to do with the Summit Record: the Abbess's reading of
 /// where it stands, the current step's two ways, or a note that they hold a
 /// piece for later.
@@ -558,7 +680,7 @@ mod tests {
             .init_resource::<Inventory>()
             .insert_resource(Currency { credits: 5_000 })
             .add_systems(Update, dock_tab_keys);
-        app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0 }));
+        app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0, item: 0 }));
         let press = |app: &mut App, key: KeyCode| {
             app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
             app.update();
@@ -586,5 +708,52 @@ mod tests {
         let story = work.story().expect("force gave no work");
         assert_eq!(story.story, Some(jobs::StoryMark { step: 1, forced: true }));
         assert_eq!(work.held(), 0);
+    }
+
+    /// The military market sells at a Friendly capital and nowhere else:
+    /// Enter buys the selected module into the build list for good, once.
+    #[test]
+    fn the_military_market_sells_to_friends_at_the_capital() {
+        use crate::resources::{Currency, DockTerms};
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let capital = |f: AiShipType| galaxy.systems.iter().find(|s| s.capital && s.faction == Some(f)).unwrap().id;
+        let (silence, hegemony) = (capital(AiShipType::TheSilence), capital(AiShipType::TerranHegemony));
+        let terms = |f: AiShipType| MarketEvents {
+            dock_terms: Some(DockTerms { faction: Some(f), name: "x".into(), standing: "Neutral", buy: 1.0, sell: 1.0 }),
+            ..Default::default()
+        };
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<crate::events::ShowNotification>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(terms(AiShipType::TerranHegemony))
+            .insert_resource(galaxy)
+            .insert_resource(SystemStreamingManager { loaded_system: Some(hegemony), ..default() })
+            .init_resource::<FactionStanding>()
+            .insert_resource(Currency { credits: 20_000 })
+            .add_systems(Update, military_keys);
+        app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Military, tabs: true, contact: 0, item: 0 }));
+        let enter = |app: &mut App| {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Enter);
+            app.update();
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release(KeyCode::Enter);
+            keys.clear();
+        };
+
+        // The Hegemony start at Neutral: no sale.
+        enter(&mut app);
+        assert!(app.world().resource::<FactionStanding>().signatures.is_empty(), "sold to a stranger");
+
+        // The Silence start Friendly: their capital sells.
+        app.insert_resource(terms(AiShipType::TheSilence));
+        app.world_mut().resource_mut::<SystemStreamingManager>().loaded_system = Some(silence);
+        enter(&mut app);
+        let first = signatures::of(AiShipType::TheSilence).next().unwrap();
+        assert_eq!(app.world().resource::<FactionStanding>().signatures, vec![first.id.to_string()]);
+        assert_eq!(app.world().resource::<Currency>().credits, 20_000 - first.price);
+        // Bought once is bought.
+        enter(&mut app);
+        assert_eq!(app.world().resource::<Currency>().credits, 20_000 - first.price);
     }
 }

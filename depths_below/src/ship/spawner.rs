@@ -230,6 +230,7 @@ pub(crate) fn builtin_starter_design() -> crate::building::blueprint::Blueprint 
             shell: None,
             missile: None,
             point_defence: false,
+            signature: None,
         }),
     };
 
@@ -449,7 +450,26 @@ pub fn spawn_module(
     rotation: Rotation,
     registry: &ModuleRegistry,
 ) -> Entity {
+    spawn_module_signed(commands, asset_server, parent, module_type, grid_pos, rotation, registry, None)
+}
+
+/// `spawn_module`, built to a faction's signature (diplomacy::signatures):
+/// its health, power draw, colour and main number are the signature's from
+/// the first frame, so a loaded block's saved health lands on the right
+/// maximum. A signature for a different block is ignored.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_module_signed(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    parent: Entity,
+    module_type: ModuleType,
+    grid_pos: IVec2,
+    rotation: Rotation,
+    registry: &ModuleRegistry,
+    signature: Option<&'static crate::diplomacy::signatures::SignatureDef>,
+) -> Entity {
     let def = registry.get(module_type);
+    let signature = signature.filter(|s| s.base == module_type);
 
     // Calculate sprite size and center position for multi-cell modules
     let footprint = crate::building::footprints::footprint_override(module_type);
@@ -541,6 +561,15 @@ pub fn spawn_module(
     } else {
         Color::WHITE
     };
+    let module_base_color = match signature {
+        Some(sig) if !is_wedge => crate::diplomacy::signatures::tint(sig, module_base_color),
+        _ => module_base_color,
+    };
+    let health = def.health * signature.map_or(1.0, |s| s.health);
+    // A reactor's power is its power_generation; Reactor.output only drives
+    // heat and the blast, so a signature reactor makes more power without
+    // running hotter (its blast is the signature's own `blast`).
+    let power_generation = def.power_generation * signature.filter(|_| def.power_generation > 0.0).map_or(1.0, |s| s.output);
 
     let module_entity = commands.spawn((
         (Sprite {
@@ -556,10 +585,10 @@ pub fn spawn_module(
         BaseSpriteColor(module_base_color),
         Module {
             module_type,
-            health: def.health,
-            max_health: def.health,
-            power_consumption: def.power_consumption,
-            power_generation: def.power_generation,
+            health,
+            max_health: health,
+            power_consumption: def.power_consumption * signature.map_or(1.0, |s| s.power),
+            power_generation,
             is_active: starts_active(module_type),
             grid_position: grid_pos,
             size: def.size,
@@ -569,7 +598,26 @@ pub fn spawn_module(
         Selectable,
     )).id();
 
-    insert_companion_components(commands, module_entity, &def.companion);
+    match signature.and_then(|sig| scale_companion(&def.companion, sig)) {
+        Some(scaled) => insert_companion_components(commands, module_entity, &scaled),
+        None => insert_companion_components(commands, module_entity, &def.companion),
+    }
+    if let Some(sig) = signature {
+        commands.entity(module_entity).insert(crate::diplomacy::signatures::Signature(sig));
+        // A reactor that "explodes harder": the same blast insert_companion_
+        // components gives it, scaled, without touching the output its heat
+        // is figured from.
+        if let CompanionData::Reactor { output, explosion_risk: true, .. } = def.companion {
+            if sig.blast != 1.0 {
+                let blast_radius = if output >= 200.0 { 2.5 } else if output >= 100.0 { 2.0 } else { 1.5 };
+                commands.entity(module_entity).insert(Explosive {
+                    blast_radius: blast_radius * sig.blast.sqrt(),
+                    blast_damage: output * 0.5 * sig.blast,
+                    explosive_type: ExplosiveType::Reactor,
+                });
+            }
+        }
+    }
 
     // Gun turrets: the module sprite above is the static base mount; add a
     // pivot-centred barrel child sprite that the aim system rotates to track the
@@ -901,6 +949,27 @@ pub fn spawn_custom_module(
     // The recalculation system will automatically trigger due to Changed<Children>
 
     module_entity
+}
+
+/// A block's companion numbers, scaled by its signature: `output` on its main
+/// number. None when the companion has nothing the
+/// signature touches.
+fn scale_companion(c: &CompanionData, sig: &crate::diplomacy::signatures::SignatureDef) -> Option<CompanionData> {
+    let o = sig.output;
+    Some(match *c {
+        CompanionData::Engine { thrust, noise_level } => CompanionData::Engine { thrust: thrust * o, noise_level },
+        CompanionData::OxygenScrubber { output } => CompanionData::OxygenScrubber { output: output * o },
+        CompanionData::LifeSupport { o2_gen, co2_filter } => CompanionData::LifeSupport { o2_gen: o2_gen * o, co2_filter: co2_filter * o },
+        CompanionData::Thruster { thrust_power } => CompanionData::Thruster { thrust_power: thrust_power * o },
+        CompanionData::Cargo { capacity } => CompanionData::Cargo { capacity: capacity * o },
+        CompanionData::Radar { range, noise_on_ping } => CompanionData::Radar { range: range * o, noise_on_ping },
+        CompanionData::PassiveRadar { range } => CompanionData::PassiveRadar { range: range * o },
+        CompanionData::Detection { range } => CompanionData::Detection { range: range * o },
+        CompanionData::Repair { rate } => CompanionData::Repair { rate: rate * o },
+        CompanionData::Quarters { berths } => CompanionData::Quarters { berths: (berths as f32 * o).round() as u32 },
+        CompanionData::TargetingComputer { accuracy_bonus } => CompanionData::TargetingComputer { accuracy_bonus: accuracy_bonus * o },
+        _ => return None,
+    })
 }
 
 /// Inserts companion components on a module entity based on registry data

@@ -101,6 +101,7 @@ struct PlayerShipParts<'w, 's> {
             Option<&'static crate::combat::shell::GunShell>,
             Option<&'static crate::combat::missile_design::MissileLoadout>,
             Has<crate::combat::targeting::fire_groups::InterceptMode>,
+            Option<&'static crate::diplomacy::signatures::Signature>,
         ),
     )>,
     hull: Query<'w, 's, (&'static HullSegment, &'static Transform, &'static ChildOf)>,
@@ -134,7 +135,7 @@ impl PlayerShipParts<'_, '_> {
         let mut modules: Vec<ModuleData> = self.modules
             .iter()
             .filter(|(.., parent, _)| parent.parent() == ship || on_ship.contains(&parent.parent()))
-            .map(|(module, custom, tuning, selected_ammo, _, (on_turret, shell, missile, point_defence))| {
+            .map(|(module, custom, tuning, selected_ammo, _, (on_turret, shell, missile, point_defence, signature))| {
                 let custom_data = custom.map(|c| CustomModuleData {
                     custom_name: c.custom_name.clone(),
                     subcomponents: Vec::new(),
@@ -153,6 +154,7 @@ impl PlayerShipParts<'_, '_> {
                     shell: shell.map(|s| s.0.clone()),
                     missile: missile.map(|m| m.0.clone()),
                     point_defence,
+                    signature: signature.map(|s| s.0.id.to_string()),
                 }
             })
             .collect();
@@ -176,6 +178,7 @@ impl PlayerShipParts<'_, '_> {
                     shell: None,
                     missile: None,
                     point_defence: false,
+                    signature: None,
                 });
             }
         }
@@ -554,7 +557,9 @@ fn apply_pending_load(
     // None of these were saved. A load from the menu came back with a full
     // tank (cleanup refills it) and an in-game one kept whatever was in it;
     // either way the contracts and standing were the session's, not the save's.
-    fuel.current_fuel = save.fuel.unwrap_or(fuel.max_fuel).clamp(0.0, fuel.max_fuel);
+    // Not clamped to max_fuel: signature tanks raise the cap
+    // (diplomacy::signatures::fuel_capacity), and they're respawned after this.
+    fuel.current_fuel = save.fuel.unwrap_or(fuel.max_fuel).max(0.0);
     *contracts = save.contracts.clone();
     *reputation = save.reputation.clone();
     *standing = save.standing.clone().unwrap_or_default();
@@ -883,7 +888,7 @@ fn respawn_ship_parts(
 
     // ---- Respawn modules ----
     for module_data in modules {
-        let entity = crate::ship::spawn_module(
+        let entity = crate::ship::spawn_module_signed(
             commands,
             asset_server,
             ship_entity,
@@ -891,6 +896,7 @@ fn respawn_ship_parts(
             module_data.grid_position,
             module_data.rotation,
             registry,
+            module_data.signature.as_deref().and_then(crate::diplomacy::signatures::get),
         );
         // Restore saved health and active state (spawn_module uses registry defaults)
         commands.entity(entity).insert(ModuleHealthOverride {

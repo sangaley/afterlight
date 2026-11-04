@@ -209,11 +209,14 @@ pub struct ModuleExtras {
     /// On point defence: shoots at incoming missiles (combat::missile_defence).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub point_defence: bool,
+    /// Built to a faction's signature (diplomacy::signatures), by id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 impl ModuleExtras {
     pub fn is_empty(&self) -> bool {
-        self.tuning.is_none() && self.fire_group.is_none() && self.ammo.is_none() && self.turret.is_none() && self.shell.is_none() && self.missile.is_none() && !self.point_defence
+        self.tuning.is_none() && self.fire_group.is_none() && self.ammo.is_none() && self.turret.is_none() && self.shell.is_none() && self.missile.is_none() && !self.point_defence && self.signature.is_none()
     }
 }
 
@@ -351,6 +354,7 @@ pub struct DesignCapture<'w, 's> {
     pub shell_query: Query<'w, 's, &'static crate::combat::shell::GunShell>,
     pub missile_query: Query<'w, 's, &'static crate::combat::missile_design::MissileLoadout>,
     pub pd_query: Query<'w, 's, (), With<crate::combat::targeting::fire_groups::InterceptMode>>,
+    pub signature_query: Query<'w, 's, &'static crate::diplomacy::signatures::Signature>,
 }
 
 impl DesignCapture<'_, '_> {
@@ -414,7 +418,8 @@ impl DesignCapture<'_, '_> {
                     .map(|l| l.0.clone())
                     .filter(|d| *d != crate::combat::missile_design::MissileDesign::default_for(m.module_type));
                 let point_defence = self.pd_query.contains(entity);
-                let extras = ModuleExtras { tuning, fire_group, ammo, turret, shell, missile, point_defence };
+                let signature = self.signature_query.get(entity).ok().map(|s| s.0.id.to_string());
+                let extras = ModuleExtras { tuning, fire_group, ammo, turret, shell, missile, point_defence, signature };
 
                 let (custom_name, subcomponents) = match self.custom_query.get(entity) {
                     Ok((custom, module_children)) => (
@@ -765,9 +770,10 @@ pub fn spawn_ship_from_design(
                 name.clone(), m.grid_pos, m.rotation, subs.clone(), registry,
             )
         } else {
-            crate::ship::spawn_module(
+            let signature = m.extras.as_ref().and_then(|e| e.signature.as_deref()).and_then(crate::diplomacy::signatures::get);
+            crate::ship::spawn_module_signed(
                 commands, asset_server, ship, m.module_type,
-                m.grid_pos, m.rotation, registry,
+                m.grid_pos, m.rotation, registry, signature,
             )
         };
         if let Some(extras) = &m.extras {

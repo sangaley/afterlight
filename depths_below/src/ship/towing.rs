@@ -63,7 +63,7 @@ fn toggle_tow(
     // you latch a hulk with no beam aboard as long as a Preserve ship was
     // somewhere in the system.
     modules: Query<
-        &Module,
+        (&Module, Option<&crate::diplomacy::signatures::Signature>),
         (
             Without<crate::components::DestroyedModule>,
             Without<crate::ai_ship::components::OwnedByAiShip>,
@@ -89,9 +89,15 @@ fn toggle_tow(
         return;
     }
 
-    let has_beam = modules
+    // The best beam aboard sets the reach: a signature beam (diplomacy::
+    // signatures) latches from further out.
+    let reach = modules
         .iter()
-        .any(|m| m.module_type == ModuleType::TractorBeam && m.is_active);
+        .filter(|(m, _)| m.module_type == ModuleType::TractorBeam && m.is_active)
+        .map(|(_, sig)| sig.map_or(1.0, |s| s.0.output))
+        .reduce(f32::max);
+    let has_beam = reach.is_some();
+    let latch = LATCH_RANGE * reach.unwrap_or(1.0);
     if !has_beam {
         notifications.write(ShowNotification {
             message: "No tractor beam aboard, or it has no power.".into(),
@@ -105,7 +111,7 @@ fn toggle_tow(
     let nearest = wrecks
         .iter()
         .map(|(e, gt, w)| (e, gt.translation().truncate().distance(ship_pos), w))
-        .filter(|(_, d, _)| *d < LATCH_RANGE)
+        .filter(|(_, d, _)| *d < latch)
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
     match nearest {

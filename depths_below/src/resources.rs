@@ -286,6 +286,9 @@ pub struct ModuleData {
     /// On point defence (combat::missile_defence).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub point_defence: bool,
+    /// Built to a faction's signature (diplomacy::signatures), by id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 fn default_rotation() -> Rotation { Rotation::North }
@@ -1002,6 +1005,9 @@ pub struct BuildingState {
     /// How many pre-made weapons the Pre-made tab offers (the kits read
     /// from disk), for cycling through them.
     pub kit_count: usize,
+    /// The signature version picked with V (diplomacy::signatures), by id.
+    /// It only applies while the selected block is the one it's built on.
+    pub signature: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1090,11 +1096,17 @@ impl Default for BuildingState {
             hull_rect_anchor: None,
             deck: BuildDeck::Hull,
             kit_count: 0,
+            signature: None,
         }
     }
 }
 
 impl BuildingState {
+    /// The signature picked for `module_type`, if the pick is for that block.
+    pub fn signature_for(&self, module_type: ModuleType) -> Option<&'static crate::diplomacy::signatures::SignatureDef> {
+        self.signature.and_then(crate::diplomacy::signatures::get).filter(|s| s.base == module_type)
+    }
+
     pub fn current_category(&self) -> BuildCategory {
         BuildCategory::ALL[self.category_index % BuildCategory::ALL.len()]
     }

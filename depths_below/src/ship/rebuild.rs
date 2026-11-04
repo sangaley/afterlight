@@ -62,6 +62,7 @@ pub struct KeptSettings<'w, 's> {
     shell: Query<'w, 's, &'static crate::combat::shell::GunShell>,
     missile: Query<'w, 's, &'static crate::combat::missile_design::MissileLoadout>,
     pd: Query<'w, 's, (), With<crate::combat::targeting::fire_groups::InterceptMode>>,
+    signature: Query<'w, 's, &'static crate::diplomacy::signatures::Signature>,
     turrets: Query<'w, 's, (&'static crate::combat::turret_deck::TurretBody, &'static ChildOf)>,
 }
 
@@ -75,6 +76,7 @@ impl KeptSettings<'_, '_> {
             shell: self.shell.get(e).ok().map(|s| s.0.clone()),
             missile: self.missile.get(e).ok().map(|m| m.0.clone()),
             point_defence: self.pd.contains(e),
+            signature: self.signature.get(e).ok().map(|s| s.0.id.to_string()),
         }
     }
 }
