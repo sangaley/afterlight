@@ -137,6 +137,17 @@ pub fn front_prices(galaxy: &GalaxyMap, id: Option<u32>) -> (f32, f32) {
     }
 }
 
+/// On top of that, what's scarce near the dark costs most: fuel and repairs,
+/// what everyone leaving needs. Next to it half again; a jump further, a
+/// quarter.
+pub fn front_scarcity(galaxy: &GalaxyMap, id: Option<u32>) -> f32 {
+    match id.and_then(|id| hops_from_dark(galaxy, id)) {
+        Some(1) => 1.5,
+        Some(2) => 1.25,
+        _ => 1.0,
+    }
+}
+
 /// How many systems the dark has taken.
 pub fn taken_count(galaxy: &GalaxyMap) -> usize {
     galaxy.systems.iter().filter(|s| is_taken(s)).count()
@@ -211,6 +222,9 @@ pub fn pull(sys: &StarSystemDef, ships_there: usize) -> f32 {
 /// at once after an hour and a half; this way one goes, then the next.
 const FOCUS: f32 = 0.85;
 
+/// Enough dark to be sure the most-pulled system at the front falls.
+pub const ONE_SYSTEM: f32 = 1.0 / FOCUS + 0.01;
+
 /// Spread `systems` worth of dark across the front: most into the system
 /// that pulls hardest, the rest by pull. Returns the systems this took.
 pub fn spread(galaxy: &mut GalaxyMap, systems: f32, ships_in: impl Fn(u32) -> usize) -> Vec<u32> {
@@ -237,6 +251,11 @@ pub fn spread(galaxy: &mut GalaxyMap, systems: f32, ships_in: impl Fn(u32) -> us
     took
 }
 
+/// Systems' worth of dark to add at once, on top of the creep: god mode's
+/// key to move it on (debug::time_keys).
+#[derive(Resource, Default)]
+pub struct DarkPush(pub f32);
+
 /// The dark moves while you fly: never while you're docked or building
 /// (other states), never while a card is up to read, and never while the map
 /// is open (it pauses game time).
@@ -250,6 +269,7 @@ fn advance_front(
     queue: Res<super::reader::LogQueue>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
     mut steps_seen: Local<Option<u8>>,
+    mut push: ResMut<DarkPush>,
 ) {
     if galaxy.systems.is_empty() {
         return;
@@ -262,6 +282,7 @@ fn advance_front(
         _ => 0.0,
     };
     *steps_seen = Some(done);
+    let lurch = lurch + std::mem::take(&mut push.0);
     let reading = !queue.pending.is_empty();
     let creep = if reading { 0.0 } else { time.delta_secs() / SECONDS_PER_SYSTEM * speed() };
     if creep + lurch <= 0.0 {
@@ -338,6 +359,111 @@ fn war_away_from_the_dark(
     }
 }
 
+/// How often the systems next to the dark send people out, in seconds of
+/// flight, and how many convoys of them a system has on the move at once.
+const REFUGEES_EVERY: f32 = 150.0;
+const REFUGEE_CONVOYS: usize = 2;
+
+/// Where people from `id` run to: the neighbour furthest from the dark, if
+/// it's further than here.
+pub fn refuge_for(galaxy: &GalaxyMap, id: u32) -> Option<u32> {
+    let here = hops_from_dark(galaxy, id)?;
+    let far = |n: u32| hops_from_dark(galaxy, n).unwrap_or(u32::MAX);
+    crate::celestial::galaxy::nearest_neighbors(galaxy, id, 3)
+        .into_iter()
+        .filter(|n| galaxy.systems.iter().any(|s| s.id == *n && !is_taken(s)))
+        .filter(|n| far(*n) > here)
+        .max_by_key(|n| far(*n))
+}
+
+/// The systems next to the dark empty out: convoys of haulers full of people,
+/// making for the jump to somewhere further from it. You can see them off
+/// (diplomacy::jobs offers the escort), or not.
+#[allow(clippy::too_many_arguments)]
+fn send_refugees(
+    time: Res<Time>,
+    mut clock: Local<f32>,
+    galaxy: Res<GalaxyMap>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    stations: Res<crate::world::home_base::SystemStations>,
+    player: Query<&Transform, With<crate::components::Ship>>,
+    mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
+) {
+    *clock += time.delta_secs() * speed();
+    if *clock < REFUGEES_EVERY {
+        return;
+    }
+    *clock = 0.0;
+    let mut rng = rand::thread_rng();
+    let you = player.single().ok().map(|t| t.translation.truncate());
+    let systems: Vec<u32> = streaming.loaded_system.into_iter().chain(streaming.warm_systems.iter().copied()).collect();
+    for id in systems {
+        if hops_from_dark(&galaxy, id) != Some(1) {
+            continue;
+        }
+        let Some(from) = galaxy.systems.iter().find(|s| s.id == id) else { continue };
+        let Some(owner) = from.faction else { continue };
+        let Some(to) = refuge_for(&galaxy, id).and_then(|t| galaxy.systems.iter().find(|s| s.id == t)) else { continue };
+        let running = sim.fleets.iter().filter(|f| f.system_id == id && f.trade.as_ref().is_some_and(|t| t.refugees)).count();
+        if running >= REFUGEE_CONVOYS {
+            continue;
+        }
+        // Their own haulers, or the Compact's if they have none.
+        use crate::ai_ship::fleet::{self, FleetKind};
+        let civilian = |f: AiShipType, hulls: &Vec<fleet::Hull>| hulls.iter().any(|h| fleet::role_of(f, h.1) == crate::ai_ship::roster::ClassRole::Civilian);
+        let Some((faction, hulls)) = [owner, AiShipType::FreeHaulersCompact].into_iter().find_map(|f| {
+            fleet::compose(f, FleetKind::Convoy, &mut rng, &mut fleet::Held::new()).filter(|h| civilian(f, h)).map(|h| (f, h))
+        }) else {
+            continue;
+        };
+        // From one of the stations if you're here (never on top of you), or
+        // somewhere round the star.
+        let at = if streaming.loaded_system == Some(id) {
+            let site = stations.sites.iter().map(|s| s.pos + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * (s.radius() + 3_000.0))
+                .find(|p| you.is_none_or(|y| y.distance(*p) > crate::ai_ship::simulation::RENDER_DISTANCE * 1.1));
+            let Some(site) = site else { continue };
+            site
+        } else {
+            from.local_center + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * 40_000.0
+        };
+        let (mut convoy, members) = fleet::new_fleet(faction, FleetKind::Convoy, &hulls, id, at, at, 1.0e9, &mut rng);
+        convoy.cruise = 650.0;
+        convoy.destination = crate::ai_ship::traffic::jump_point(from, to, 1.0);
+        convoy.trade = Some(fleet::TradeRun {
+            bound_for: to.name.clone(),
+            last_stop: from.name.clone(),
+            leaving: Some(to.id),
+            refugees: true,
+            ..default()
+        });
+        info!("FRONT: refugees leave {} for {}", from.name, to.name);
+        sim.add_fleet(convoy, members);
+    }
+}
+
+/// A refugee hauler lost: whoever did it, say who was aboard.
+fn mourn_refugees(
+    mut destroyed: MessageReader<crate::events::AiShipDestroyed>,
+    members: Query<&crate::ai_ship::fleet::FleetMember>,
+    sim: Res<crate::ai_ship::components::WorldSimulation>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    for ev in destroyed.read() {
+        let Ok(member) = members.get(ev.entity) else { continue };
+        let Some(convoy) = sim.fleets.iter().find(|f| f.id == member.fleet) else { continue };
+        let Some(run) = convoy.trade.as_ref().filter(|t| t.refugees) else { continue };
+        notes.write(crate::events::ShowNotification {
+            message: format!(
+                "{} is gone, and everyone aboard. They were getting out of {}.",
+                crate::ai_ship::traffic::trader_name(convoy.id, convoy.faction),
+                run.last_stop
+            ),
+            notification_type: crate::events::NotificationType::Danger,
+            duration: 7.0,
+        });
+    }
+}
+
 /// Nobody docks in the dark: a station there is shut, whoever built it.
 fn refuse_dark_docking(
     galaxy: Res<GalaxyMap>,
@@ -366,9 +492,10 @@ pub struct FrontPlugin;
 
 impl Plugin for FrontPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (dark_from_env, seed_front).chain()).add_systems(
+        app.init_resource::<DarkPush>()
+            .add_systems(Update, (dark_from_env, seed_front).chain()).add_systems(
             Update,
-            (advance_front.after(seed_front), war_away_from_the_dark).run_if(in_state(crate::states::GameState::Exploring)),
+            (advance_front.after(seed_front), war_away_from_the_dark, send_refugees, mourn_refugees).run_if(in_state(crate::states::GameState::Exploring)),
         )
         .add_systems(OnEnter(crate::states::GameState::Docked), refuse_dark_docking);
     }
@@ -467,6 +594,8 @@ mod tests {
         assert_eq!(hops_from_dark(&galaxy, next), Some(1));
         assert!(front_prices(&galaxy, Some(next)).0 > 1.0);
         assert!(front_prices(&galaxy, Some(next)).1 < 1.0);
+        assert!(front_scarcity(&galaxy, Some(next)) > 1.0, "fuel and repairs cost most");
+        assert_eq!(front_scarcity(&galaxy, Some(0)).max(1.0), front_scarcity(&galaxy, Some(0)));
     }
 
     /// Crowds and your own route pull it; nearer Haven pulls it too.
@@ -478,5 +607,24 @@ mod tests {
         assert!(pull(&sys, 10) > quiet);
         sys.discovery = crate::celestial::resources::SystemDiscovery::Visited;
         assert!(pull(&sys, 0) > quiet);
+    }
+
+    /// People next to the dark run further from it, never toward it or into it.
+    #[test]
+    fn refugees_run_away_from_the_dark() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        seed_origin(&mut galaxy);
+        let front: Vec<u32> = galaxy.systems.iter().filter(|s| hops_from_dark(&galaxy, s.id) == Some(1)).map(|s| s.id).collect();
+        assert!(!front.is_empty());
+        let mut any = false;
+        for id in front {
+            if let Some(to) = refuge_for(&galaxy, id) {
+                any = true;
+                let sys = galaxy.systems.iter().find(|s| s.id == to).unwrap();
+                assert!(!is_taken(sys));
+                assert!(hops_from_dark(&galaxy, to).is_none_or(|d| d > 1), "{id} runs to {to}, no further from the dark");
+            }
+        }
+        assert!(any, "somewhere next to the dark has somewhere to run");
     }
 }

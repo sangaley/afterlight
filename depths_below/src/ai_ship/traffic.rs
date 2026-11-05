@@ -99,7 +99,7 @@ impl Stop {
 }
 
 /// Where a ship leaves this system for `to`: out on the bearing to it.
-fn jump_point(from: &StarSystemDef, to: &StarSystemDef, sign: f32) -> Vec2 {
+pub fn jump_point(from: &StarSystemDef, to: &StarSystemDef, sign: f32) -> Vec2 {
     from.local_center + (to.galaxy_pos - from.galaxy_pos).normalize_or(Vec2::X) * JUMP_RADIUS * sign
 }
 
@@ -132,6 +132,7 @@ pub fn trader_label(fleet: &fleet::SimFleet, class: Option<&str>) -> String {
     let name = trader_name(fleet.id, fleet.faction);
     let cargo = trader_cargo(fleet.id);
     match fleet.trade.as_ref() {
+        Some(run) if run.refugees => format!("{name}, {what}: refugees, for {}", run.bound_for),
         Some(run) if run.dwell > 0.0 => format!("{name}, {what}: {cargo}, in port"),
         Some(run) if !run.bound_for.is_empty() => format!("{name}, {what}: {cargo} for {}", run.bound_for),
         _ => format!("{name}, {what}: {cargo}"),
@@ -214,6 +215,9 @@ pub fn run_traffic(
                 // Going out of a system is out of your sight: one still on
                 // screen thinks better of it and stays another while.
                 Some(to) if !is_live => jumps.push((fleet.id, to, position)),
+                // Refugees don't turn back: they wait at the jump until
+                // nobody's watching, then go.
+                Some(_) if run.refugees => fleet.velocity = Vec2::ZERO,
                 _ => {
                     run.leaving = None;
                     run.last_stop = std::mem::take(&mut run.bound_for);
@@ -266,6 +270,7 @@ pub fn run_traffic(
         fleet.destination = arrive;
         if let Some(run) = fleet.trade.as_mut() {
             run.leaving = None;
+            run.refugees = false;
             run.bound_for.clear();
             run.last_stop.clear();
             run.dwell = 1.0;

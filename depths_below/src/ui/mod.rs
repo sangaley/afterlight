@@ -3530,21 +3530,21 @@ fn repair_priority(category: ModuleCategory) -> u8 {
 }
 
 /// The Repair Modules row: what the credits on hand will buy.
-fn repair_modules_row(damage: f32, credits: u32) -> String {
-    let full = damage * MODULE_REPAIR_RATE;
+fn repair_modules_row(damage: f32, credits: u32, rate: f32) -> String {
+    let full = damage * rate;
     if damage < 0.1 {
         "All modules at full health".to_string()
     } else if credits as f32 >= full {
         format!("Restore all {:.0} damaged HP", damage)
-    } else if credits as f32 >= MODULE_REPAIR_RATE {
+    } else if credits as f32 >= rate {
         format!(
             "All {}c buys {:.0} of {:.0} HP - vital systems first",
             credits,
-            credits as f32 / MODULE_REPAIR_RATE,
+            credits as f32 / rate,
             damage
         )
     } else {
-        format!("{:.0} HP damaged - {:.0}c per HP", damage, MODULE_REPAIR_RATE)
+        format!("{:.0} HP damaged - {:.0}c per HP", damage, rate)
     }
 }
 
@@ -3756,13 +3756,12 @@ fn get_docking_services(
     station_idx: usize,
     market: &MarketEvents,
     far: f32,
+    galaxy: &crate::celestial::resources::GalaxyMap,
 ) -> Vec<DockingService> {
     // Station identity: repairs/fuel/ammo are cheaper at the right outpost
     // type (Mining/Refuel/Military — see world::station_types). These same
     // multipliers must be applied when charging in docking_menu_input.
-    let discounts = crate::world::station_types::service_discounts(
-        crate::world::station_types::station_type(station_idx),
-    );
+    let discounts = crate::world::station_types::service_discounts_at(station_idx, galaxy);
 
     let hull_damage = 1.0 - hull_state.hull_integrity;
     let hull_repair_full_cost = (hull_damage * 500.0 * discounts.hull_repair * far) as u32;
@@ -3878,7 +3877,7 @@ fn spawn_docking_menu(
         .and_then(|t| stations.nearest_index(t.translation.truncate()))
         .unwrap_or(0);
     let far = distance_price_multiplier_for(station_idx, &galaxy) * market.service_multiplier();
-    let services = get_docking_services(&hull_state, &oxygen_state, &fuel_state, &weapon_query, crew_count, staffing_state.total_berths, &inventory, station_idx, &market, far);
+    let services = get_docking_services(&hull_state, &oxygen_state, &fuel_state, &weapon_query, crew_count, staffing_state.total_berths, &inventory, station_idx, &market, far, &galaxy);
 
     // Who the station belongs to decides its colours and whether it has the
     // Bar and Comm directory tabs (a faction starport does; a free port has
@@ -4340,9 +4339,7 @@ fn docking_menu_input(
     // distance multiplier: quote one price and charge another and the menu is
     // lying, which is worse than it being cheap.
     let far = distance_price_multiplier_for(station_idx, &galaxy) * market.service_multiplier();
-    let discounts = crate::world::station_types::service_discounts(
-        crate::world::station_types::station_type(station_idx),
-    );
+    let discounts = crate::world::station_types::service_discounts_at(station_idx, &galaxy);
 
     let service_count = 9usize;
     let old_idx = selection.0;
@@ -4730,7 +4727,7 @@ fn docking_menu_input(
                     .map(|m| (repair_priority(m.module_type.category()), (m.max_health - m.health).max(0.0)))
                     .collect();
                 let total_damage: f32 = damage.iter().map(|(_, d)| d).sum();
-                let plan = plan_module_repair(&damage, currency.credits, MODULE_REPAIR_RATE);
+                let plan = plan_module_repair(&damage, currency.credits, MODULE_REPAIR_RATE * crate::world::station_types::scarcity_at(station_idx, &galaxy));
                 let repaired: f32 = plan.iter().sum();
                 if total_damage < 0.1 {
                     notifications.write(ShowNotification {
@@ -4861,7 +4858,7 @@ fn docking_menu_input(
             // Say what pressing it will do. Short of the full bill it spends
             // everything on hand, and without this the first a captain knew
             // of that was the wallet reading zero.
-            repair_modules_row(total_module_damage, currency.credits)
+            repair_modules_row(total_module_damage, currency.credits, MODULE_REPAIR_RATE * crate::world::station_types::scarcity_at(station_idx, &galaxy))
         }, {
             let mut total_module_damage = 0.0f32;
             for module in module_query.iter() {
@@ -5459,9 +5456,9 @@ mod module_repair_tests {
     /// Short of the full bill, the row says the whole balance goes.
     #[test]
     fn the_row_says_what_the_money_buys() {
-        assert_eq!(repair_modules_row(100.0, 10_000), "Restore all 100 damaged HP");
-        assert_eq!(repair_modules_row(610.0, 1_688), "All 1688c buys 338 of 610 HP - vital systems first");
-        assert_eq!(repair_modules_row(0.0, 50), "All modules at full health");
+        assert_eq!(repair_modules_row(100.0, 10_000, MODULE_REPAIR_RATE), "Restore all 100 damaged HP");
+        assert_eq!(repair_modules_row(610.0, 1_688, MODULE_REPAIR_RATE), "All 1688c buys 338 of 610 HP - vital systems first");
+        assert_eq!(repair_modules_row(0.0, 50, MODULE_REPAIR_RATE), "All modules at full health");
     }
 
     #[test]

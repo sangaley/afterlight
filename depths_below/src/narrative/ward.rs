@@ -146,6 +146,9 @@ fn run_ward(
     }
 
     let holding = wards > 0 && power.power_balance >= 0.0;
+    if std::env::var("DEPTHS_WARD").is_ok() && (state.inside % 5.0) < dt {
+        info!("WARD: {} for {:.0}s, depth {deep}, {blocks} blocks, draw {:.0}, power balance {:.0}", if holding { "holding" } else { "failing" }, state.inside, state.need, power.power_balance);
+    }
     if holding {
         state.failing = 0.0;
         state.stage = 0;
@@ -282,13 +285,33 @@ pub fn pattern_known(contacts: &crate::diplomacy::contacts::Contacts) -> bool {
     contacts.summit.done >= PATTERN_STEP
 }
 
+/// Debug override, in the house style: `DEPTHS_WARD=1` turns one of your
+/// ship's sensor or storage blocks into a Dark Ward at launch, so a ward can
+/// be flown into the dark without the story's pattern or a refit first.
+fn ward_from_env(ship: Query<Entity, With<Ship>>, mut modules: Query<(&mut Module, &ChildOf)>, mut done: Local<bool>) {
+    if *done || std::env::var("DEPTHS_WARD").ok().as_deref() != Some("1") {
+        return;
+    }
+    let Ok(ship) = ship.single() else { return };
+    let spare = modules.iter_mut().find(|(m, p)| {
+        p.parent() == ship && m.health > 0.0 && matches!(m.module_type.category(), crate::components::ModuleCategory::Detection | crate::components::ModuleCategory::Storage)
+    });
+    if let Some((mut m, _)) = spare {
+        info!("DEPTHS_WARD: {:?} is now a Dark Ward", m.module_type);
+        m.module_type = ModuleType::DarkWard;
+        m.is_active = true;
+        m.power_consumption = IDLE_DRAW;
+        *done = true;
+    }
+}
+
 pub struct WardPlugin;
 
 impl Plugin for WardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WardState>()
             .add_message::<CascadeReachedYou>()
-            .add_systems(Update, (run_ward, warn_reaching, thrown_out).chain().run_if(in_state(crate::states::GameState::Exploring)));
+            .add_systems(Update, (ward_from_env, run_ward, warn_reaching, thrown_out).chain().run_if(in_state(crate::states::GameState::Exploring)));
     }
 }
 

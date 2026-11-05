@@ -103,6 +103,22 @@ pub fn service_discounts(t: StationType) -> ServiceDiscounts {
     }
 }
 
+/// A station's service prices, with what the dark has made scarce: fuel and
+/// hull repairs cost more near it (narrative::front::front_scarcity).
+pub fn service_discounts_at(station_idx: usize, galaxy: &crate::celestial::resources::GalaxyMap) -> ServiceDiscounts {
+    let mut d = service_discounts(station_type(station_idx));
+    let scarce = scarcity_at(station_idx, galaxy);
+    d.fuel *= scarce;
+    d.hull_repair *= scarce;
+    d
+}
+
+/// How scarce fuel and repairs are at this station because of the dark.
+pub fn scarcity_at(station_idx: usize, galaxy: &crate::celestial::resources::GalaxyMap) -> f32 {
+    let system_id = (station_idx / crate::world::home_base::STATIONS_PER_SYSTEM) as u32;
+    crate::narrative::front::front_scarcity(galaxy, Some(system_id))
+}
+
 /// How much dearer everything is this far from Haven.
 ///
 /// Going outward used to cost nothing worth noticing: refuel was free on

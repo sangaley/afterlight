@@ -33,7 +33,85 @@ pub struct DebugPlugin;
 /// run that brushed the key got the endgame mirror ship a minute in. A
 /// normal launch now has no debug menu at all.
 pub fn debug_enabled() -> bool {
-    std::env::var("DEPTHS_DEBUG").ok().as_deref() == Some("1")
+    std::env::var("DEPTHS_DEBUG").ok().as_deref() == Some("1") || god_enabled()
+}
+
+/// `DEPTHS_GOD=1`: a launch for playing the story through quickly. Nothing
+/// hurts your ship, fuel never runs out, the debug menu is on, and the
+/// clock can be run fast: `]` doubles the speed of time (up to x16), `[`
+/// halves it, and Shift + `]` pushes the dark on a whole system.
+pub fn god_enabled() -> bool {
+    std::env::var("DEPTHS_GOD").ok().as_deref() == Some("1")
+}
+
+/// How fast god mode's clock can run. Past this a frame's step outgrows what
+/// Time<Virtual> will take (250 ms), and it just stops getting faster.
+pub const TIME_SPEEDS: [f32; 5] = [1.0, 2.0, 4.0, 8.0, 16.0];
+
+/// The next speed up or down from `now`.
+pub fn step_speed(now: f32, up: bool) -> f32 {
+    let i = TIME_SPEEDS.iter().position(|s| (*s - now).abs() < 0.01).unwrap_or(0);
+    let j = if up { (i + 1).min(TIME_SPEEDS.len() - 1) } else { i.saturating_sub(1) };
+    TIME_SPEEDS[j]
+}
+
+/// The time keys: `]` faster, `[` slower, Shift + `]` the dark on a system.
+/// Not while building, where the brackets turn blocks.
+fn time_keys(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    build: Res<State<crate::states::BuildState>>,
+    mut virtual_time: ResMut<Time<Virtual>>,
+    mut push: ResMut<crate::narrative::front::DarkPush>,
+    mut notifications: MessageWriter<ShowNotification>,
+) {
+    if *build.get() != crate::states::BuildState::Inactive {
+        return;
+    }
+    let shift = keyboard.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    let now = virtual_time.relative_speed();
+    let next = if keyboard.just_pressed(KeyCode::BracketRight) && shift {
+        push.0 += crate::narrative::front::ONE_SYSTEM;
+        notifications.write(ShowNotification { message: "[god] the dark moves on a system".into(), notification_type: NotificationType::Info, duration: 3.0 });
+        return;
+    } else if keyboard.just_pressed(KeyCode::BracketRight) {
+        step_speed(now, true)
+    } else if keyboard.just_pressed(KeyCode::BracketLeft) {
+        step_speed(now, false)
+    } else {
+        return;
+    };
+    if next != now {
+        virtual_time.set_relative_speed(next);
+        notifications.write(ShowNotification { message: format!("[god] time x{next}"), notification_type: NotificationType::Info, duration: 2.0 });
+    }
+}
+
+#[derive(Component)]
+struct TimeChip;
+
+/// "TIME x8" at the top of the screen whenever the clock isn't running true.
+fn time_chip(mut commands: Commands, virtual_time: Res<Time<Virtual>>, mut chip: Query<(&mut Text, &mut Visibility), With<TimeChip>>) {
+    let speed = virtual_time.relative_speed();
+    let Ok((mut text, mut vis)) = chip.single_mut() else {
+        commands.spawn((
+            Text::new(""),
+            TextFont { font_size: FontSize::Px(16.0), ..default() },
+            TextColor(Color::srgb(1.0, 0.85, 0.4)),
+            Node { position_type: PositionType::Absolute, top: Val::Px(72.0), left: Val::Percent(46.0), ..default() },
+            ZIndex(50),
+            Visibility::Hidden,
+            TimeChip,
+        ));
+        return;
+    };
+    let want = if (speed - 1.0).abs() > 0.01 { Visibility::Inherited } else { Visibility::Hidden };
+    if *vis != want {
+        *vis = want;
+    }
+    let label = format!("TIME x{speed}");
+    if text.0 != label {
+        text.0 = label;
+    }
 }
 
 impl Plugin for DebugPlugin {
@@ -46,6 +124,10 @@ impl Plugin for DebugPlugin {
             return;
         }
         info!("DEPTHS_DEBUG=1: debug menu on backtick");
+        if god_enabled() {
+            info!("DEPTHS_GOD=1: god mode, ] and [ to run time faster or slower");
+            app.add_systems(Update, (time_keys, time_chip).run_if(in_state(GameState::Exploring)));
+        }
         app.add_systems(Update, toggle_debug_menu)
             .add_systems(
                 Update,
@@ -96,8 +178,8 @@ impl Default for DebugTuning {
             speed_mult: 1.0,
             damage_mult: 1.0,
             fire_rate_mult: 1.0,
-            god_mode: false,
-            infinite_fuel: false,
+            god_mode: god_enabled(),
+            infinite_fuel: god_enabled(),
         }
     }
 }
@@ -830,4 +912,21 @@ fn debug_kill_crew(
         notification_type: NotificationType::Info,
         duration: 2.0,
     });
+}
+
+#[cfg(test)]
+mod god_tests {
+    use super::*;
+
+    /// The clock steps through the speeds in order, and stops at both ends.
+    #[test]
+    fn time_steps_up_and_down_and_stops_at_the_ends() {
+        assert_eq!(step_speed(1.0, true), 2.0);
+        assert_eq!(step_speed(8.0, true), 16.0);
+        assert_eq!(step_speed(16.0, true), 16.0);
+        assert_eq!(step_speed(4.0, false), 2.0);
+        assert_eq!(step_speed(1.0, false), 1.0);
+        // A speed set from elsewhere (autoplay) starts again from the bottom.
+        assert_eq!(step_speed(3.0, true), 2.0);
+    }
 }

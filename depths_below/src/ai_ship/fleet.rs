@@ -74,6 +74,10 @@ pub struct TradeRun {
     pub last_stop: String,
     /// The system it's leaving for.
     pub leaving: Option<u32>,
+    /// Running from the dark (narrative::front::send_refugees): it makes for
+    /// the jump out and waits there rather than turning back.
+    #[serde(default)]
+    pub refugees: bool,
 }
 
 /// What a fleet sent because of your standing is doing.

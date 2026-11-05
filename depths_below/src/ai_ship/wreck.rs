@@ -171,6 +171,25 @@ pub fn paint_wrecks(
 /// with Wreck + PointOfInterest, no changes needed there). Remaining
 /// modules are deactivated and darkened — the reactor's dead, nothing on
 /// this hulk still has power — but nothing is despawned.
+/// Salvage units a wreck of this faction holds before the kill method
+/// shapes it (pristine, ordinary, shattered).
+pub fn base_loot(ship_type: AiShipType) -> u32 {
+    match ship_type {
+        AiShipType::Shepherd => 30,    // legendary hoard
+        AiShipType::EternalHegemony => 20,  // colossal wreck
+        AiShipType::StellarPreserve => 6,
+        AiShipType::SynthesisCollective => 4,
+        AiShipType::BrokenChoir => 8,     // rare old loot
+        AiShipType::CorpseStars => 5,
+        AiShipType::TheSilence => 7,    // intel data
+        AiShipType::TerranHegemony => 10,    // massive wreck
+        AiShipType::GildedThrone => 6,
+        AiShipType::RecursiveKingdom => 2,    // junk
+        AiShipType::MerchantPrinces => 10,  // a hold full of cargo
+        AiShipType::FreeHaulersCompact => 8,
+    }
+}
+
 pub fn ai_ship_death_system(
     mut commands: Commands,
     mut destroyed_events: MessageReader<AiShipDestroyed>,
@@ -188,20 +207,7 @@ pub fn ai_ship_death_system(
             shield.enabled = false;
             shield.current = 0.0;
         }
-        let base_loot = match event.ship_type {
-            AiShipType::Shepherd => 30,    // legendary hoard
-            AiShipType::EternalHegemony => 20,  // colossal wreck
-            AiShipType::StellarPreserve => 6,
-            AiShipType::SynthesisCollective => 4,
-            AiShipType::BrokenChoir => 8,     // rare old loot
-            AiShipType::CorpseStars => 5,
-            AiShipType::TheSilence => 7,    // intel data
-            AiShipType::TerranHegemony => 10,    // massive wreck
-            AiShipType::GildedThrone => 6,
-            AiShipType::RecursiveKingdom => 2,    // junk
-            AiShipType::MerchantPrinces => 10,  // a hold full of cargo
-            AiShipType::FreeHaulersCompact => 8,
-        };
+        let base_loot = base_loot(event.ship_type);
 
         // A meltdown takes the ship apart on the way out: the blast guts a
         // share of whatever was still intact, so cracking the core buys a

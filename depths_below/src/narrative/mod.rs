@@ -4,6 +4,7 @@
 pub mod logs;
 pub mod doppelganger;
 pub mod expedition;
+pub mod dark_scene;
 pub mod front;
 pub mod interference;
 pub mod leads;
@@ -168,6 +169,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(leads::LeadsPlugin);
         app.add_plugins(front::FrontPlugin);
         app.add_plugins(ward::WardPlugin);
+        app.add_plugins(dark_scene::DarkScenePlugin);
         app.init_resource::<CascadeState>().add_systems(
             Update,
             (update_cascade, grant_hull_materials)

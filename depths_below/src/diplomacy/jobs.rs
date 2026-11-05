@@ -287,6 +287,27 @@ pub fn offer_for(def: &ContactDef, relationship: f32, world: &World, rng: &mut i
         story: None,
     };
 
+    // Next to the dark, anyone might ask you to see people out
+    // (narrative::front::send_refugees).
+    let refugees: Vec<_> = world
+        .sim
+        .fleets
+        .iter()
+        .filter(|f| f.system_id == world.here && f.trade.as_ref().is_some_and(|t| t.refugees))
+        .filter(|f| !factions_hostile(faction, f.faction))
+        .filter(|f| alive(f.id).iter().any(|s| role_of(s.faction, s.class) == ClassRole::Civilian))
+        .collect();
+    if let Some(f) = refugees.choose(rng).filter(|_| rng.gen_bool(0.5)) {
+        let haulers = alive(f.id).iter().filter(|s| role_of(s.faction, s.class) == ClassRole::Civilian).count();
+        let to = f.trade.as_ref().map_or(String::new(), |t| t.bound_for.clone());
+        return Some(job(
+            JobKind::Escort { fleet: f.id, system: f.system_id, stop: f.destination, kept_close: false },
+            format!("Escort: refugees out of {}", name_of(world.here)),
+            format!("{haulers} haulers full of people, running from the dark for {to}. Stay within 15 km of them until they reach the jump."),
+            pay(450.0 + haulers as f32 * 80.0),
+        ));
+    }
+
     let mut kinds: Vec<&str> = kinds_for(def.role).to_vec();
     kinds.shuffle(rng);
     for kind in kinds {
