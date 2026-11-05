@@ -291,11 +291,19 @@ pub fn process_module_destruction(
     turrets: Query<&ChildOf, With<crate::combat::turret_deck::TurretBody>>,
     mut destroy_events: MessageWriter<ModuleDestroyed>,
     mut notifications: MessageWriter<ShowNotification>,
+    debug_tuning: Option<Res<crate::debug::DebugTuning>>,
 ) {
     let player_ship = ship_query.single().ok();
     for (entity, mut module, mut sprite, parent) in module_query.iter_mut() {
         // A part on a turret deck belongs to the ship the turret stands on.
         let owner = turrets.get(parent.parent()).map(|t| t.parent()).unwrap_or(parent.parent());
+        // God mode: whatever reached it, nothing of yours is ever destroyed.
+        if debug_tuning.as_ref().is_some_and(|t| t.god_mode) && Some(owner) == player_ship {
+            if module.health <= 0.0 {
+                module.health = module.max_health;
+            }
+            continue;
+        }
         // Health alone decides this. It used to also require is_active, which
         // meant a module that spawns INACTIVE could never be destroyed — its
         // health went to zero and past it and nothing ever marked it. That's
@@ -850,8 +858,13 @@ mod destruction_tests {
     }
 
     fn run(module: Module) -> bool {
+        run_with(module, false)
+    }
+
+    fn run_with(module: Module, god_mode: bool) -> bool {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.insert_resource(crate::debug::DebugTuning { god_mode, ..default() });
         app.add_message::<ModuleDestroyed>();
         app.add_message::<ShowNotification>();
         app.add_systems(Update, process_module_destruction);
@@ -862,6 +875,33 @@ mod destruction_tests {
             .id();
         app.update();
         app.world().get::<DestroyedModule>(block).is_some()
+    }
+
+    /// God mode: nothing of the player's is destroyed, however it got to
+    /// zero (a road the damage guards missed breached the hull in a
+    /// god-mode playtest, 2026-11-05).
+    #[test]
+    fn god_mode_never_loses_a_block() {
+        assert!(!run_with(module_at_zero(ModuleType::ArmorPlate, false), true));
+        assert!(run_with(module_at_zero(ModuleType::ArmorPlate, false), false));
+    }
+
+    /// The same for hull plates.
+    #[test]
+    fn god_mode_never_loses_a_plate() {
+        for god_mode in [true, false] {
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins);
+            app.insert_resource(crate::debug::DebugTuning { god_mode, ..default() });
+            app.add_systems(Update, crate::ship::hull::tint_destroyed_hull);
+            let ship = app.world_mut().spawn(Ship).id();
+            let plate = app.world_mut()
+                .spawn((HullSegment { health: 0.0, max_health: 50.0, ..default() }, Sprite::default()))
+                .insert(ChildOf(ship))
+                .id();
+            app.update();
+            assert_eq!(app.world().get::<HullDestroyed>(plate).is_some(), !god_mode);
+        }
     }
 
     /// A block at zero health is destroyed, whatever it is.

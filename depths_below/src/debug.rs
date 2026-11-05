@@ -28,10 +28,11 @@ pub struct DebugPlugin;
 /// Whether this run was launched with the debug menu enabled:
 /// `DEPTHS_DEBUG=1`, the house style of every other dev switch (demo.rs).
 ///
-/// Backtick sits right beside 1, and with the menu open 1 reveals the whole
-/// galaxy as Visited -- which also maxes the story's reach, so a playtest
-/// run that brushed the key got the endgame mirror ship a minute in. A
-/// normal launch now has no debug menu at all.
+/// Backtick sits right beside 1, and with the menu open 1 used to reveal the
+/// whole galaxy as Visited -- which also maxed the story's reach, so a
+/// playtest run that brushed the key got the endgame mirror ship a minute
+/// in. It reveals them as Located now, and a normal launch has no debug menu
+/// at all.
 pub fn debug_enabled() -> bool {
     std::env::var("DEPTHS_DEBUG").ok().as_deref() == Some("1") || god_enabled()
 }
@@ -86,6 +87,43 @@ fn time_keys(
     }
 }
 
+/// God mode keeps the ship whole after everything else has had its turn
+/// this frame: every plate and block back to full, no hole venting, every
+/// crew member well. Damage reaches the ship by many roads (rounds, beams,
+/// blasts, fire, heat, the dark); this doesn't have to know them all.
+fn god_keeps_the_ship(
+    tuning: Res<DebugTuning>,
+    ship: Query<Entity, With<Ship>>,
+    children: Query<&Children>,
+    mut hull: Query<&mut HullSegment, Without<HullDestroyed>>,
+    mut modules: Query<&mut Module, Without<DestroyedModule>>,
+    mut crew: Query<&mut CrewMember, Without<crate::ai_ship::components::OwnedByAiShip>>,
+) {
+    if !tuning.god_mode {
+        return;
+    }
+    let Ok(ship) = ship.single() else { return };
+    for block in children.iter_descendants(ship) {
+        if let Ok(mut h) = hull.get_mut(block) {
+            if h.health < h.max_health || h.is_depressurized {
+                h.health = h.max_health;
+                h.is_depressurized = false;
+                h.depressurization_level = 0.0;
+            }
+        }
+        if let Ok(mut m) = modules.get_mut(block) {
+            if m.health < m.max_health {
+                m.health = m.max_health;
+            }
+        }
+    }
+    for mut c in &mut crew {
+        if c.health < c.max_health {
+            c.health = c.max_health;
+        }
+    }
+}
+
 #[derive(Component)]
 struct TimeChip;
 
@@ -126,7 +164,8 @@ impl Plugin for DebugPlugin {
         info!("DEPTHS_DEBUG=1: debug menu on backtick");
         if god_enabled() {
             info!("DEPTHS_GOD=1: god mode, ] and [ to run time faster or slower");
-            app.add_systems(Update, (time_keys, time_chip).run_if(in_state(GameState::Exploring)));
+            app.add_systems(Update, (time_keys, time_chip).run_if(in_state(GameState::Exploring)))
+                .add_systems(PostUpdate, god_keeps_the_ship);
         }
         app.add_systems(Update, toggle_debug_menu)
             .add_systems(
@@ -662,13 +701,17 @@ fn debug_actions(
         }
     }
 
-    // Reveals every system on the galaxy map as fully Visited (name/faction/
-    // danger all shown) — for eyeballing the whole layout at once, not a
-    // real gameplay mechanic.
+    // Reveals every system on the galaxy map — for eyeballing the whole
+    // layout at once, not a real gameplay mechanic. As Located, not Visited:
+    // the story's reach counts Visited systems, so revealing them as visited
+    // jumped a fresh run to the late game and sent the mirror ship a
+    // minute in (a god-mode playtest, 2026-11-05).
     if keyboard.just_pressed(KeyCode::Digit1) {
         use crate::celestial::resources::SystemDiscovery;
         for sys in galaxy.galaxy_map.systems.iter_mut() {
-            sys.discovery = SystemDiscovery::Visited;
+            if sys.discovery == SystemDiscovery::Unknown {
+                sys.discovery = SystemDiscovery::Located;
+            }
         }
         notify(&mut notifications, "[debug] revealed entire galaxy map".into());
     }

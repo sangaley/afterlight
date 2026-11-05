@@ -90,9 +90,17 @@ pub fn tint_damaged_hull(
 /// this treatment (process_module_destruction); hull tiles didn't.
 pub fn tint_destroyed_hull(
     mut commands: Commands,
-    mut hull_query: Query<(Entity, &HullSegment, &mut Sprite), Without<HullDestroyed>>,
+    mut hull_query: Query<(Entity, &mut HullSegment, &mut Sprite, &ChildOf), Without<HullDestroyed>>,
+    ship: Query<Entity, With<Ship>>,
+    debug_tuning: Option<Res<crate::debug::DebugTuning>>,
 ) {
-    for (entity, hull, mut sprite) in hull_query.iter_mut() {
+    let player = ship.single().ok();
+    for (entity, mut hull, mut sprite, parent) in hull_query.iter_mut() {
+        if hull.health <= 0.0 && debug_tuning.as_ref().is_some_and(|t| t.god_mode) && Some(parent.parent()) == player {
+            // God mode: your plates never go.
+            hull.health = hull.max_health;
+            continue;
+        }
         if hull.health <= 0.0 {
             sprite.color = DAMAGE_TINT_TARGET;
             // try_insert: this runs for every ship including AI ships, and an
@@ -133,14 +141,21 @@ pub fn process_hull_cascade(
     room_map: Res<RoomMap>,
     mut room_depressurize_events: MessageWriter<RoomDepressurized>,
     mut notifications: MessageWriter<ShowNotification>,
+    debug_tuning: Option<Res<crate::debug::DebugTuning>>,
 ) {
     let player_ship = ship_query.single().ok();
     let mut destroyed_positions: Vec<IVec2> = Vec::new();
 
     for event in hull_destroy_events.read() {
+        let on_player = parents.get(event.segment).ok().map(|p| p.parent()) == player_ship;
+        if on_player && player_ship.is_some() && debug_tuning.as_ref().is_some_and(|t| t.god_mode) {
+            if let Ok((_, mut seg, _)) = hull_query.get_mut(event.segment) {
+                seg.health = seg.max_health;
+            }
+            continue;
+        }
         // Mark the destroyed hull segment
         commands.entity(event.segment).try_insert(HullDestroyed);
-        let on_player = parents.get(event.segment).ok().map(|p| p.parent()) == player_ship;
         if on_player && player_ship.is_some() {
             destroyed_positions.push(event.grid_position);
         }
