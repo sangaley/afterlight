@@ -389,6 +389,28 @@ fn system_brief_living(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &F
     lines
 }
 
+/// What the map lets go of in a system the dark took (narrative::news):
+/// first what was in it, then its name.
+fn forget(sys: &mut SceneSystem, how_much: crate::narrative::news::Forgot) {
+    use crate::narrative::news::Forgot;
+    if how_much == Forgot::Nothing {
+        return;
+    }
+    sys.planets.clear();
+    sys.stations.clear();
+    sys.orbits.clear();
+    let second = if how_much == Forgot::Name {
+        sys.name = String::new();
+        "You can't remember what it was called."
+    } else {
+        "You don't remember what was here."
+    };
+    sys.brief = vec![
+        BriefLine { text: "Lost to the dark".into(), color: C::TEXT_MUTED, lead: true },
+        BriefLine { text: second.into(), color: C::TEXT_MUTED, lead: false },
+    ];
+}
+
 /// A system as its seed and the politics have it, with no ships yet.
 fn chart_system(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &FactionStanding, war: &BorderWar, here: bool) -> SceneSystem {
     let roll = system_roll(sys);
@@ -490,6 +512,8 @@ pub struct MapWorld<'w, 's> {
     stats: Res<'w, crate::resources::Statistics>,
     /// How far the Summit Record has come (the scar).
     contacts: Res<'w, crate::diplomacy::contacts::Contacts>,
+    /// The galaxy clock, for how long ago you heard (narrative::news).
+    clock: Res<'w, crate::celestial::resources::GalaxyState>,
 }
 
 /// Off-screen ships of one system as fleets on the map.
@@ -532,10 +556,23 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
     let you_world = player.map_or(Vec2::ZERO, |t| t.translation.truncate());
     let you_heading = player.map_or(0.0, |t| t.rotation.to_euler(EulerRot::ZYX).0);
 
-    let mut systems: Vec<SceneSystem> = world.galaxy_map.systems.iter()
+    // The galaxy as you know it, not as it is (narrative::news): the dark
+    // where you last heard it was, and the map forgetting what it took.
+    let known = crate::narrative::news::known_map(&world.galaxy_map);
+    let now = world.clock.galaxy_time;
+    let mut systems: Vec<SceneSystem> = known.systems.iter()
         .filter(|s| s.discovery != SystemDiscovery::Unknown)
-        .map(|s| chart_system(s, &world.galaxy_map, standing, &world.war, Some(s.id) == here_id))
+        .map(|s| chart_system(s, &known, standing, &world.war, Some(s.id) == here_id))
         .collect();
+    for sys in &mut systems {
+        let Some(truth) = world.galaxy_map.systems.iter().find(|t| t.id == sys.id) else { continue };
+        forget(sys, crate::narrative::news::forgotten(truth, now));
+        if truth.heard.dark > 0.0 && !sys.here {
+            let mins = ((now - truth.heard.at) / 60.0).max(0.0) as u32;
+            let when = if mins == 0 { "just now".to_string() } else { format!("{mins} min ago") };
+            sys.brief.push(BriefLine { text: format!("Last word from here: {when}"), color: C::TEXT_MUTED, lead: false });
+        }
+    }
     // What the logs said about a system (narrative::leads), under its brief.
     for (id, line, warning) in crate::narrative::leads::notes(&world.galaxy_map, &world.stats.logs_found) {
         if let Some(sys) = systems.iter_mut().find(|s| s.id == id) {
@@ -1089,6 +1126,19 @@ fn system_tip(scene: &Scene, sys: &SceneSystem) -> Vec<String> {
     tip
 }
 
+/// The lobes of one system's smear of dark: how far out from it, and how
+/// big, as shares of its reach. One in the middle, the rest its own shape.
+fn dark_lobes(id: u32) -> [(f32, f32); 5] {
+    let n = |k: u32| (id.wrapping_mul(2_654_435_761).wrapping_add(k * 40_503) >> 8) % 4;
+    [
+        (0.0, 1.0),
+        (0.35 + 0.1 * n(1) as f32, 0.55 + 0.1 * n(2) as f32),
+        (0.40 + 0.1 * n(3) as f32, 0.50 + 0.1 * n(4) as f32),
+        (0.30 + 0.1 * n(5) as f32, 0.60 + 0.1 * n(6) as f32),
+        (0.55 + 0.1 * n(7) as f32, 0.35 + 0.1 * n(8) as f32),
+    ]
+}
+
 /// Paint the map. Returns what can be clicked and where.
 fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, layers: MapLayers, pick: MapPick) -> Vec<Hotspot> {
     let mut spots = Vec::new();
@@ -1128,14 +1178,20 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
         }
     }
 
-    // The Cascade: taken systems are a hole in the light, systems it's
-    // reaching are dimming. No outline, as in the prologue.
+    // The Cascade, as last heard of: a smear of dark lobes over each system
+    // it has or is reaching, not a clean ring, and no outline, as in the
+    // prologue. Where it is now, you don't know.
     for sys in scene.systems.iter().filter(|s| s.dark > 0.0) {
-        let at = cam.to_px(sys.galaxy, stage);
-        let r = (420_000.0 * cam.scale).max(10.0) * (0.6 + 0.4 * sys.dark.min(1.0));
-        if paint.on_stage(at, r) {
-            paint.glow(at, r * 1.3, Color::srgb(0.30, 0.15, 0.40), 0.08 * sys.dark.min(1.0));
-            paint.disc(at, r, Color::srgba(0.0, 0.0, 0.01, 0.75 * sys.dark.min(1.0)));
+        let d = sys.dark.min(1.0);
+        let reach = 420_000.0 * (0.6 + 0.4 * d);
+        for (k, (out, size)) in dark_lobes(sys.id).into_iter().enumerate() {
+            let angle = sys.id as f32 * 2.399 + k as f32 * 1.7;
+            let at = cam.to_px(sys.galaxy + Vec2::from_angle(angle) * reach * out, stage);
+            let r = (reach * size * cam.scale).max(6.0);
+            if paint.on_stage(at, r) {
+                paint.glow(at, r * 1.3, Color::srgb(0.30, 0.15, 0.40), 0.05 * d);
+                paint.disc(at, r, Color::srgba(0.0, 0.0, 0.01, 0.45 * d));
+            }
         }
     }
 

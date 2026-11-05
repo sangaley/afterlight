@@ -2,6 +2,7 @@
 //! simulates rather than through cutscenes.
 
 pub mod logs;
+pub mod news;
 pub mod doppelganger;
 pub mod expedition;
 pub mod dark_scene;
@@ -170,6 +171,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(front::FrontPlugin);
         app.add_plugins(ward::WardPlugin);
         app.add_plugins(dark_scene::DarkScenePlugin);
+        app.add_plugins(news::NewsPlugin);
         app.init_resource::<CascadeState>().add_systems(
             Update,
             (update_cascade, grant_hull_materials)
@@ -210,6 +212,7 @@ mod tests {
             last_updated: 0.0,
             resource_fraction_remaining: 1.0,
             dark: 0.0,
+            heard: Default::default(),
         }
     }
 

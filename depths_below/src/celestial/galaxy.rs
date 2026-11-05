@@ -90,6 +90,7 @@ pub fn haven_def() -> StarSystemDef {
         last_updated: 0.0,
         resource_fraction_remaining: 1.0,
         dark: 0.0,
+        heard: Default::default(),
     }
 }
 
@@ -293,6 +294,7 @@ pub fn generate_galaxy_map(galaxy_seed: u64) -> GalaxyMap {
             last_updated: 0.0,
             resource_fraction_remaining: 1.0,
             dark: 0.0,
+            heard: Default::default(),
         });
     }
 
@@ -326,7 +328,10 @@ pub fn passive_proximity_discovery_system(
     mut galaxy_map: ResMut<GalaxyMap>,
     streaming: Res<SystemStreamingManager>,
 ) {
-    passive_proximity_discovery(&mut galaxy_map, streaming.current_galaxy_pos);
+    // Near the dark the sensors see less (narrative::news::sensor_reach).
+    let near = streaming.loaded_system.and_then(|id| crate::narrative::front::hops_from_dark(&galaxy_map, id));
+    let reach = SENSOR_RANGE * crate::narrative::news::sensor_reach(near);
+    passive_proximity_discovery(&mut galaxy_map, streaming.current_galaxy_pos, reach);
 }
 
 /// Distance a system's faction population cluster sits away from the star
@@ -386,9 +391,9 @@ pub fn system_within_snap_tolerance(galaxy_map: &GalaxyMap, pos: Vec2) -> Option
 /// see SystemStreamingManager.loaded_system) reveals as Located. Runs
 /// continuously while Exploring, not gated behind any scan action —
 /// Cosmoteer-style ambient fog-of-war peel-back.
-pub fn passive_proximity_discovery(galaxy_map: &mut GalaxyMap, current_pos: Vec2) {
+pub fn passive_proximity_discovery(galaxy_map: &mut GalaxyMap, current_pos: Vec2, reach: f32) {
     for system in galaxy_map.systems.iter_mut() {
-        if system.discovery == SystemDiscovery::Unknown && system.galaxy_pos.distance(current_pos) <= SENSOR_RANGE {
+        if system.discovery == SystemDiscovery::Unknown && system.galaxy_pos.distance(current_pos) <= reach {
             system.discovery = SystemDiscovery::Located;
         }
     }

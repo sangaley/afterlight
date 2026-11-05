@@ -1709,6 +1709,10 @@ pub struct SystemSaveData {
     /// How far the Cascade has it (narrative::front). 0 on older saves.
     #[serde(default)]
     pub dark: f32,
+    /// What you last heard of it (narrative::news). None on older saves: you
+    /// know the truth.
+    #[serde(default)]
+    pub heard: Option<crate::narrative::news::Heard>,
 }
 
 /// A system's owner as saved.
@@ -2058,6 +2062,7 @@ mod save_tests {
             looted_pois: vec![0, 2],
             held: Some(HeldBy { owner: Some(crate::ai_ship::components::AiShipType::TerranHegemony), capital: true }),
             dark: 0.5,
+            heard: Some(crate::narrative::news::Heard { dark: 0.25, at: 50.0, ..Default::default() }),
         }];
         save.uncharted_galaxy_pos = Some(Vec2::new(1_200_000.0, -40_000.0));
         save.fuel = Some(321.0);
@@ -2078,6 +2083,7 @@ mod save_tests {
         assert_eq!(back.contracts.next_id, 17);
         assert_eq!(back.reputation.navy, 42.0);
         assert_eq!(back.galaxy_time, 5_432.25);
+        assert_eq!(back.galaxy_systems[0].heard.as_ref().map(|h| (h.dark, h.at)), Some((0.25, 50.0)));
     }
 
     /// A save written before those fields existed still loads, and reads as
@@ -2092,9 +2098,11 @@ mod save_tests {
             assert!(obj.remove(key).is_some(), "{key} is not in the save under that name");
         }
         obj["galaxy_systems"][0].as_object_mut().unwrap().remove("looted_pois");
+        obj["galaxy_systems"][0].as_object_mut().unwrap().remove("heard");
 
         let old: SaveData = serde_json::from_value(json).unwrap();
         assert!(old.galaxy_systems[0].looted_pois.is_empty());
+        assert!(old.galaxy_systems[0].heard.is_none(), "an old save knows the truth (meta::load)");
         assert_eq!(old.uncharted_galaxy_pos, None);
         assert_eq!(old.fuel, None);
         assert!(old.contracts.active_contracts.is_empty());

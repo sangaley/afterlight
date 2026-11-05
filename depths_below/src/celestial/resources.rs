@@ -69,6 +69,9 @@ pub struct StarSystemDef {
     /// How far the Cascade has it (narrative::front): 0.0 untouched,
     /// between 0 and 1 the dark is reaching it, 1.0 taken.
     pub dark: f32,
+    /// What you last heard of it (narrative::news): the map draws this, not
+    /// the truth.
+    pub heard: crate::narrative::news::Heard,
 }
 
 /// The persistent galaxy layout — generated once per session. Replaces the

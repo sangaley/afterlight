@@ -62,6 +62,7 @@ pub fn toggle_notification_log(
     history: Res<NotificationHistory>,
     contacts: Res<crate::diplomacy::contacts::Contacts>,
     galaxy: Res<crate::celestial::resources::GalaxyMap>,
+    clock: Option<Res<crate::celestial::resources::GalaxyState>>,
 ) {
     if !keyboard.just_pressed(KeyCode::KeyL) {
         return;
@@ -113,6 +114,28 @@ pub fn toggle_notification_log(
         commands.entity(content).add_child(board);
     }
 
+    // The falls you've heard of, newest first (narrative::news). The map
+    // forgets them; this doesn't.
+    let now = clock.map_or(0.0, |c| c.galaxy_time);
+    let falls = dark_record(&galaxy, now);
+    if !falls.is_empty() {
+        let record = commands.spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(3.0),
+            margin: UiRect::bottom(Val::Px(10.0)),
+            ..default()
+        }).id();
+        let line = |text: String, size: f32, color: Color| (Text::new(text), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color));
+        let head = commands.spawn(line("THE DARK".into(), 12.0, Color::srgb(0.6, 0.45, 0.8))).id();
+        commands.entity(record).add_child(head);
+        for text in falls {
+            let row = commands.spawn(line(text, 13.0, Color::srgb(0.7, 0.7, 0.78))).id();
+            commands.entity(record).add_child(row);
+        }
+        commands.entity(content).add_child(record);
+    }
+
     // Find root window and mark it
     commands.entity(content).insert(NotificationLogWindow);
 
@@ -160,6 +183,28 @@ pub fn toggle_notification_log(
     commands.entity(content).add_child(scroll_area);
 }
 
+/// One line per system you've heard the dark took, newest first.
+pub fn dark_record(galaxy: &crate::celestial::resources::GalaxyMap, now: f64) -> Vec<String> {
+    use crate::narrative::news::{forgotten, Forgot};
+    let mut falls: Vec<_> = galaxy.systems.iter().filter_map(|s| s.heard.taken_at.map(|t| (t, s))).collect();
+    falls.sort_by(|a, b| b.0.total_cmp(&a.0));
+    falls
+        .into_iter()
+        .map(|(t, s)| {
+            let when = if t <= 0.0 {
+                "where it began".to_string()
+            } else {
+                match ((now - t) / 60.0).max(0.0) as u32 {
+                    0 => "heard just now".to_string(),
+                    m => format!("heard {m} min ago"),
+                }
+            };
+            let gone = if forgotten(s, now) == Forgot::Name { ", gone from your map" } else { "" };
+            format!("{}: taken, {when}{gone}", s.name)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod toggle_tests {
     use super::*;
@@ -203,5 +248,19 @@ mod toggle_tests {
         let texts: Vec<String> = app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect();
         assert!(texts.iter().any(|t| t == "THE SUMMIT RECORD"), "{texts:?}");
         assert!(texts.iter().any(|t| t.contains("Abbess")));
+    }
+
+    /// The record keeps every fall you heard of, newest first, and says when
+    /// the map has let one go.
+    #[test]
+    fn the_dark_record_lists_what_you_heard() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        assert!(dark_record(&galaxy, 0.0).is_empty());
+        galaxy.systems[3].heard.taken_at = Some(0.0);
+        galaxy.systems[7].heard.taken_at = Some(600.0);
+        let rows = dark_record(&galaxy, 600.0 + crate::narrative::news::FORGET_NAME);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].starts_with(&galaxy.systems[7].name));
+        assert!(rows[1].contains("where it began") && rows[1].contains("gone from your map"));
     }
 }

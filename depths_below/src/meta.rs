@@ -333,6 +333,7 @@ fn collect_save_data(
             looted_pois: looted.for_system(s.id).to_vec(),
             held: Some(crate::resources::HeldBy { owner: s.faction, capital: s.capital }),
             dark: s.dark,
+            heard: Some(s.heard.clone()),
         }).collect(),
         uncharted_galaxy_pos: streaming.loaded_system.is_none().then_some(streaming.current_galaxy_pos),
         fuel: Some(fuel.current_fuel),
@@ -713,6 +714,13 @@ fn rebuild_entities_from_save(
                     sys.faction = held.owner;
                     sys.capital = held.capital;
                     sys.danger_tier = crate::celestial::territory::danger_of(sys);
+                }
+                // A save from before news travelled: you know the truth.
+                match &sd.heard {
+                    Some(heard) => sys.heard = heard.clone(),
+                    None => {
+                        crate::narrative::news::hear(sys, 0.0);
+                    }
                 }
             }
             for &poi_slot in &sd.looted_pois {

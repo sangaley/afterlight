@@ -42,7 +42,12 @@ pub fn seed_origin(galaxy: &mut GalaxyMap) -> bool {
         return false;
     }
     let Some(id) = origin(galaxy) else { return false };
-    take(galaxy, id)
+    let took = take(galaxy, id);
+    // Where it began is no news: everyone knows.
+    if let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) {
+        super::news::hear(sys, 0.0);
+    }
+    took
 }
 
 /// Take a system outright: dark, and nobody's.
@@ -56,16 +61,13 @@ pub fn take(galaxy: &mut GalaxyMap, id: u32) -> bool {
     true
 }
 
-/// Take a system (or darken it this far), and put it on the map: the front
-/// is seen coming, even across space you've never been.
+/// Take a system (or darken it this far). Only the truth: you hear of it
+/// when the news reaches you (narrative::news).
 pub fn darken(sys: &mut StarSystemDef, to: f32) {
     if is_spared(sys) {
         return;
     }
     sys.dark = sys.dark.max(to.min(TAKEN));
-    if sys.discovery == crate::celestial::resources::SystemDiscovery::Unknown {
-        sys.discovery = crate::celestial::resources::SystemDiscovery::Located;
-    }
 }
 
 /// What a system loses when the dark takes it: its owner, and the owner's
@@ -74,6 +76,11 @@ pub fn darken(sys: &mut StarSystemDef, to: f32) {
 pub fn go_dark(galaxy: &mut GalaxyMap, id: u32) -> Option<(AiShipType, bool)> {
     let i = galaxy.systems.iter().position(|s| s.id == id)?;
     let (from, was_capital, pos) = (galaxy.systems[i].faction, galaxy.systems[i].capital, galaxy.systems[i].galaxy_pos);
+    // Until you hear, the map still shows them holding it.
+    if galaxy.systems[i].heard.taken_at.is_none() {
+        galaxy.systems[i].heard.owner_before = from;
+        galaxy.systems[i].heard.capital_before = was_capital;
+    }
     galaxy.systems[i].faction = None;
     galaxy.systems[i].capital = false;
     let loser = from?;
@@ -176,6 +183,10 @@ fn dark_from_env(mut galaxy: ResMut<GalaxyMap>, mut done: Local<bool>) {
     far.sort_by(|a, b| b.1.total_cmp(&a.1));
     for (id, _) in far.into_iter().take(n) {
         take(&mut galaxy, id);
+        // A debug look at the dark wants to see it.
+        if let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) {
+            super::news::hear(sys, 0.0);
+        }
     }
     info!("FRONT: DEPTHS_DARK took {n} systems");
 }
@@ -270,7 +281,9 @@ fn advance_front(
     mut notes: MessageWriter<crate::events::ShowNotification>,
     mut steps_seen: Local<Option<u8>>,
     mut push: ResMut<DarkPush>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
 ) {
+    let here = streaming.loaded_system;
     if galaxy.systems.is_empty() {
         return;
     }
@@ -292,12 +305,9 @@ fn advance_front(
     let took = spread(&mut galaxy, creep + lurch, ships_in);
     for id in took {
         let name = galaxy.systems.iter().find(|s| s.id == id).map_or(String::new(), |s| s.name.clone());
+        // Said when you hear of it (narrative::news), not here.
         info!("FRONT: {name} taken ({} gone)", taken_count(&galaxy));
-        notes.write(crate::events::ShowNotification {
-            message: format!("The dark has taken {name}. Nothing there answers."),
-            notification_type: crate::events::NotificationType::Danger,
-            duration: 8.0,
-        });
+        let close = here.is_some_and(|h| super::news::jumps_from(&galaxy, h).get(&id).is_some_and(|j| *j <= 1));
         // Everyone there stops where they are.
         for ship in sim.ships.iter_mut().filter(|s| s.system_id == id) {
             ship.behavior = crate::ai_ship::components::SimBehavior::Dead;
@@ -307,6 +317,10 @@ fn advance_front(
         if let Some((loser, true)) = go_dark(&mut galaxy, id) {
             standing.break_alliance(loser, format!("With {name} gone, they break every pact"));
             for who in crate::diplomacy::contacts::lose_in_the_fall(&mut contacts, loser, &mut rand::thread_rng()) {
+                // Far off, they're simply gone when you look for them.
+                if !close {
+                    continue;
+                }
                 notes.write(crate::events::ShowNotification {
                     message: format!("{who} did not make it out of {name}."),
                     notification_type: crate::events::NotificationType::Warning,

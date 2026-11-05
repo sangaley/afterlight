@@ -94,6 +94,7 @@ pub fn warp_input_system(
     mut notifications: MessageWriter<ShowNotification>,
     mut jump_events: MessageWriter<WarpJumpStarted>,
     ward: Option<Res<crate::narrative::ward::WardState>>,
+    overheard: Option<ResMut<crate::narrative::news::Overheard>>,
 ) {
     // The key starts the charge and it runs on its own from there — no need
     // to hold it through the whole (up to 18s) charge. A second press while
@@ -114,8 +115,21 @@ pub fn warp_input_system(
             // Into the dark only with a working Dark Ward aboard.
             if let GalaxyWarpTarget::System(id) = target {
                 if !crate::narrative::ward::may_enter(&galaxy_map, id, ward.as_ref().is_some_and(|w| w.aboard)) {
+                    // The drive finds out before you do: if you hadn't heard,
+                    // this is how (narrative::news).
+                    let sys = galaxy_map.systems.iter().find(|s| s.id == id);
+                    let unheard = sys.is_some_and(|s| s.heard.taken_at.is_none());
+                    let message = match sys {
+                        Some(s) if unheard => format!("The drive won't take you. Something is wrong at {}.", s.name),
+                        _ => "The warp drive won't jump into the dark. It needs a Dark Ward aboard.".to_string(),
+                    };
+                    if unheard {
+                        if let Some(mut heard) = overheard {
+                            heard.0.push(id);
+                        }
+                    }
                     notifications.write(ShowNotification {
-                        message: "The warp drive won't jump into the dark. It needs a Dark Ward aboard.".into(),
+                        message,
                         notification_type: NotificationType::Warning,
                         duration: 5.0,
                     });
