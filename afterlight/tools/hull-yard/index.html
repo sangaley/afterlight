@@ -1,0 +1,865 @@
+<title>Hull Yard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{--void:#070a11;--ground:#0c1019;--panel:#141a26;--panelhi:#1c2433;--line:#26303f;
+        --ink:#ccd6e6;--dim:#7b8798;--faint:#4d5866;--signal:#6f9dff;--warn:#e08a3c;--good:#5fc9a3;--bad:#e06a6a;
+        color-scheme:dark;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--void);color:var(--ink);
+       font:400 14px/1.55 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 20px 60px}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin-bottom:6px}
+  h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.015em}
+  .eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;
+           letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+  .lede{margin:0 0 16px;color:var(--dim);max-width:70ch;font-size:13.5px}
+
+  .app{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start}
+  @media(max-width:900px){.app{grid-template-columns:1fr}}
+
+  .stage{border:1px solid var(--line);background:var(--ground);position:relative;overflow:auto;max-height:70vh}
+  canvas{display:block;image-rendering:auto;cursor:crosshair;touch-action:none}
+
+  .side{display:flex;flex-direction:column;gap:14px}
+  .card{border:1px solid var(--line);background:var(--ground)}
+  .card h2{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);
+    font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--faint);font-weight:600}
+  .card .in{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  button,select{
+    font:500 12.5px/1 "IBM Plex Sans",sans-serif;color:var(--ink);
+    background:var(--panel);border:1px solid var(--line);border-radius:2px;
+    padding:7px 10px;cursor:pointer}
+  button:hover,select:hover{background:var(--panelhi)}
+  button[aria-pressed="true"]{border-color:var(--signal);color:#fff;background:var(--panelhi)}
+  button:focus-visible,select:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  select{width:100%}
+
+  .tools{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+  .pal{max-height:300px;overflow-y:auto;padding-right:2px}
+  /* Icons alone were unfindable: 34 of them, alphabetical, in a scroll box.
+     "I do not see the crew block" -- it was sixth from the top the whole
+     time. Grouped under the heading you would look under, and named. */
+  .pal h3{margin:8px 0 4px;font-size:10px;font-weight:600;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--dim)}
+  .pal h3:first-child{margin-top:0}
+  .pal .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+  .pal button{padding:4px 2px 3px;display:grid;justify-items:center;gap:2px;
+    position:relative;background:var(--panel);line-height:1.15}
+  .pal img{width:34px;height:34px;object-fit:contain;display:block}
+  .pal span{font-size:9px;color:var(--dim);text-align:center;word-break:break-word}
+  .pal button[aria-pressed="true"]{outline:2px solid var(--signal);outline-offset:-2px}
+  .pal button[aria-pressed="true"] span{color:var(--ink)}
+  /* Pressure doors share their art with blocks that are solid walls. The
+     corner tab is the only thing on the icon that says which is which. */
+  .pal button.door::after{content:"";position:absolute;top:2px;right:2px;
+    width:7px;height:7px;border-radius:2px;background:#4fd1a5}
+
+  .report{font-family:"IBM Plex Mono",monospace;font-size:11.5px;display:flex;flex-direction:column;gap:3px}
+  .report div{display:flex;justify-content:space-between;gap:10px;color:var(--dim)}
+  .report b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+  .why{margin:2px 0 0;padding:5px 7px;border-left:2px solid #e2543e;
+    background:rgba(226,84,62,.12);color:var(--ink);font-size:11px;line-height:1.4}
+  .cutnote{margin:6px 0 0;padding:6px 8px;border-left:2px solid #e2543e;
+    background:rgba(226,84,62,.10);color:var(--ink);line-height:1.45;font-size:11px}
+  .ok{color:var(--good)!important}
+  .no{color:var(--bad)!important}
+
+  .status{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);min-height:1.4em}
+  .status.saved{color:var(--good)}
+  .status.busy{color:var(--warn)}
+  .hint{font-size:12px;color:var(--faint);margin:0}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Afterlight</div>
+    <h1>Hull Yard</h1>
+  </header>
+  <p class="lede">
+    Edit any of the claw hulls, or your current ship. Left click lays the
+    selected thing, right click removes, <b>R turns it</b> &mdash; hover a
+    module and press R to turn that one. Your work saves itself, and I can read
+    it back and put it in the game.
+  </p>
+
+  <div class="app">
+    <div class="stage"><canvas id="c" width="1200" height="820"></canvas></div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Ship</h2>
+        <div class="in">
+          <select id="pick">
+            <option value="pincer">Pincer</option>
+            <option value="crab">Crab</option>
+            <option value="trident">Trident</option>
+            <option value="starter">Current starter</option>
+          </select>
+          <div class="row">
+            <button id="revert" type="button">Start over</button>
+            <button id="save" type="button">Save now</button>
+          </div>
+          <div class="status" id="status">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Lay</h2>
+        <div class="in">
+          <div class="tools">
+            <button data-tool="Outer" aria-pressed="true" type="button">Hull plate</button>
+            <button data-tool="Hallway" aria-pressed="false" type="button">Deck</button>
+          </div>
+          <div class="pal" id="pal"></div>
+          <div class="row">
+            <button id="rotate" type="button">Turn &#8635;</button>
+            <span class="hint" id="rotname" style="align-self:center">North</span>
+          </div>
+          <div class="row">
+            <label class="hint" style="align-self:center"><input type="checkbox" id="mirror"> Mirror top/bottom</label>
+          </div>
+          <p class="hint">Shift-drag: fill a rectangle (right button: clear one).</p>
+          <p class="hint" id="sel">Hull plate</p>
+          <p class="why" id="why" hidden></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Survey</h2>
+        <div class="in"><div class="report" id="report"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var T = 26, PAD = 3;
+  var canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+  var hull = new Map();      // "x,y" -> "Outer" | "Inner" | "Hallway"
+  var mods = new Map();      // "x,y" -> {t: type, r: 0..3}  (0 N, 1 E, 2 S, 3 W)
+  var tool = { kind: "hull", value: "Outer" };
+  var rot = 0;
+  // Shift-drag rectangle: its first corner and the cell under the pointer now.
+  var rect = null;
+  // Mirror across the ship's long axis, the game's own symmetry
+  // (building::symmetry::mirror_position: (x, y) -> (x, -y)).
+  var mirrorOn = false;
+  var ROT_NAME = ["North", "East", "South", "West"];
+  var shipKey = "pincer";
+  var db = null, dirty = false, saving = false;
+
+  // ---- images ----------------------------------------------------------
+  var img = {}, pending = 0, ready = false;
+  function load(key, src) {
+    pending++;
+    var i = new Image();
+    i.onload = i.onerror = function () { if (--pending === 0) { ready = true; draw(); } };
+    i.src = src; img[key] = i;
+  }
+  ["hull_steel", "hull_hallway"].forEach(function (n) {
+    for (var m = 0; m < 16; m++) {
+      var s = m < 10 ? "0" + m : "" + m;
+      load(n + "_" + s, "tiles/" + n + "_" + s + ".png");
+    }
+  });
+  Object.keys(window.MODS || {}).forEach(function (t) { load("mod:" + t, "mod/" + t + ".png"); });
+
+  // ---- model -----------------------------------------------------------
+  function key(x, y) { return x + "," + y; }
+  // Straight out of Rotation::rotate_offset. An L-shaped hold turned east
+  // does not occupy the cells a naive width/height swap would give it, and
+  // getting this wrong means the editor lets you build something the game
+  // then refuses to load.
+  function turn(o, r) {
+    var x = o[0], y = o[1];
+    if (r === 1) return [y, -x];
+    if (r === 2) return [-x, -y];
+    if (r === 3) return [-y, x];
+    return [x, y];
+  }
+  function cellsOf(type, x, y, r) {
+    var d = window.MODS[type];
+    return d.cells.map(function (o) {
+      var t = turn(o, r || 0);
+      return [x + t[0], y + t[1]];
+    });
+  }
+  function moduleCover() {
+    var cover = new Map();
+    mods.forEach(function (m, k) {
+      var p = k.split(",");
+      cellsOf(m.t, +p[0], +p[1], m.r).forEach(function (c) { cover.set(key(c[0], c[1]), k); });
+    });
+    return cover;
+  }
+  function loadShip(k) {
+    var d = window.DESIGNS[k];
+    hull = new Map(); mods = new Map();
+    d.hull.forEach(function (c) { hull.set(key(c[0], c[1]), c[2]); });
+    d.modules.forEach(function (m) { mods.set(key(m[1], m[2]), { t: m[0], r: m[3] || 0 }); });
+    fit(); survey(); draw();
+  }
+
+  // Decking is derived the way the game derives it: an enclosed cell with
+  // nothing standing on it is corridor, everything else is structure.
+  function fit() {
+    var cover = moduleCover();
+    hull.forEach(function (_, k) {
+      var p = k.split(","), x = +p[0], y = +p[1];
+      var enclosed = hull.has(key(x, y + 1)) && hull.has(key(x, y - 1)) &&
+                     hull.has(key(x - 1, y)) && hull.has(key(x + 1, y));
+      hull.set(k, !enclosed ? "Outer" : (cover.has(k) ? "Inner" : "Hallway"));
+    });
+  }
+
+  // ---- survey ----------------------------------------------------------
+  // The nav map, built the way crew::navigation::rebuild_nav_grids builds it:
+  // hull lays the deck, machinery takes its cells back OFF the map (you do
+  // not walk through a reactor because someone decked the floor first), and
+  // posts go on the map whether or not there is decking under them.
+  //
+  // `skip` leaves one module out, which is how we ask "is THIS the block
+  // cutting the ship in half?" without mutating anything.
+  function enclosed(k) {
+    var p = k.split(","), x = +p[0], y = +p[1];
+    return hull.has(key(x, y + 1)) && hull.has(key(x, y - 1)) &&
+           hull.has(key(x - 1, y)) && hull.has(key(x + 1, y));
+  }
+  function walkable(skip) {
+    var w = new Set(), solid = new Set(), stations = new Set();
+    mods.forEach(function (m, k) {
+      if (k === skip) return;
+      var d = window.MODS[m.t], p = k.split(",");
+      // A containment door is a doorway, not machinery. Taking its cells off
+      // the map the way the game does for a reactor would wall the corridor
+      // off permanently -- open or shut, forever.
+      var into = (d.post || d.door) ? stations : solid;
+      cellsOf(m.t, +p[0], +p[1], m.r).forEach(function (c) { into.add(key(c[0], c[1])); });
+    });
+    hull.forEach(function (_, k) { if (enclosed(k) && !solid.has(k)) w.add(k); });
+    stations.forEach(function (k) { w.add(k); });
+    return w;
+  }
+  function regionsOf(w) {
+    var seen = new Set(), out = [];
+    w.forEach(function (start) {
+      if (seen.has(start)) return;
+      var comp = [start], q = [start];
+      seen.add(start);
+      while (q.length) {
+        var p = q.pop().split(","), x = +p[0], y = +p[1];
+        [[0,1],[0,-1],[-1,0],[1,0]].forEach(function (d) {
+          var n = key(x + d[0], y + d[1]);
+          if (w.has(n) && !seen.has(n)) { seen.add(n); q.push(n); comp.push(n); }
+        });
+      }
+      out.push(comp);
+    });
+    out.sort(function (a, b) { return b.length - a.length; });
+    return out;
+  }
+  // Which cells are cut off from the main deck, and which blocks did the
+  // cutting. A one-cell-wide corridor with an airlock dropped in it is a
+  // wall: the arm beyond it keeps its guns and its bunks and no one can ever
+  // reach them again. The count alone does not tell you that; naming the
+  // block does.
+  var diag = { stray: new Set(), cuts: [], regions: 1 };
+  function diagnose() {
+    var regions = regionsOf(walkable());
+    var stray = new Set(), cuts = [];
+    for (var i = 1; i < regions.length; i++) {
+      regions[i].forEach(function (k) { stray.add(k); });
+    }
+    if (regions.length > 1) {
+      mods.forEach(function (m, k) {
+        var d = window.MODS[m.t];
+        if (d.post || d.outboard || d.door) return;
+        if (regionsOf(walkable(k)).length < regions.length) cuts.push({ k: k, t: m.t });
+      });
+    }
+    diag = { stray: stray, cuts: cuts, regions: regions.length, deck: walkable().size };
+    return diag;
+  }
+  function survey() {
+    var g = diagnose(), regions = g.regions, w = { size: g.deck };
+    var cost = 0, cores = [], vitalsOut = 0;
+    // where the hull splits into arms
+    var byX = new Map();
+    hull.forEach(function (_, k) { var p = k.split(","); if (!byX.has(+p[0])) byX.set(+p[0], []); byX.get(+p[0]).push(+p[1]); });
+    var split = Infinity;
+    Array.from(byX.keys()).sort(function (a, b) { return a - b; }).forEach(function (x) {
+      if (split !== Infinity) return;
+      var ys = byX.get(x).slice().sort(function (a, b) { return a - b; });
+      var runs = 1;
+      for (var i = 1; i < ys.length; i++) if (ys[i] - ys[i-1] > 1) runs++;
+      if (runs > 1) split = x;
+    });
+    mods.forEach(function (m, k) {
+      var d = window.MODS[m.t], p = k.split(",");
+      cost += d.cost;
+      if (m.t === "MemoryCore") cores.push([+p[0], +p[1]]);
+      if (+p[0] >= split && (d.cat === "Power" || d.cat === "LifeSupport" || d.cat === "Crew")) vitalsOut++;
+    });
+    var doors = 0;
+    mods.forEach(function (m) { if (window.MODS[m.t].door) doors++; });
+    var plates = 0, badPlates = 0;
+    mods.forEach(function (m, k) {
+      if (!window.MODS[m.t].outboard) return;
+      plates++;
+      var p = k.split(",");
+      if (cellsOf(m.t, +p[0], +p[1], m.r).some(function (c) { return hull.has(key(c[0], c[1])); })) badPlates++;
+    });
+    var spread = 0;
+    cores.forEach(function (a) { cores.forEach(function (b) {
+      spread = Math.max(spread, Math.max(Math.abs(a[0]-b[0]), Math.abs(a[1]-b[1])));
+    }); });
+
+    var rows = [
+      ["hull cells", hull.size, null],
+      ["modules", mods.size, null],
+      ["deck", w.size + " walkable", null],
+      ["deck regions", regions, regions === 1],
+      ["cut off", g.stray.size + " cells", g.stray.size === 0],
+      ["pressure doors", doors, doors > 0],
+      ["memory cores", cores.length + (cores.length ? " (" + spread + " apart)" : ""),
+        cores.length >= 3 && spread >= 3],
+      ["vitals on arms", vitalsOut, vitalsOut === 0],
+      ["angled plating", plates + (badPlates ? " (" + badPlates + " inert)" : ""), badPlates === 0],
+      ["fit-out", cost + "c", null],
+    ];
+    var host = document.getElementById("report");
+    host.textContent = "";
+    rows.forEach(function (r) {
+      var d = document.createElement("div");
+      var a = document.createElement("span"); a.textContent = r[0];
+      var b = document.createElement("b"); b.textContent = r[1];
+      if (r[2] === true) b.className = "ok";
+      if (r[2] === false) b.className = "no";
+      d.appendChild(a); d.appendChild(b); host.appendChild(d);
+    });
+    if (g.cuts.length) {
+      var note = document.createElement("p");
+      note.className = "cutnote";
+      var seen = {}, names = [];
+      g.cuts.forEach(function (c) {
+        if (seen[c.t]) return;
+        seen[c.t] = 1;
+        names.push(c.t);
+      });
+      note.textContent = "Severing the deck: " + names.join(", ") +
+        " — " + g.cuts.length + " block" + (g.cuts.length === 1 ? "" : "s") +
+        " sitting in a corridor only one cell wide. Ringed on the plan.";
+      host.appendChild(note);
+    }
+  }
+
+  // ---- drawing ---------------------------------------------------------
+  var view = { x0: 0, y1: 0 };
+  var hoverCell = null;
+  function bounds() {
+    if (!hull.size) return { x0: -10, x1: 10, y0: -8, y1: 8 };
+    var xs = [], ys = [];
+    hull.forEach(function (_, k) { var p = k.split(","); xs.push(+p[0]); ys.push(+p[1]); });
+    return { x0: Math.min.apply(null, xs) - PAD, x1: Math.max.apply(null, xs) + PAD,
+             y0: Math.min.apply(null, ys) - PAD, y1: Math.max.apply(null, ys) + PAD };
+  }
+  function draw() {
+    var b = bounds();
+    var w = (b.x1 - b.x0 + 1) * T, h = (b.y1 - b.y0 + 1) * T;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    view.x0 = b.x0; view.y1 = b.y1;
+    ctx.fillStyle = "#0c1019"; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "#1a2230"; ctx.lineWidth = 1;
+    for (var gx = 0; gx <= w; gx += T) { ctx.beginPath(); ctx.moveTo(gx + .5, 0); ctx.lineTo(gx + .5, h); ctx.stroke(); }
+    for (var gy = 0; gy <= h; gy += T) { ctx.beginPath(); ctx.moveTo(0, gy + .5); ctx.lineTo(w, gy + .5); ctx.stroke(); }
+    if (!ready) return;
+
+    function kindAt(k) {
+      var l = hull.get(k);
+      if (!l) return null;
+      return l === "Hallway" ? "hull_hallway" : "hull_steel";
+    }
+    hull.forEach(function (_, k) {
+      var p = k.split(","), x = +p[0], y = +p[1], n = kindAt(k), mask = 0;
+      [[1,0,1],[2,0,-1],[4,-1,0],[8,1,0]].forEach(function (s) {
+        if (kindAt(key(x + s[1], y + s[2])) === n) mask |= s[0];
+      });
+      var t = img[n + "_" + (mask < 10 ? "0" + mask : mask)];
+      if (t && t.width) ctx.drawImage(t, (x - b.x0) * T, (b.y1 - y) * T, T, T);
+    });
+    mods.forEach(function (m, k) {
+      var p = k.split(","), x = +p[0], y = +p[1], d = window.MODS[m.t];
+      var s = img["mod:" + m.t];
+      if (!s || !s.width) return;
+      // Draw around the centre of the cells this module actually claims, so a
+      // turned L-shape sits on its own footprint instead of beside it.
+      var cs = cellsOf(m.t, x, y, m.r);
+      var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+      cs.forEach(function (c) {
+        minx = Math.min(minx, c[0]); maxx = Math.max(maxx, c[0]);
+        miny = Math.min(miny, c[1]); maxy = Math.max(maxy, c[1]);
+      });
+      var cx = ((minx + maxx + 1) / 2 - b.x0) * T;
+      var cy = (b.y1 - (miny + maxy) / 2 + 0.5) * T;
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Engine art draws its exhaust pointing down, and the game turns
+      // propulsion a further half-turn (sprite_map::sprite_base_rotation) so
+      // a block's rotation names the way its exhaust points. Without the same
+      // half-turn here an engine that looked right in the yard came out
+      // backwards in the game -- the pincer's did, exhaust into the hull.
+      ctx.rotate(m.r * Math.PI / 2 + (d.cat === "Propulsion" ? Math.PI : 0));
+      // A block whose footprint is not its bounding box -- the T-shaped
+      // sickbay and bridge wing, the L-shaped galley and hold -- must not be
+      // drawn as one stretched rectangle: that paints the corners it does not
+      // own, over the neighbour. The art is a clean grid, so cut it and lay
+      // one tile per cell. Authored unrotated; the ctx.rotate above turns it.
+      if (d.cells.length < d.w * d.h && s.naturalWidth) {
+        var ox = Math.min.apply(null, d.cells.map(function (c) { return c[0]; }));
+        var oy = Math.min.apply(null, d.cells.map(function (c) { return c[1]; }));
+        var tw = s.naturalWidth / d.w, th = s.naturalHeight / d.h;
+        var hx = ox + (d.w - 1) / 2, hy = oy + (d.h - 1) / 2;
+        d.cells.forEach(function (c) {
+          // Texture rows run top-down, grid rows bottom-up.
+          var row = d.h - 1 - (c[1] - oy);
+          ctx.drawImage(s, (c[0] - ox) * tw, row * th, tw, th,
+            (c[0] - hx) * T - T / 2, -(c[1] - hy) * T - T / 2, T, T);
+        });
+      } else {
+        ctx.drawImage(s, -d.w * T / 2, -d.h * T / 2, d.w * T, d.h * T);
+      }
+      ctx.restore();
+    });
+
+    // Pressure doors get a ring of their own. They share a sprite with blocks
+    // that are solid walls, and the whole point of one is that it is not --
+    // you should be able to see at a glance where the ship can divide.
+    ctx.save();
+    ctx.strokeStyle = "#4fd1a5";
+    ctx.lineWidth = 2;
+    mods.forEach(function (m, k) {
+      if (!window.MODS[m.t].door) return;
+      var p = k.split(",");
+      cellsOf(m.t, +p[0], +p[1], m.r).forEach(function (cell) {
+        ctx.strokeRect((cell[0] - b.x0) * T + 1, (b.y1 - cell[1]) * T + 1, T - 2, T - 2);
+      });
+    });
+    ctx.restore();
+
+    // Everything the crew cannot walk to from the main deck, washed red, and
+    // the blocks that made it that way ringed. A ship can look whole and be
+    // four ships with the same paint job.
+    if (diag.stray.size) {
+      ctx.fillStyle = "rgba(226,84,62,0.26)";
+      diag.stray.forEach(function (k) {
+        var p = k.split(",");
+        ctx.fillRect((+p[0] - b.x0) * T, (b.y1 - +p[1]) * T, T, T);
+      });
+    }
+    if (rect) {
+      ctx.save();
+      ctx.strokeStyle = rect.erase ? "#e2543e" : "#7fe6ff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      rectsToApply().forEach(function (r) {
+        var x0 = Math.min(r.a.x, r.b.x), x1 = Math.max(r.a.x, r.b.x);
+        var y0 = Math.min(r.a.y, r.b.y), y1 = Math.max(r.a.y, r.b.y);
+        ctx.strokeRect((x0 - b.x0) * T + 1, (b.y1 - y1) * T + 1, (x1 - x0 + 1) * T - 2, (y1 - y0 + 1) * T - 2);
+      });
+      ctx.restore();
+    }
+    // The pending placement, under the cursor: green where it will land,
+    // red where it will not. Drawn last so it sits over everything.
+    if (hoverCell && !rect) {
+      var v = check(hoverCell.x, hoverCell.y);
+      ctx.save();
+      ctx.fillStyle = v.ok ? "rgba(79,209,165,0.28)" : "rgba(226,84,62,0.32)";
+      ctx.strokeStyle = v.ok ? "#4fd1a5" : "#e2543e";
+      ctx.lineWidth = 2;
+      v.cells.forEach(function (c) {
+        var px = (c[0] - b.x0) * T, py = (b.y1 - c[1]) * T;
+        ctx.fillRect(px, py, T, T);
+        ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
+      });
+      ctx.restore();
+    }
+    if (diag.cuts.length) {
+      ctx.save();
+      ctx.strokeStyle = "#ffb03a";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 3]);
+      diag.cuts.forEach(function (c) {
+        var p = c.k.split(",");
+        cellsOf(c.t, +p[0], +p[1], (mods.get(c.k) || {}).r || 0).forEach(function (cell) {
+          ctx.strokeRect((cell[0] - b.x0) * T + 1.5, (b.y1 - cell[1]) * T + 1.5, T - 3, T - 3);
+        });
+      });
+      ctx.restore();
+    }
+  }
+
+  function cellFrom(e) {
+    var r = canvas.getBoundingClientRect();
+    var sx = canvas.width / r.width;
+    return { x: Math.floor((e.clientX - r.left) * sx / T) + view.x0,
+             y: view.y1 - Math.floor((e.clientY - r.top) * sx / T) };
+  }
+
+  // ---- editing ---------------------------------------------------------
+  function removeAt(x, y) {
+    var cover = moduleCover(), owner = cover.get(key(x, y));
+    if (owner) { mods.delete(owner); return true; }
+    if (hull.has(key(x, y))) { hull.delete(key(x, y)); return true; }
+    return false;
+  }
+  // Whether the current tool can land at (x, y), and IN PLAIN WORDS why not.
+  // One function, so the ghost under the cursor can never promise something
+  // the click then refuses -- a silent refusal is indistinguishable from a
+  // broken editor, which is exactly how it was reported.
+  function check(x, y) {
+    if (tool.kind === "hull") {
+      return { cells: [[x, y]], ok: true, why: "" };
+    }
+    var cells = cellsOf(tool.value, x, y, rot);
+    var cover = moduleCover();
+    if (!cells.every(function (c) { return !cover.has(key(c[0], c[1])); })) {
+      return { cells: cells, ok: false, why: "Something is already here. Right-click to clear it first." };
+    }
+    if (window.MODS[tool.value].outboard) {
+      // Angled plating bolts to the OUTSIDE. Hull wins its own cell in the
+      // game's grid, so a wedge sharing a cell with hull is armour a round
+      // never meets -- the game's own tests reject exactly that. It needs
+      // empty cells that touch the hull somewhere.
+      if (!cells.every(function (c) { return !hull.has(key(c[0], c[1])); })) {
+        return { cells: cells, ok: false,
+          why: "Plating bolts to the OUTSIDE of the hull. Aim at the empty cell just beyond the edge, not at the block itself." };
+      }
+      var attached = cells.some(function (c) {
+        return hull.has(key(c[0], c[1] + 1)) || hull.has(key(c[0], c[1] - 1)) ||
+               hull.has(key(c[0] - 1, c[1])) || hull.has(key(c[0] + 1, c[1]));
+      });
+      if (!attached) {
+        return { cells: cells, ok: false, why: "Nothing to bolt to — this plate touches no hull." };
+      }
+      return { cells: cells, ok: true, why: "" };
+    }
+    if (!cells.every(function (c) { return hull.has(key(c[0], c[1])); })) {
+      return { cells: cells, ok: false,
+        why: "Needs hull under every cell. Lay blocks here first, or turn it with R so it fits." };
+    }
+    return { cells: cells, ok: true, why: "" };
+  }
+
+  var whyEl = null;
+  function sayWhy(text) {
+    if (!whyEl) whyEl = document.getElementById("why");
+    if (!whyEl) return;
+    whyEl.textContent = text || "";
+    whyEl.hidden = !text;
+  }
+
+  function apply(x, y, erase) {
+    var changed = false;
+    if (erase) {
+      changed = removeAt(x, y);
+      sayWhy("");
+    } else if (tool.kind === "hull") {
+      if (hull.get(key(x, y)) !== tool.value) { hull.set(key(x, y), tool.value); changed = true; }
+      sayWhy("");
+    } else {
+      var v = check(x, y);
+      sayWhy(v.ok ? "" : v.why);
+      if (v.ok) { mods.set(key(x, y), { t: tool.value, r: rot }); changed = true; }
+    }
+    if (changed) { fit(); survey(); draw(); markDirty(); }
+  }
+
+  // The game's mirror turns a block facing port to face starboard and leaves
+  // fore/aft alone: North <-> South, East and West stay.
+  function mirrorRot(r) { return r === 0 ? 2 : r === 2 ? 0 : r; }
+  // Where a module's mirror image has to be anchored: the origin whose
+  // footprint, turned the mirrored way, covers exactly the mirrored cells.
+  function mirrorModule(t, x, y, r) {
+    var want = cellsOf(t, x, y, r).map(function (c) { return key(c[0], -c[1]); }).sort().join("|");
+    var mr = mirrorRot(r);
+    for (var dx = -4; dx <= 4; dx++) for (var dy = -4; dy <= 4; dy++) {
+      var got = cellsOf(t, x + dx, -y + dy, mr).map(function (c) { return key(c[0], c[1]); }).sort().join("|");
+      if (got === want) return { x: x + dx, y: -y + dy, r: mr };
+    }
+    return null;
+  }
+  function applyMirrored(x, y, erase) {
+    apply(x, y, erase);
+    if (!mirrorOn || y === 0) return;
+    if (tool.kind === "mod" && !erase) {
+      var m = mirrorModule(tool.value, x, y, rot);
+      if (!m) return;
+      var keep = rot; rot = m.r; apply(m.x, m.y, false); rot = keep;
+    } else {
+      apply(x, -y, erase);
+    }
+  }
+  function rectsToApply() {
+    if (!rect) return [];
+    var out = [{ a: rect.a, b: rect.b }];
+    if (mirrorOn) out.push({ a: { x: rect.a.x, y: -rect.a.y }, b: { x: rect.b.x, y: -rect.b.y } });
+    return out;
+  }
+  // Fill (or clear) every cell of the rectangle, and its mirror. Hull tools
+  // and clearing only: a rectangle of reactors is never what anyone meant.
+  function applyRect() {
+    var changed = false;
+    rectsToApply().forEach(function (r) {
+      for (var x = Math.min(r.a.x, r.b.x); x <= Math.max(r.a.x, r.b.x); x++)
+        for (var y = Math.min(r.a.y, r.b.y); y <= Math.max(r.a.y, r.b.y); y++) {
+          if (rect.erase) { changed = removeAt(x, y) || changed; }
+          else if (hull.get(key(x, y)) !== tool.value) { hull.set(key(x, y), tool.value); changed = true; }
+        }
+    });
+    rect = null;
+    if (changed) { fit(); survey(); markDirty(); }
+    draw();
+  }
+
+  var painting = 0;
+  canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  canvas.addEventListener("pointerdown", function (e) {
+    var c = cellFrom(e);
+    canvas.setPointerCapture(e.pointerId);
+    if (e.shiftKey && (tool.kind === "hull" || e.button === 2)) {
+      rect = { a: c, b: c, erase: e.button === 2 };
+      draw();
+      return;
+    }
+    painting = e.button === 2 ? 2 : 1;
+    applyMirrored(c.x, c.y, painting === 2);
+  });
+  var ghostQueued = false;
+  canvas.addEventListener("pointermove", function (e) {
+    var c = cellFrom(e);
+    if (rect) {
+      if (rect.b.x !== c.x || rect.b.y !== c.y) { rect.b = c; draw(); }
+      return;
+    }
+    if (painting) { applyMirrored(c.x, c.y, painting === 2); return; }
+    if (hoverCell && hoverCell.x === c.x && hoverCell.y === c.y) return;
+    hoverCell = c;
+    if (tool.kind === "mod") { var v = check(c.x, c.y); sayWhy(v.ok ? "" : v.why); }
+    // One redraw a frame however fast the pointer moves.
+    if (ghostQueued) return;
+    ghostQueued = true;
+    requestAnimationFrame(function () { ghostQueued = false; draw(); });
+  });
+  canvas.addEventListener("pointerup", function () {
+    painting = 0;
+    if (rect) applyRect();
+  });
+  document.getElementById("mirror").addEventListener("change", function (e) {
+    mirrorOn = e.target.checked;
+    draw();
+  });
+
+  // ---- palette ---------------------------------------------------------
+  var palHost = document.getElementById("pal");
+  var selLabel = document.getElementById("sel");
+  function pretty(t) { return t.replace(/([a-z])([A-Z])/g, "$1 $2"); }
+  function setTool(kind, value, btn) {
+    tool = { kind: kind, value: value };
+    document.querySelectorAll("[data-tool],.pal button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+    });
+    selLabel.textContent = kind === "hull" ? (value === "Outer" ? "Hull plate" : "Deck") : pretty(value);
+    sayWhy("");
+    draw();
+  }
+  document.querySelectorAll("[data-tool]").forEach(function (b) {
+    b.addEventListener("click", function () { setTool("hull", b.dataset.tool, b); });
+  });
+  // Ordered the way you go looking: who is aboard, what keeps them alive,
+  // what moves the ship, what shoots, then the fittings.
+  var CATS = [
+    ["Crew", "Crew"], ["LifeSupport", "Life support"], ["Power", "Power"],
+    ["Propulsion", "Propulsion"], ["Control", "Control"], ["Detection", "Detection"],
+    ["Weapons", "Weapons"], ["Storage", "Storage"], ["Structural", "Structural"],
+    ["Utility", "Utility"]
+  ];
+  var all = Object.keys(window.MODS || {}).sort();
+  var placed = {};
+  CATS.forEach(function (c) {
+    var members = all.filter(function (t) { return window.MODS[t].cat === c[0]; });
+    if (!members.length) return;
+    var h = document.createElement("h3"); h.textContent = c[1];
+    var grid = document.createElement("div"); grid.className = "grid";
+    palHost.appendChild(h); palHost.appendChild(grid);
+    members.forEach(function (t) { placed[t] = 1; grid.appendChild(palButton(t)); });
+  });
+  var rest = all.filter(function (t) { return !placed[t]; });
+  if (rest.length) {
+    var h = document.createElement("h3"); h.textContent = "Other";
+    var grid = document.createElement("div"); grid.className = "grid";
+    palHost.appendChild(h); palHost.appendChild(grid);
+    rest.forEach(function (t) { grid.appendChild(palButton(t)); });
+  }
+
+  function palButton(t) {
+    var d = window.MODS[t];
+    var b = document.createElement("button");
+    b.type = "button";
+    b.title = pretty(t) + " — " + d.cost + "c" +
+      (d.w * d.h > 1 ? " · " + d.w + "x" + d.h : "");
+    b.setAttribute("aria-pressed", "false");
+    var i = document.createElement("img"); i.src = "mod/" + t + ".png"; i.alt = "";
+    var n = document.createElement("span"); n.textContent = pretty(t);
+    b.appendChild(i); b.appendChild(n);
+    if (d.door) {
+      b.classList.add("door");
+      b.title = pretty(t) + " — " + d.cost +
+        "c · crew walk through it, it shuts on its own when the compartment " +
+        "beyond loses pressure, and reopens when the pressure comes back";
+    }
+    b.addEventListener("click", function () { setTool("mod", t, b); });
+    return b;
+  }
+
+  // ---- persistence -----------------------------------------------------
+  var statusEl = document.getElementById("status");
+  function say(text, cls) { statusEl.textContent = text; statusEl.className = "status " + (cls || ""); }
+
+  function snapshot() {
+    var h = [], m = [];
+    hull.forEach(function (layer, k) { var p = k.split(","); h.push([+p[0], +p[1], layer]); });
+    mods.forEach(function (mod, k) { var p = k.split(","); m.push([mod.t, +p[0], +p[1], mod.r]); });
+    return { hull: h, modules: m, savedAt: new Date().toISOString() };
+  }
+
+  var timer = null;
+  function markDirty() {
+    dirty = true;
+    if (!db) { say("not saved — editing locally only"); return; }
+    say("unsaved", "busy");
+    clearTimeout(timer);
+    timer = setTimeout(save, 1200);
+  }
+  function save() {
+    if (!db || saving) return;
+    saving = true; say("saving…", "busy");
+    db.doc("designs/" + shipKey).set(snapshot()).then(function () {
+      saving = false; dirty = false;
+      say("saved " + new Date().toLocaleTimeString(), "saved");
+    }).catch(function (err) {
+      saving = false;
+      say("not saved (" + (err && err.code ? err.code : "error") + ")", "busy");
+    });
+  }
+  var rotBtn = document.getElementById("rotate");
+  var rotName = document.getElementById("rotname");
+  function setRot(r) {
+    rot = ((r % 4) + 4) % 4;
+    rotName.textContent = ROT_NAME[rot];
+  }
+  rotBtn.addEventListener("click", function () { setRot(rot + 1); });
+
+  // R turns the next placement; with the pointer over a module it turns that
+  // one instead, which is what you reach for once something is already down.
+  canvas.addEventListener("pointerleave", function () {
+    hoverCell = null; sayWhy(""); draw();
+  });
+  window.addEventListener("keydown", function (e) {
+    if (e.key !== "r" && e.key !== "R") return;
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    e.preventDefault();
+    var owner = hoverCell && moduleCover().get(key(hoverCell.x, hoverCell.y));
+    if (owner) {
+      var m = mods.get(owner), p = owner.split(",");
+      var next = { t: m.t, r: (m.r + 1) % 4 };
+      mods.delete(owner);
+      var clash = moduleCover();
+      var okHere = cellsOf(next.t, +p[0], +p[1], next.r).every(function (c) {
+        return hull.has(key(c[0], c[1])) && !clash.has(key(c[0], c[1]));
+      });
+      mods.set(owner, okHere ? next : m);
+      if (okHere) { fit(); survey(); draw(); markDirty(); }
+      return;
+    }
+    setRot(rot + 1);
+  });
+
+  document.getElementById("save").addEventListener("click", save);
+
+  document.getElementById("pick").addEventListener("change", function (e) {
+    shipKey = e.target.value;
+    openShip();
+  });
+  document.getElementById("revert").addEventListener("click", function () {
+    loadShip(shipKey); markDirty();
+  });
+
+  function adopt(body) {
+    hull = new Map(); mods = new Map();
+    body.hull.forEach(function (c) { hull.set(key(c[0], c[1]), c[2]); });
+    (body.modules || []).forEach(function (m) {
+      mods.set(key(m[1], m[2]), { t: m[0], r: m[3] || 0 });
+    });
+    fit(); survey(); draw();
+  }
+
+  function openShip() {
+    loadShip(shipKey);
+    if (!db) return;
+    say("loading…", "busy");
+    db.doc("designs/" + shipKey).get().then(function (snap) {
+      // `data` is a METHOD on the snapshot, not a field. Reading it as a
+      // property gave a function -- truthy, with no `.hull` on it -- so every
+      // saved ship read as "no save" and quietly reopened the shipped one.
+      var body = snap && snap.exists ? snap.data() : null;
+      if (body && body.hull) {
+        adopt(body);
+        say("your saved " + shipKey + (body.savedAt ? " — " + new Date(body.savedAt).toLocaleString() : ""), "saved");
+      } else {
+        say("fresh " + shipKey);
+      }
+    }).catch(function () { say("could not load your save"); });
+  }
+
+  /// Open on whatever was worked on last, rather than always the first ship.
+  function openLatest() {
+    if (!db) return;
+    say("looking for your work…", "busy");
+    db.collection("designs").get().then(function (q) {
+      var best = null;
+      (q && q.docs ? q.docs : []).forEach(function (d) {
+        var body = d.data();
+        if (!body || !body.hull) return;
+        if (!best || String(body.savedAt) > String(best.body.savedAt)) {
+          best = { id: d.id, body: body };
+        }
+      });
+      if (!best) { say("nothing saved yet"); return; }
+      shipKey = best.id;
+      var sel = document.getElementById("pick");
+      if (sel) sel.value = shipKey;
+      adopt(best.body);
+      say("your saved " + shipKey + (best.body.savedAt ? " — " + new Date(best.body.savedAt).toLocaleString() : ""), "saved");
+    }).catch(function () { openShip(); });
+  }
+
+  // Render first, then light up saving when the viewer answers.
+  loadShip(shipKey);
+  setTool("hull", "Outer", document.querySelector('[data-tool="Outer"]'));
+  setRot(0);
+  say("editing locally");
+  if (window.claude && window.claude.use) {
+    window.claude.use("db").then(function (d) {
+      db = d;
+      if (!db) { say("not saved — editing locally only"); return; }
+      openLatest();
+    }).catch(function () { say("not saved — editing locally only"); });
+  }
+})();
+</script>

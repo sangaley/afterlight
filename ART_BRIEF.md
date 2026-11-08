@@ -1,4 +1,4 @@
-# Depths Below — Art Brief
+# Afterlight — Art Brief
 
 ## The game in one line
 A 2D top-down space-survival game about building a modular block ship, keeping it alive,

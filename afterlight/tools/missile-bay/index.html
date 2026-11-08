@@ -1,0 +1,1013 @@
+<meta charset="utf-8">
+<title>Missile Bay Preview</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: the firing range is the page. The range sits wide on the left,
+     the missile's build sheet beside it, parts and rules underneath.
+     Single dark look on purpose: it matches the game, the Hull Yard and the
+     Gun Deck preview. */
+  :root {
+    --void: #070a11;
+    --ground: #0c1019;
+    --panel: #141a26;
+    --panelhi: #1c2433;
+    --line: #26303f;
+    --ink: #ccd6e6;
+    --dim: #8592a5;
+    --faint: #556172;
+    --signal: #6f9dff;
+    --brass: #c99a4b;
+    --flame: #ff9a3c;
+    --good: #5fc9a3;
+    --warn: #e0a24a;
+    --bad: #e06a6a;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--void); color: var(--ink); font: 400 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding-block: 20px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; text-wrap: balance; }
+  .eyebrow { font: 600 10px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+  .lede { margin: 6px 0 14px; color: var(--dim); max-width: 80ch; font-size: 13.5px; }
+
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+  @media (max-width: 1060px) { .app { grid-template-columns: 1fr; } }
+
+  .stage { border: 1px solid var(--line); background: var(--ground); min-width: 0; }
+  .stagebar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .stagebar .spacer { flex: 1; }
+  .ctl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+  .ctl output { font: 500 12px var(--mono); color: var(--ink); min-width: 9ch; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 120px; accent-color: var(--signal); }
+  canvas#range { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; background: #05070c; }
+  .tally { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+  .tally div { padding: 8px 10px; background: var(--ground); min-width: 0; }
+  .tally span { display: block; font: 600 9.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+  .tally b { display: block; font: 500 18px/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+  @media (max-width: 760px) { .tally { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tally div:last-child { grid-column: span 2; } }
+  .readout { padding: 8px 10px; border-top: 1px solid var(--line); font: 12px/1.5 var(--mono); color: var(--dim); min-height: 3.2em; }
+  .readout b { color: var(--ink); font-weight: 500; }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; flex-wrap: wrap; }
+  .seg button { border: 0; border-right: 1px solid var(--line); border-radius: 0; }
+  .seg button:last-child { border-right: 0; }
+  button { font: 500 12.5px/1 var(--sans); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 7px 10px; cursor: pointer; }
+  button:hover { background: var(--panelhi); }
+  button[aria-pressed="true"] { background: var(--panelhi); color: #fff; box-shadow: inset 0 -2px 0 var(--signal); }
+  button.fire { background: #3a1f12; border-color: #6b3a1e; color: #ffd2a8; font-weight: 600; }
+  button.fire:hover { background: #4a2715; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  label.check { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--dim); cursor: pointer; }
+
+  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { border: 1px solid var(--line); background: var(--ground); }
+  .card > h3 { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line); font: 600 10px/1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--faint); display: flex; justify-content: space-between; gap: 8px; }
+  .card > h3 em { font-style: normal; color: var(--dim); letter-spacing: .06em; }
+  .card .in { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
+  .small { margin: 0; font-size: 12px; color: var(--dim); line-height: 1.45; }
+
+  canvas#schematic { display: block; width: 100%; height: auto; }
+  .strip { display: flex; gap: 4px; align-items: stretch; flex-wrap: wrap; }
+  .slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 40px; padding: 6px 4px; font: 600 11px/1 var(--mono); }
+  .slot small { font: 500 9px/1 var(--mono); color: var(--faint); letter-spacing: .06em; }
+  .slot[aria-pressed="true"] small { color: var(--dim); }
+  .dir { align-self: center; color: var(--faint); font: 500 11px var(--mono); padding-left: 2px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .palette { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .palette button { display: grid; grid-template-columns: 14px 1fr; gap: 7px; align-items: center; text-align: left; padding: 6px 7px; font-size: 12px; line-height: 1.25; }
+  .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(255,255,255,.12); }
+  .presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .presets button { text-align: left; padding: 7px 8px; line-height: 1.3; }
+  .presets button small { display: block; color: var(--faint); font: 500 10px/1.3 var(--mono); margin-top: 3px; }
+
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font: 12px/1.45 var(--mono); }
+  .stats span { color: var(--dim); }
+  .stats b { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+  .stats .sep { grid-column: 1 / -1; border-top: 1px solid var(--line); margin: 4px 0; }
+  .ok { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .notes { display: flex; flex-direction: column; gap: 6px; }
+  .note { margin: 0; padding: 6px 8px; font-size: 12px; line-height: 1.45; border-left: 2px solid var(--warn); background: rgba(224, 162, 74, .09); }
+  .note.bad { border-color: var(--bad); background: rgba(224, 106, 106, .10); }
+  .note.info { border-color: var(--signal); background: rgba(111, 157, 255, .08); }
+
+  section.lower { margin-top: 22px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 22px; }
+  @media (max-width: 1060px) { section.lower { grid-template-columns: 1fr; } }
+  .legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .part { display: grid; grid-template-columns: 30px 1fr; gap: 9px; align-items: start; padding: 8px; border: 1px solid var(--line); background: var(--ground); }
+  .part .chip { width: 30px; height: 30px; border-radius: 2px; display: grid; place-items: center; font: 600 10px var(--mono); color: #0b0d12; }
+  .part b { font-size: 12.5px; font-weight: 600; display: block; }
+  .part span { font-size: 11.5px; color: var(--dim); line-height: 1.4; display: block; }
+  .part .slotname { font: 500 9.5px var(--mono); color: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
+  .rules { font-size: 13px; color: var(--dim); }
+  .rules dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; }
+  .rules dt { font: 500 12px var(--mono); color: var(--ink); }
+  .rules dd { margin: 0; font-size: 12.5px; }
+  .rules code { font: 12px var(--mono); color: var(--ink); }
+  @media (max-width: 520px) { .rules dl { grid-template-columns: 1fr; } .rules dd { margin-bottom: 6px; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Afterlight · weapons preview</span>
+    <h1>Missile Bay</h1>
+  </header>
+  <p class="lede">Build a missile from parts, pick the launcher that carries it, and fire salvos at a target ship on the range. Seekers can be fooled by decoys and chaff, point defence shoots missiles down, and every number on this page comes from the rules at the bottom. Nothing here is in the game yet.</p>
+
+  <div class="app">
+    <div class="stage">
+      <div class="stagebar">
+        <button class="fire" id="fire">Fire salvo</button>
+        <label class="check"><input type="checkbox" id="auto"> Keep firing</label>
+        <span class="ctl">Salvo <span class="seg" id="salvo"></span></span>
+        <span class="ctl">Range <input type="range" id="dist" min="2000" max="9000" step="250" value="5500"><output id="distOut"></output></span>
+        <span class="spacer"></span>
+        <button id="reset">New target</button>
+      </div>
+      <div class="stagebar">
+        <span class="ctl">Point defence <span class="seg" id="pd"></span></span>
+        <label class="check"><input type="checkbox" id="evade" checked> Evasive</label>
+        <label class="check"><input type="checkbox" id="decoys"> Heat decoys</label>
+        <label class="check"><input type="checkbox" id="chaff"> Chaff</label>
+        <span class="spacer"></span>
+        <span class="ctl">Speed <span class="seg" id="speed"></span></span>
+      </div>
+      <canvas id="range" width="1100" height="560" aria-label="Firing range: your ship on the left, the target ship on the right"></canvas>
+      <div class="tally" id="tally"></div>
+      <div class="readout" id="readout"></div>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h3>Launcher <em id="launcherTag"></em></h3>
+        <div class="in">
+          <div class="seg" id="launchers"></div>
+          <p class="small" id="launcherNote"></p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Missile <em id="lenTag"></em></h3>
+        <div class="in">
+          <canvas id="schematic" width="660" height="120" aria-label="The missile, drawn side on, nose to the right"></canvas>
+          <div class="strip" id="strip"></div>
+          <div class="row">
+            <button id="addSlot">Add body part</button>
+            <button id="delSlot">Remove part</button>
+            <span class="spacer" style="flex:1"></span>
+            <button id="copy">Copy design</button>
+          </div>
+          <p class="small" id="slotHelp"></p>
+          <div class="palette" id="palette"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Performance</h3>
+        <div class="in">
+          <div class="stats" id="stats"></div>
+          <div class="notes" id="notes"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Starting designs</h3>
+        <div class="in presets" id="presets"></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="lower">
+    <div>
+      <h2>Parts</h2>
+      <div class="legend" id="legend"></div>
+      <h2>Launchers</h2>
+      <div class="legend" id="launcherLegend"></div>
+    </div>
+    <div class="rules">
+      <h2>Rules</h2>
+      <dl>
+        <dt>Layout</dt><dd>Thruster at the back, one head at the front (a seeker or a dumb nose), body parts between. The launcher sets the gauge and how many parts fit.</dd>
+        <dt>Size</dt><dd><code>k = (gauge / 250 mm)²</code>. Mass, thrust, warhead damage and toughness all scale with <code>k</code>: a bigger missile hits harder and takes more to shoot down, but turns wider and reloads slower.</dd>
+        <dt>Flight</dt><dd>It pops out of the tube at the launcher's eject speed and can't turn until it clears (the silo's pop-up takes longest). Then the motor burns: <code>accel = thrust / mass</code> for the burn time, which fuel tanks extend. After burnout it coasts and bleeds speed (<code>drag 0.10/s + 0.02/s per fin</code>), and self-destructs 6 s after burnout or below 250 u/s.</dd>
+        <dt>Turning</dt><dd>Sideways pull <code>A = (1400 + 1700 × fins) / k^0.25</code> u/s², plus 2600 from a vectoring thruster while it burns. Turn circle <code>r = v² / A</code>. As in the game, a fresh missile can swing at 7 rad/s, easing to 1.4 rad/s over 3.5 s, so a long shot can be out-turned.</dd>
+        <dt>Seekers</dt><dd>Until it locks, a missile flies to where the target was going to be at launch. A heat seeker (3,200 u, ±35°) homes on the engines; a radar seeker (5,200 u, ±50°) on the middle of the ship. A command link follows your aim (click a block on the target) out to 7,000 u, can't be fooled, and wanders more the farther it flies. A dumb nose never steers.</dd>
+        <dt>Decoys, chaff</dt><dd>The target throws them every 4 s once missiles are inside 3,500 u. Every locked heat seeker (decoys) or radar seeker (chaff) that comes inside 3,500 u while one is out rolls once against it: 40% / 35%, cut to 45% of that per signal processor. A missile that is fooled chases the decoy and is lost.</dd>
+        <dt>Warheads</dt><dd>HE <code>260k</code> damage over <code>90 + 70√(n·k)</code> u, falling to nothing at the rim; armour takes 70%. Frag <code>110k</code> over <code>160 + 110√(n·k)</code> u, 30% on armour, 130% on what's inside and on point defence mounts. Shaped charge <code>380k</code> as a jet straight through, losing 8% a block. EMP shuts blocks off for 6 s over <code>150 + 90√(n·k)</code> u. No warhead: it rams for <code>40k × speed / 1000</code>.</dd>
+        <dt>Fuse</dt><dd>Without a proximity fuse a missile has to touch the hull. With one it bursts within <code>120 + 40√k</code> u of any block, at 85% against armour, and a shaped charge fired that way is mostly wasted.</dd>
+        <dt>Point defence</dt><dd>Each PD block fires 3 shots a second at the nearest missile inside 1,500 u. A shot hits with <code>0.22 × (1000 / speed)^0.8 × √k</code> (4% to 90%) for 25 damage: fast, small missiles are hard to hit. Missile toughness <code>50 × k^0.7</code>, +80% per armour sheath. EMP-stunned or destroyed PD stops shooting.</dd>
+        <dt>Reload</dt><dd><code>(2 + 0.8 × parts) × (gauge / 250)^0.6</code> s per launcher, ×1.15 for a silo.</dd>
+        <dt>Units</dt><dd>Distances in game units: a block is 66 u.</dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+// ---- data ------------------------------------------------------------------
+const LAUNCHERS = {
+  S: { key: "S", name: "Launch Pad", mm: 120, max: 4, cells: "1×1", eject: 260, popup: 0.2, reloadMult: 1.0,
+       desc: "One block, one small missile. Cheap, quick to reload, carried by the dozen." },
+  M: { key: "M", name: "Rail Launcher", mm: 250, max: 6, cells: "1×3", eject: 220, popup: 0.25, reloadMult: 1.0,
+       desc: "The general-purpose launcher. Fires along the rail, so it wants to face the target." },
+  L: { key: "L", name: "VLS Silo", mm: 400, max: 9, cells: "2×2", eject: 160, popup: 0.6, reloadMult: 1.15,
+       desc: "Launches up out of the deck and can strike in any direction, but the missile turns late and reloads slowly." },
+};
+// Masses are tonnes at 250 mm; thrust in u/s² × tonnes.
+const PARTS = {
+  ir:     { slot: "head", name: "Heat seeker", code: "IR", color: "#e5624e", mass: .04, cost: 60,
+            desc: "Homes on engines. 3,200 u, ±35°. Fooled by heat decoys." },
+  radar:  { slot: "head", name: "Radar seeker", code: "RD", color: "#5f8ff0", mass: .05, cost: 80,
+            desc: "Homes on the middle of the ship. 5,200 u, ±50°. Fooled by chaff." },
+  link:   { slot: "head", name: "Command link", code: "CL", color: "#5fc9a3", mass: .03, cost: 50,
+            desc: "Flies where you aim, out to 7,000 u. Can't be fooled; less precise far out." },
+  nose:   { slot: "head", name: "Dumb nose", code: "DN", color: "#8a8f99", mass: .05, cost: 15,
+            desc: "No seeker. Aimed once at launch, then flies straight. Carries a small HE charge." },
+  fuel:   { slot: "body", name: "Fuel tank", code: "FU", color: "#c99a4b", mass: .06, cost: 10,
+            desc: "Burns longer: +0.7 s on a booster, +2.2 s on a sustainer." },
+  fin:    { slot: "body", name: "Fins", code: "FN", color: "#a9b4c4", mass: .02, cost: 15,
+            desc: "+1,700 sideways pull. Each one costs 5% top speed and a little drag." },
+  he:     { slot: "body", name: "HE warhead", code: "HE", color: "#ef7f3a", mass: .08, cost: 30,
+            desc: "Blast. 260k damage, falling off to the rim. Armour takes 70%." },
+  frag:   { slot: "body", name: "Frag warhead", code: "FR", color: "#b8673f", mass: .07, cost: 30,
+            desc: "Wide and weak against plate, but shreds exposed point defence mounts. Strip the PD, then strike." },
+  heat:   { slot: "body", name: "Shaped charge", code: "SC", color: "#d0569e", mass: .09, cost: 45,
+            desc: "A jet that punches through block after block. Needs to touch the hull." },
+  emp:    { slot: "body", name: "EMP warhead", code: "EM", color: "#7aa8ff", mass: .07, cost: 55,
+            desc: "No damage. Everything inside the burst is switched off for 6 s, point defence included." },
+  prox:   { slot: "body", name: "Proximity fuse", code: "PX", color: "#4fb3b8", mass: .02, cost: 20,
+            desc: "Bursts near the hull instead of on it: no near misses, a little less against armour." },
+  proc:   { slot: "body", name: "Signal processor", code: "SP", color: "#79b86a", mass: .02, cost: 40,
+            desc: "Each one cuts the chance of being fooled to 45%." },
+  sheath: { slot: "body", name: "Armour sheath", code: "AS", color: "#6d7a8c", mass: .07, cost: 25,
+            desc: "+80% toughness against point defence." },
+  booster:   { slot: "tail", name: "Booster", code: "BO", color: "#ff9a3c", mass: .06, cost: 25, thrust: 300, burn: .6, perTank: .7,
+               desc: "Big kick, short burn. Fast and short-ranged." },
+  sustainer: { slot: "tail", name: "Sustainer", code: "SU", color: "#e8b04a", mass: .07, cost: 30, thrust: 140, burn: 1.6, perTank: 2.2,
+               desc: "Gentle, long burn. Slower off the rail, keeps going." },
+  vector:    { slot: "tail", name: "Vectoring motor", code: "VM", color: "#ff7a5c", mass: .07, cost: 45, thrust: 230, burn: .6, perTank: .7,
+               desc: "Steers with its exhaust: +2,600 sideways pull while it burns." },
+};
+const SLOT_NAMES = { tail: "thruster", body: "body", head: "head" };
+const PRESETS = [
+  { name: "Hornet", note: "Pad · heat swarm", launcher: "S", tail: "booster", body: ["fin", "he"], head: "ir" },
+  { name: "Lancer", note: "Rail · radar strike", launcher: "M", tail: "booster", body: ["fuel", "fin", "fin", "he"], head: "radar" },
+  { name: "Sledge", note: "Silo · armour breaker", launcher: "L", tail: "sustainer", body: ["fuel", "fin", "proc", "heat", "heat", "heat", "sheath"], head: "link" },
+  { name: "Blackout", note: "Rail · EMP", launcher: "M", tail: "vector", body: ["fuel", "emp", "emp", "prox"], head: "radar" },
+  { name: "Shrapnel", note: "Rail · click a PD mount", launcher: "M", tail: "booster", body: ["fuel", "frag", "frag", "prox"], head: "link" },
+  { name: "Brick", note: "Silo · dumb and heavy", launcher: "L", tail: "booster", body: ["fuel", "he", "he", "he", "he", "sheath", "sheath"], head: "nose" },
+];
+
+let design = clone(PRESETS[1]);
+let sel = { kind: "head", i: 0 };
+
+function clone(p) { return { launcher: p.launcher, tail: p.tail, body: p.body.slice(), head: p.head, name: p.name || "" }; }
+function parts(d) { return [d.tail, ...d.body, d.head]; }
+function count(d, id) { return d.body.filter(p => p === id).length; }
+
+// ---- the maths -----------------------------------------------------------------
+const POPUP_DEFAULT = 0.25;
+const COAST_LIFE = 6;
+function statsOf(d) {
+  const L = LAUNCHERS[d.launcher];
+  const k = (L.mm / 250) ** 2;
+  const all = parts(d);
+  const mass = all.reduce((s, p) => s + PARTS[p].mass * k, 0);
+  const T = PARTS[d.tail];
+  const fins = count(d, "fin"), tanks = count(d, "fuel"), procs = count(d, "proc"), sheaths = count(d, "sheath");
+  const nHE = count(d, "he") + (d.head === "nose" ? 0.6 : 0), nFrag = count(d, "frag"), nHeat = count(d, "heat"), nEmp = count(d, "emp");
+  const prox = count(d, "prox") > 0;
+  const accel = T.thrust * k / mass;
+  const burn = T.burn + tanks * T.perTank;
+  const finLoss = Math.max(0.6, 1 - 0.05 * fins);
+  const drag = 0.10 + 0.02 * fins;
+  const lateral = (1400 + 1700 * fins) / Math.pow(k, 0.25);
+  const lateralBurn = lateral + (d.tail === "vector" ? 2600 : 0);
+  const life = L.popup + burn + COAST_LIFE;
+  // Fly it in one dimension to get top speed and reach.
+  let v = L.eject, x = 0, t = 0, vmax = v;
+  while (t < life) {
+    const dt = 0.01;
+    if (t >= L.popup && t < L.popup + burn) v = Math.min(2600, v + accel * finLoss * dt);
+    else if (t >= L.popup + burn) v *= Math.exp(-drag * dt);
+    if (v < 250 && t > L.popup + burn) break;
+    x += v * dt; t += dt; vmax = Math.max(vmax, v);
+  }
+  const hp = 50 * Math.pow(k, 0.7) * (1 + 0.8 * sheaths);
+  const seeker = { ir: { range: 3200, cone: 35, fool: 0.4, by: "decoys" }, radar: { range: 5200, cone: 50, fool: 0.35, by: "chaff" } }[d.head];
+  const foolChance = seeker ? seeker.fool * Math.pow(0.45, procs) : 0;
+  const reload = (2 + 0.8 * all.length) * Math.pow(L.mm / 250, 0.6) * L.reloadMult;
+  // Through 2 PD blocks: shots at it while it crosses 1,500 u at its terminal speed.
+  const vt = Math.max(300, vmax * 0.85);
+  const p = Math.min(0.9, Math.max(0.04, 0.22 * Math.pow(1000 / vt, 0.8) * Math.pow(k, 0.5)));
+  const shots = 2 * 3 * (1500 / vt);
+  const need = Math.ceil(hp / 25);
+  const lambda = shots * p;
+  let pLess = 0, term = Math.exp(-lambda);
+  for (let i = 0; i < need; i++) { pLess += term; term *= lambda / (i + 1); }
+  return {
+    L, k, mass, accel, burn, vmax, range: x, life, drag, fins, lateral, lateralBurn,
+    turn: vmax * vmax / lateral, hp, seeker, foolChance, reload, survive: pLess, pdHit: p,
+    he: { dmg: 260 * k * nHE, r: nHE ? 90 + 70 * Math.sqrt(nHE * k) : 0 },
+    frag: { dmg: 110 * k * nFrag, r: nFrag ? 160 + 110 * Math.sqrt(nFrag * k) : 0 },
+    heat: { dmg: 380 * k * nHeat },
+    emp: { r: nEmp ? 150 + 90 * Math.sqrt(nEmp * k) : 0 },
+    ram: 40 * k, prox, fuse: 120 + 40 * Math.sqrt(k),
+    cost: Math.round(all.reduce((s, p) => s + PARTS[p].cost, 0) * Math.pow(k, 0.6)),
+    length: all.length, procs,
+  };
+}
+
+function problems(d, s) {
+  const out = [];
+  if (s.length > s.L.max) out.push(["bad", `Too long for the ${s.L.name}: ${s.length} parts, it takes ${s.L.max}.`]);
+  const warheads = s.he.dmg + s.frag.dmg + s.heat.dmg + (s.emp.r ? 1 : 0);
+  if (!warheads) out.push(["warn", `No warhead. It only does damage by ramming: ${Math.round(s.ram * s.vmax / 1000)} to the block it hits.`]);
+  if (s.range < +distEl.value) out.push(["warn", `Reaches about ${fmt(s.range)} u. The target is ${fmt(+distEl.value)} u away.`]);
+  if (d.head !== "nose" && s.turn > 900) out.push(["warn", `Turn circle ${(s.turn / 66).toFixed(0)} blocks at top speed: it will overshoot a dodging target. Fins or a vectoring motor tighten it.`]);
+  if (d.head === "link") out.push(["info", "Command link: click a block on the target to aim the salvo there."]);
+  if (s.heat.dmg && s.prox) out.push(["warn", "A shaped charge wants to touch the hull. With a proximity fuse it bursts early and wastes most of its jet."]);
+  if (s.seeker && d.head === "ir" && s.procs === 0) out.push(["info", "Heat seekers with no signal processor are easy prey for heat decoys."]);
+  if (d.head === "nose" && s.fins) out.push(["info", "Fins do nothing on a dumb missile: it never steers."]);
+  return out;
+}
+
+// ---- side panel ----------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const distEl = $("dist");
+function fmt(n) { return Math.round(n).toLocaleString("en-US"); }
+
+function renderLaunchers() {
+  const seg = $("launchers");
+  seg.innerHTML = "";
+  for (const L of Object.values(LAUNCHERS)) {
+    const b = document.createElement("button");
+    b.textContent = `${L.name} · ${L.mm} mm`;
+    b.setAttribute("aria-pressed", design.launcher === L.key);
+    b.onclick = () => { design.launcher = L.key; design.name = ""; refresh(); };
+    seg.appendChild(b);
+  }
+  const L = LAUNCHERS[design.launcher];
+  $("launcherTag").textContent = `${L.cells} blocks`;
+  $("launcherNote").textContent = `${L.desc} Up to ${L.max} parts.`;
+}
+
+function slotList() {
+  return [{ kind: "tail", i: 0, id: design.tail }, ...design.body.map((id, i) => ({ kind: "body", i, id })), { kind: "head", i: 0, id: design.head }];
+}
+
+function renderStrip() {
+  const strip = $("strip");
+  strip.innerHTML = "";
+  for (const s of slotList()) {
+    const p = PARTS[s.id];
+    const b = document.createElement("button");
+    b.className = "slot";
+    b.style.color = p.color;
+    b.innerHTML = `${p.code}<small>${SLOT_NAMES[s.kind]}</small>`;
+    b.title = p.name;
+    b.setAttribute("aria-pressed", sel.kind === s.kind && sel.i === s.i);
+    b.onclick = () => { sel = { kind: s.kind, i: s.i }; renderStrip(); renderPalette(); };
+    strip.appendChild(b);
+  }
+  const dir = document.createElement("span");
+  dir.className = "dir";
+  dir.textContent = "→ flight";
+  strip.appendChild(dir);
+  const L = LAUNCHERS[design.launcher];
+  const n = parts(design).length;
+  $("lenTag").textContent = `${n} / ${L.max} parts`;
+  $("lenTag").className = n > L.max ? "bad" : "";
+  $("addSlot").disabled = n >= L.max;
+  $("delSlot").disabled = sel.kind !== "body";
+}
+
+function renderPalette() {
+  const pal = $("palette");
+  pal.innerHTML = "";
+  const current = sel.kind === "tail" ? design.tail : sel.kind === "head" ? design.head : design.body[sel.i];
+  $("slotHelp").textContent = sel.kind === "body" ? "Pick what goes in this body slot." : sel.kind === "head" ? "Pick the head: a seeker, or a dumb nose." : "Pick the motor.";
+  for (const [id, p] of Object.entries(PARTS)) {
+    if (p.slot !== sel.kind) continue;
+    const b = document.createElement("button");
+    b.innerHTML = `<span class="swatch" style="background:${p.color}"></span><span>${p.name}</span>`;
+    b.title = p.desc;
+    b.setAttribute("aria-pressed", id === current);
+    b.onclick = () => {
+      if (sel.kind === "tail") design.tail = id; else if (sel.kind === "head") design.head = id; else design.body[sel.i] = id;
+      design.name = "";
+      refresh();
+    };
+    pal.appendChild(b);
+  }
+}
+
+function renderStats() {
+  const s = statsOf(design);
+  const rows = [
+    ["Gauge", `${s.L.mm} mm`], ["Mass", `${s.mass.toFixed(2)} t`], ["Cost", `${fmt(s.cost)} cr`],
+    "sep",
+    ["Burn", `${s.burn.toFixed(1)} s`], ["Top speed", `${fmt(s.vmax)} u/s`], ["Reach", `${fmt(s.range)} u`],
+    ["Turn circle", design.head === "nose" ? "doesn't steer" : `${(s.turn / 66).toFixed(1)} blocks`],
+    "sep",
+  ];
+  if (s.he.dmg) rows.push(["HE blast", `${fmt(s.he.dmg)} · ${(s.he.r / 66).toFixed(1)} blk`]);
+  if (s.frag.dmg) rows.push(["Frag", `${fmt(s.frag.dmg)} · ${(s.frag.r / 66).toFixed(1)} blk`]);
+  if (s.heat.dmg) rows.push(["Shaped jet", `${fmt(s.heat.dmg)}`]);
+  if (s.emp.r) rows.push(["EMP", `6 s · ${(s.emp.r / 66).toFixed(1)} blk`]);
+  rows.push(["Fuse", s.prox ? `proximity ${(s.fuse / 66).toFixed(1)} blk` : "contact"]);
+  rows.push("sep");
+  rows.push(["Seeker", design.head === "ir" ? "heat 3,200 u" : design.head === "radar" ? "radar 5,200 u" : design.head === "link" ? "command 7,000 u" : "none"]);
+  if (s.seeker) rows.push([`Fooled by ${s.seeker.by}`, `${Math.round(s.foolChance * 100)}%`]);
+  rows.push(["Toughness", `${Math.round(s.hp)}`]);
+  rows.push(["Past 2 PD", `${Math.round(s.survive * 100)}%`]);
+  rows.push(["Reload", `${s.reload.toFixed(1)} s`]);
+  $("stats").innerHTML = rows.map(r => r === "sep" ? `<div class="sep"></div>` : `<span>${r[0]}</span><b>${r[1]}</b>`).join("");
+  $("notes").innerHTML = problems(design, s).map(([c, t]) => `<p class="note ${c === "warn" ? "" : c}">${t}</p>`).join("");
+  $("fire").disabled = s.length > s.L.max;
+  drawSchematic();
+}
+
+function renderPresets() {
+  const box = $("presets");
+  box.innerHTML = "";
+  for (const p of PRESETS) {
+    const b = document.createElement("button");
+    b.innerHTML = `${p.name}<small>${p.note}</small>`;
+    b.setAttribute("aria-pressed", design.name === p.name);
+    b.onclick = () => { design = clone(p); sel = { kind: "head", i: 0 }; refresh(); };
+    box.appendChild(b);
+  }
+}
+
+function renderLegend() {
+  $("legend").innerHTML = Object.values(PARTS).map(p =>
+    `<div class="part"><div class="chip" style="background:${p.color}">${p.code}</div><div><span class="slotname">${SLOT_NAMES[p.slot]}</span><b>${p.name}</b><span>${p.desc}</span></div></div>`).join("");
+  $("launcherLegend").innerHTML = Object.values(LAUNCHERS).map(L =>
+    `<div class="part"><div class="chip" style="background:#3a4456;color:var(--ink)">${L.key}</div><div><span class="slotname">${L.cells} blocks · ${L.mm} mm · ${L.max} parts</span><b>${L.name}</b><span>${L.desc} Eject ${L.eject} u/s, can't turn for ${L.popup} s.</span></div></div>`).join("");
+}
+
+function refresh() {
+  const n = parts(design).length;
+  if (sel.kind === "body" && sel.i >= design.body.length) sel = { kind: "head", i: 0 };
+  renderLaunchers(); renderStrip(); renderPalette(); renderStats(); renderPresets();
+}
+
+$("addSlot").onclick = () => {
+  const at = sel.kind === "body" ? sel.i + 1 : sel.kind === "tail" ? 0 : design.body.length;
+  design.body.splice(at, 0, "fuel");
+  sel = { kind: "body", i: at };
+  design.name = "";
+  refresh();
+};
+$("delSlot").onclick = () => {
+  if (sel.kind !== "body") return;
+  design.body.splice(sel.i, 1);
+  sel = design.body.length ? { kind: "body", i: Math.min(sel.i, design.body.length - 1) } : { kind: "head", i: 0 };
+  design.name = "";
+  refresh();
+};
+$("copy").onclick = async () => {
+  const text = JSON.stringify({ launcher: LAUNCHERS[design.launcher].name, gauge_mm: LAUNCHERS[design.launcher].mm, parts: parts(design).map(p => PARTS[p].name) }, null, 1);
+  const btn = $("copy");
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch { btn.textContent = "Copy failed"; }
+  setTimeout(() => btn.textContent = "Copy design", 1400);
+};
+
+// ---- schematic -----------------------------------------------------------------
+function drawSchematic() {
+  const c = $("schematic"), g = c.getContext("2d");
+  const W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const all = parts(design);
+  const L = LAUNCHERS[design.launcher];
+  const h = { S: 24, M: 34, L: 46 }[L.key];
+  const segW = Math.min(64, (W - 80) / all.length);
+  const x0 = (W - segW * all.length - 30) / 2, y0 = H / 2 - h / 2;
+  // exhaust
+  g.fillStyle = "rgba(255,154,60,.35)";
+  g.beginPath(); g.moveTo(x0, y0 + h * 0.25); g.lineTo(x0 - 26, H / 2); g.lineTo(x0, y0 + h * 0.75); g.fill();
+  all.forEach((id, i) => {
+    const p = PARTS[id], x = x0 + i * segW;
+    const last = i === all.length - 1;
+    g.fillStyle = p.color;
+    if (last) {
+      g.beginPath(); g.moveTo(x, y0); g.lineTo(x + segW * 0.55, y0); g.quadraticCurveTo(x + segW + 26, H / 2, x + segW * 0.55, y0 + h); g.lineTo(x, y0 + h); g.closePath(); g.fill();
+    } else {
+      g.fillRect(x, y0, segW - 2, h);
+    }
+    if (id === "fin") {
+      g.fillStyle = "#4a5466";
+      g.fillRect(x, y0, segW - 2, h);
+      g.fillStyle = "#a9b4c4";
+      const fh = Math.min(16, h * 0.45);
+      g.beginPath(); g.moveTo(x + 3, y0); g.lineTo(x + segW * 0.7, y0); g.lineTo(x + 3, y0 - fh); g.fill();
+      g.beginPath(); g.moveTo(x + 3, y0 + h); g.lineTo(x + segW * 0.7, y0 + h); g.lineTo(x + 3, y0 + h + fh); g.fill();
+    }
+    g.fillStyle = id === "fin" ? "#dfe5ee" : "rgba(8,10,14,.82)";
+    g.font = "600 11px IBM Plex Mono, monospace";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(p.code, x + (last ? segW * 0.42 : (segW - 2) / 2), H / 2);
+  });
+  g.fillStyle = "#556172";
+  g.font = "500 10px IBM Plex Mono, monospace";
+  g.textAlign = "left";
+  g.fillText(`${L.mm} mm`, 6, 12);
+}
+
+// ---- the range -----------------------------------------------------------------
+const cv = $("range"), ctx = cv.getContext("2d");
+const CW = cv.width, CH = cv.height;
+const CELL = 66;
+const DRIFT = 1000; // how far the target runs either side of your bow
+let view = { x0: 0, s: 1 };
+let sim = null;
+let salvoSize = 4, pdCount = 2, timeScale = 1;
+
+function setView() {
+  const R = +distEl.value;
+  view.x0 = -1300;
+  // Wide enough for both ships, tall enough for the target's whole run.
+  view.s = Math.min(CW / (R + 2600), CH / (2 * (DRIFT + 17 * CELL + 250)));
+}
+const sx = x => (x - view.x0) * view.s;
+const sy = y => CH / 2 - y * view.s;
+
+function makeTarget() {
+  // A destroyer, bow up, 11 blocks wide and 31 long, crossing your bow.
+  const cells = [];
+  const half = cy => cy > 9 ? Math.max(0, 5 - Math.ceil((cy - 9) * 0.9)) : cy < -13 ? 4 : 5;
+  const inside = (cx, cy) => cy >= -15 && cy <= 15 && Math.abs(cx) <= half(cy);
+  for (let cy = -15; cy <= 15; cy++) for (let cx = -5; cx <= 5; cx++) {
+    if (!inside(cx, cy)) continue;
+    const outer = !inside(cx + 1, cy) || !inside(cx - 1, cy) || !inside(cx, cy + 1) || !inside(cx, cy - 1);
+    let kind = outer ? "armour" : "inner";
+    if (!outer && cy <= -12 && cy >= -14 && Math.abs(cx) <= 3) kind = "engine";
+    if (!outer && Math.abs(cx) <= 1 && Math.abs(cy) <= 1) kind = "reactor";
+    const max = { armour: 150, inner: 80, engine: 90, reactor: 120 }[kind];
+    cells.push({ cx, cy, kind, hp: max, max, off: 0 });
+  }
+  const pdSpots = [[-5, 6], [5, 6], [-5, -6], [5, -6], [-5, 0], [5, 0]];
+  pdSpots.slice(0, pdCount).forEach(([cx, cy]) => {
+    const c = cells.find(c => c.cx === cx && c.cy === cy);
+    if (c) { c.kind = "pd"; c.hp = c.max = 100; c.cool = 0; }
+  });
+  return cells;
+}
+
+function newSim() {
+  setView();
+  const cells = makeTarget();
+  sim = {
+    t: 0, cells, ty: 0, tvy: 160, jink: 2,
+    missiles: [], fx: [], decoys: [], tracers: [], lastDecoy: -9,
+    aimCell: cells.find(c => c.cx === 0 && c.cy === 0),
+    tally: { launched: 0, hit: 0, shot: 0, fooled: 0, missed: 0, blocks: 0, dmg: 0 },
+    queue: [], lastSalvo: null,
+  };
+  renderTally();
+}
+
+function cellWorld(c) { return { x: +distEl.value + c.cx * CELL, y: sim.ty + c.cy * CELL }; }
+function alive() { return sim.cells.filter(c => c.hp > 0); }
+function centroid(list) {
+  if (!list.length) return { x: +distEl.value, y: sim.ty };
+  let x = 0, y = 0;
+  for (const c of list) { const w = cellWorld(c); x += w.x; y += w.y; }
+  return { x: x / list.length, y: y / list.length };
+}
+function aimFor(m) {
+  const live = alive();
+  if (m.head === "ir") { const eng = live.filter(c => c.kind === "engine"); return centroid(eng.length ? eng : live); }
+  if (m.head === "link") {
+    let c = sim.aimCell;
+    if (!c || c.hp <= 0) c = live.reduce((b, x) => !b || Math.hypot(x.cx, x.cy) < Math.hypot(b.cx, b.cy) ? x : b, null);
+    return c ? cellWorld(c) : centroid(live);
+  }
+  return centroid(live);
+}
+
+function fireSalvo() {
+  const s = statsOf(design);
+  if (s.length > s.L.max) return;
+  const n = salvoSize;
+  sim.lastSalvo = { n, hit: 0, shot: 0, fooled: 0, missed: 0, blocks: 0, dmg: 0, off: 0, start: sim.t, impacts: [] };
+  for (let i = 0; i < n; i++) sim.queue.push({ at: sim.t + i * 0.18, slot: i, n, s, d: clone(design), salvo: sim.lastSalvo });
+}
+
+function launch(q) {
+  const { s, d } = q;
+  const y = (q.slot - (q.n - 1) / 2) * 130;
+  const pos = { x: 0, y };
+  // Fire control: where the target will be when an average missile gets there.
+  const aim0 = aimFor({ head: d.head === "ir" ? "ir" : "radar" });
+  const tgo = Math.hypot(aim0.x - pos.x, aim0.y - pos.y) / Math.max(600, s.vmax * 0.8);
+  const lead = { x: aim0.x, y: aim0.y + sim.tvy * tgo };
+  const heading = Math.atan2(lead.y - pos.y, lead.x - pos.x) + (Math.random() - 0.5) * 0.12;
+  sim.missiles.push({
+    x: pos.x, y: pos.y, px: pos.x, py: pos.y, hd: heading, v: s.L.eject, age: 0, s, head: d.head, d,
+    hp: s.hp, locked: d.head === "link", decoy: null, launchAim: lead, trail: [], salvo: q.salvo,
+    wander: { x: 0, y: 0 }, done: false,
+  });
+  sim.tally.launched++;
+}
+
+function turnCeiling(age) {
+  const t = Math.min(1, Math.max(0, age / 3.5));
+  const e = t * t * (3 - 2 * t);
+  return 7 + (1.4 - 7) * e;
+}
+function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+
+function stepMissile(m, dt) {
+  const s = m.s;
+  m.age += dt;
+  m.px = m.x; m.py = m.y;
+  const sinceClear = m.age - s.L.popup;
+  const burning = sinceClear >= 0 && sinceClear < s.burn;
+  if (burning) m.v = Math.min(2600, m.v + s.accel * Math.max(0.6, 1 - 0.05 * s.fins) * dt);
+  else if (sinceClear >= s.burn) m.v *= Math.exp(-s.drag * dt);
+  if (sinceClear >= 0 && m.head !== "nose") {
+    let aim;
+    if (m.decoy) aim = { x: m.decoy.x, y: m.decoy.y };
+    else if (m.locked) {
+      const a = aimFor(m);
+      const tgo = Math.hypot(a.x - m.x, a.y - m.y) / Math.max(m.v, 500);
+      aim = { x: a.x, y: a.y + sim.tvy * Math.min(tgo, 3) * 0.9 };
+      if (m.head === "link") {
+        // The farther from the ship that guides it, the looser the steering.
+        const spread = 30 + Math.hypot(m.x, m.y) * 0.02;
+        m.wander.x += (Math.random() - 0.5) * spread * dt * 3; m.wander.y += (Math.random() - 0.5) * spread * dt * 3;
+        m.wander.x *= 0.98; m.wander.y *= 0.98;
+        aim.x += m.wander.x; aim.y += m.wander.y;
+      }
+    } else aim = m.launchAim;
+    // Seeker: lock when the target is in range and inside the cone.
+    if (!m.locked && !m.decoy && s.seeker) {
+      const a = aimFor(m);
+      const dist = Math.hypot(a.x - m.x, a.y - m.y);
+      const off = Math.abs(wrap(Math.atan2(a.y - m.y, a.x - m.x) - m.hd)) * 180 / Math.PI;
+      if (dist < s.seeker.range && off < s.seeker.cone) m.locked = true;
+    } else if (m.locked && s.seeker && !m.decoy) {
+      const a = aimFor(m);
+      const off = Math.abs(wrap(Math.atan2(a.y - m.y, a.x - m.x) - m.hd)) * 180 / Math.PI;
+      if (off > s.seeker.cone + 15) { m.locked = false; m.launchAim = { x: m.x + Math.cos(m.hd) * 4000, y: m.y + Math.sin(m.hd) * 4000 }; }
+    }
+    const want = Math.atan2(aim.y - m.y, aim.x - m.x);
+    const err = wrap(want - m.hd);
+    const lateral = burning ? s.lateralBurn : s.lateral;
+    const cap = Math.min(turnCeiling(sinceClear), lateral / Math.max(m.v, 150));
+    m.hd += Math.max(-cap, Math.min(cap, err * 4)) * dt;
+  }
+  m.x += Math.cos(m.hd) * m.v * dt;
+  m.y += Math.sin(m.hd) * m.v * dt;
+  if (sim.t % 0.05 < dt) { m.trail.push([m.x, m.y]); if (m.trail.length > 26) m.trail.shift(); }
+  if (sinceClear > s.burn + COAST_LIFE || (sinceClear > s.burn && m.v < 250)) finish(m, "missed");
+  if (m.decoy && Math.hypot(m.decoy.x - m.x, m.decoy.y - m.y) < 60) finish(m, "fooled");
+}
+
+function finish(m, how) {
+  if (m.done) return;
+  m.done = true;
+  if (how === "missed" && m.decoy) how = "fooled";
+  sim.tally[how]++;
+  m.salvo[how]++;
+  if (how !== "hit") sim.fx.push({ x: m.x, y: m.y, r: 30, life: 0.35, age: 0, kind: "puff" });
+}
+
+function cellAt(x, y) {
+  const lx = (x - +distEl.value) / CELL, ly = (y - sim.ty) / CELL;
+  const cx = Math.round(lx), cy = Math.round(ly);
+  return sim.cells.find(c => c.hp > 0 && c.cx === cx && c.cy === cy) || null;
+}
+function nearest(x, y) {
+  let best = null, bd = 1e9;
+  for (const c of sim.cells) {
+    if (c.hp <= 0) continue;
+    const w = cellWorld(c), d = Math.hypot(w.x - x, w.y - y);
+    if (d < bd) { bd = d; best = c; }
+  }
+  return [best, bd];
+}
+
+function damage(c, amount) {
+  if (c.hp <= 0 || amount <= 0) return;
+  const dealt = Math.min(c.hp, amount);
+  c.hp -= dealt;
+  sim.tally.dmg += dealt;
+  if (c.hp <= 0) { c.hp = 0; sim.tally.blocks++; }
+}
+
+function detonate(m, x, y, contactCell) {
+  const s = m.s;
+  const airburst = !contactCell;
+  const before = sim.tally.blocks, dmgBefore = sim.tally.dmg;
+  // Point defence mounts sit out on the hull, exposed: `pdMul` is what they
+  // take (plate's share unless the warhead says otherwise).
+  const blast = (dmg, r, armourMul, innerMul, pdMul) => {
+    if (!dmg) return;
+    for (const c of sim.cells) {
+      if (c.hp <= 0) continue;
+      const w = cellWorld(c), d = Math.hypot(w.x - x, w.y - y);
+      if (d >= r) continue;
+      const mul = c.kind === "pd" && pdMul ? pdMul
+        : c.kind === "armour" || c.kind === "pd" ? armourMul * (airburst ? 0.85 : 1) : innerMul;
+      damage(c, dmg * (1 - d / r) * mul);
+    }
+  };
+  blast(s.he.dmg, s.he.r, 0.7, 1.0);
+  blast(s.frag.dmg, s.frag.r, 0.3, 1.3, 1.3);
+  if (s.heat.dmg) {
+    // The jet goes on along the missile's line, block after block.
+    let e = s.heat.dmg * (airburst ? 0.3 : 1);
+    const dx = Math.cos(m.hd), dy = Math.sin(m.hd);
+    const seen = new Set();
+    for (let step = 0; step < 60 && e > 5; step++) {
+      const c = cellAt(x + dx * step * 33, y + dy * step * 33);
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      const take = Math.min(e, c.hp);
+      damage(c, take);
+      e = (e - take) * 0.92;
+    }
+  }
+  if (s.emp.r) {
+    for (const c of sim.cells) {
+      const w = cellWorld(c);
+      if (c.hp > 0 && Math.hypot(w.x - x, w.y - y) < s.emp.r) {
+        if (c.off <= sim.t) m.salvo.off++;
+        c.off = Math.max(c.off, sim.t + 6);
+      }
+    }
+  }
+  if (!s.he.dmg && !s.frag.dmg && !s.heat.dmg && !s.emp.r && contactCell) damage(contactCell, s.ram * m.v / 1000);
+  m.salvo.blocks += sim.tally.blocks - before;
+  m.salvo.dmg += sim.tally.dmg - dmgBefore;
+  m.salvo.impacts.push(sim.t - m.salvo.start);
+  const r = Math.max(s.he.r, s.frag.r, s.emp.r, 50);
+  sim.fx.push({ x, y, r, life: 0.55, age: 0, kind: s.emp.r && !s.he.dmg && !s.frag.dmg ? "emp" : "blast" });
+  finish(m, "hit");
+}
+
+function stepTarget(dt) {
+  const evade = $("evade").checked;
+  if (evade) {
+    sim.jink -= dt;
+    if (sim.jink <= 0) { sim.jink = 1.6 + Math.random() * 2.2; sim.tvy = (Math.random() < 0.5 ? -1 : 1) * (300 + Math.random() * 250); }
+  } else if (Math.abs(sim.tvy) !== 160) sim.tvy = Math.sign(sim.tvy || 1) * 160;
+  if (sim.ty > DRIFT) sim.tvy = -Math.abs(sim.tvy);
+  if (sim.ty < -DRIFT) sim.tvy = Math.abs(sim.tvy);
+  sim.ty += sim.tvy * dt;
+}
+
+function stepDefences(dt) {
+  const tx = +distEl.value;
+  const threats = sim.missiles.filter(m => !m.done && Math.hypot(m.x - tx, m.y - sim.ty) < 3500);
+  // Decoys and chaff, every 4 s while missiles are inbound.
+  const wantDecoy = $("decoys").checked, wantChaff = $("chaff").checked;
+  if (threats.length && (wantDecoy || wantChaff) && sim.t - sim.lastDecoy > 4) {
+    sim.lastDecoy = sim.t;
+    const eng = centroid(alive().filter(c => c.kind === "engine"));
+    for (const kind of [wantDecoy && "flare", wantChaff && "chaff"].filter(Boolean)) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      // Thrown clear of the hull, so a fooled missile flies past the ship
+      // rather than into it.
+      // Off the bow or the stern, on the side the missiles are coming from.
+      const dcy = kind === "flare"
+        ? { kind, x: eng.x - 350, y: eng.y - 700, vx: -120, vy: -280, life: 4, age: 0, rolled: new Set() }
+        : { kind, x: tx - 400, y: sim.ty + side * (900 + Math.random() * 300), vx: -100, vy: side * 160, life: 4, age: 0, rolled: new Set() };
+      sim.decoys.push(dcy);
+    }
+  }
+  // Every locked seeker that comes inside 3,500 u while a decoy is out gets
+  // one roll against it.
+  for (const dcy of sim.decoys) {
+    for (const m of threats) {
+      if (m.decoy || !m.locked || !m.s.seeker || dcy.rolled.has(m)) continue;
+      if ((dcy.kind === "flare" && m.head === "ir") || (dcy.kind === "chaff" && m.head === "radar")) {
+        dcy.rolled.add(m);
+        if (Math.random() < m.s.foolChance) m.decoy = dcy;
+      }
+    }
+  }
+  for (const dcy of sim.decoys) {
+    dcy.age += dt; dcy.x += dcy.vx * dt; dcy.y += dcy.vy * dt; dcy.vx *= Math.exp(-0.6 * dt); dcy.vy *= Math.exp(-0.6 * dt);
+  }
+  for (const m of sim.missiles) if (m.decoy && m.decoy.age >= m.decoy.life) { m.decoy = null; m.locked = false; m.launchAim = { x: m.x + Math.cos(m.hd) * 4000, y: m.y + Math.sin(m.hd) * 4000 }; }
+  sim.decoys = sim.decoys.filter(d => d.age < d.life);
+  // Point defence.
+  for (const c of sim.cells) {
+    if (c.kind !== "pd" || c.hp <= 0 || c.off > sim.t) continue;
+    c.cool -= dt;
+    if (c.cool > 0) continue;
+    const w = cellWorld(c);
+    let best = null, bd = 1500;
+    for (const m of sim.missiles) {
+      if (m.done) continue;
+      const d = Math.hypot(m.x - w.x, m.y - w.y);
+      if (d < bd) { bd = d; best = m; }
+    }
+    if (!best) continue;
+    c.cool = 1 / 3;
+    const p = Math.min(0.9, Math.max(0.04, 0.22 * Math.pow(1000 / Math.max(best.v, 300), 0.8) * Math.pow(best.s.k, 0.5)));
+    const hit = Math.random() < p;
+    sim.tracers.push({ x0: w.x, y0: w.y, x1: best.x + (hit ? 0 : (Math.random() - 0.5) * 160), y1: best.y + (hit ? 0 : (Math.random() - 0.5) * 160), age: 0 });
+    if (hit) { best.hp -= 25; if (best.hp <= 0) finish(best, "shot"); }
+  }
+  for (const tr of sim.tracers) tr.age += dt;
+  sim.tracers = sim.tracers.filter(t => t.age < 0.07);
+}
+
+function checkHits() {
+  for (const m of sim.missiles) {
+    if (m.done || m.age < m.s.L.popup) continue;
+    const steps = Math.max(1, Math.ceil(Math.hypot(m.x - m.px, m.y - m.py) / 20));
+    for (let i = 1; i <= steps; i++) {
+      const x = m.px + (m.x - m.px) * i / steps, y = m.py + (m.y - m.py) * i / steps;
+      const c = cellAt(x, y);
+      if (c) { detonate(m, x, y, c); break; }
+      if (m.s.prox) {
+        const [, d] = nearest(x, y);
+        if (d < m.s.fuse) { detonate(m, x, y, null); break; }
+      }
+    }
+  }
+}
+
+function tick(dt) {
+  sim.t += dt;
+  while (sim.queue.length && sim.queue[0].at <= sim.t) launch(sim.queue.shift());
+  stepTarget(dt);
+  for (const m of sim.missiles) if (!m.done) stepMissile(m, dt);
+  checkHits();
+  stepDefences(dt);
+  for (const f of sim.fx) f.age += dt;
+  sim.fx = sim.fx.filter(f => f.age < f.life);
+  sim.missiles = sim.missiles.filter(m => !m.done || m.trail.length && (m.fade = (m.fade || 0) + dt) < 0.6);
+  if ($("auto").checked && !sim.queue.length && !sim.missiles.some(m => !m.done)) {
+    sim.autoWait = (sim.autoWait || 0) + dt;
+    if (sim.autoWait > statsOf(design).reload) { sim.autoWait = 0; fireSalvo(); }
+  } else sim.autoWait = 0;
+}
+
+// ---- drawing -------------------------------------------------------------------
+const COLORS = { armour: [140, 152, 170], inner: [72, 82, 98], engine: [214, 132, 70], reactor: [120, 170, 220], pd: [95, 201, 163] };
+function draw() {
+  ctx.clearRect(0, 0, CW, CH);
+  // grid every 1,000 u
+  ctx.strokeStyle = "rgba(38,48,63,.55)";
+  ctx.lineWidth = 1;
+  ctx.font = "500 10px IBM Plex Mono, monospace";
+  ctx.fillStyle = "#3d4757";
+  for (let x = 0; x < +distEl.value + 1300; x += 1000) {
+    ctx.beginPath(); ctx.moveTo(sx(x), 0); ctx.lineTo(sx(x), CH); ctx.stroke();
+    if (x) ctx.fillText(`${x / 1000}k u`, sx(x) + 4, CH - 8);
+  }
+  // your ship: the bow and its launchers
+  ctx.fillStyle = "#1c2433";
+  ctx.strokeStyle = "#3a4558";
+  const bw = 900;
+  ctx.beginPath();
+  ctx.moveTo(sx(-bw - 400), sy(900)); ctx.lineTo(sx(-80), sy(900)); ctx.lineTo(sx(220), sy(300)); ctx.lineTo(sx(220), sy(-300)); ctx.lineTo(sx(-80), sy(-900)); ctx.lineTo(sx(-bw - 400), sy(-900));
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  for (let i = 0; i < salvoSize; i++) {
+    const y = (i - (salvoSize - 1) / 2) * 130;
+    ctx.fillStyle = "#c99a4b";
+    ctx.fillRect(sx(0) - 3, sy(y) - 3, 6, 6);
+  }
+  ctx.fillStyle = "#556172";
+  ctx.fillText("YOUR SHIP", sx(-1250), sy(980));
+  // target
+  const cs = CELL * view.s;
+  for (const c of sim.cells) {
+    const w = cellWorld(c);
+    const X = sx(w.x) - cs / 2, Y = sy(w.y) - cs / 2;
+    if (c.hp <= 0) { ctx.strokeStyle = "rgba(224,106,106,.18)"; ctx.strokeRect(X + 0.5, Y + 0.5, cs - 1, cs - 1); continue; }
+    const [r, g, b] = COLORS[c.kind];
+    const f = 0.35 + 0.65 * (c.hp / c.max);
+    ctx.fillStyle = `rgb(${Math.round(r * f + 90 * (1 - f))},${Math.round(g * f)},${Math.round(b * f)})`;
+    ctx.fillRect(X, Y, cs - 0.6, cs - 0.6);
+    if (c.off > sim.t) { ctx.fillStyle = "rgba(122,168,255,.45)"; ctx.fillRect(X, Y, cs - 0.6, cs - 0.6); }
+  }
+  ctx.fillStyle = "#556172";
+  ctx.fillText("TARGET", sx(+distEl.value - 330), sy(sim.ty + 17 * CELL));
+  if (design.head === "link" && sim.aimCell && sim.aimCell.hp > 0) {
+    const w = cellWorld(sim.aimCell);
+    ctx.strokeStyle = "#5fc9a3"; ctx.lineWidth = 1.5;
+    const X = sx(w.x), Y = sy(w.y), r = Math.max(7, cs);
+    ctx.beginPath(); ctx.arc(X, Y, r, 0, Math.PI * 2); ctx.moveTo(X - r - 5, Y); ctx.lineTo(X + r + 5, Y); ctx.moveTo(X, Y - r - 5); ctx.lineTo(X, Y + r + 5); ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  // decoys
+  for (const d of sim.decoys) {
+    const a = 1 - d.age / d.life;
+    if (d.kind === "flare") { ctx.fillStyle = `rgba(255,190,90,${a})`; ctx.beginPath(); ctx.arc(sx(d.x), sy(d.y), 3.5, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = `rgba(170,190,220,${a * 0.22})`; ctx.beginPath(); ctx.arc(sx(d.x), sy(d.y), 200 * view.s * (0.6 + d.age / d.life), 0, 7); ctx.fill(); }
+  }
+  // PD tracers
+  ctx.strokeStyle = "rgba(95,201,163,.8)";
+  for (const t of sim.tracers) { ctx.beginPath(); ctx.moveTo(sx(t.x0), sy(t.y0)); ctx.lineTo(sx(t.x1), sy(t.y1)); ctx.stroke(); }
+  // missiles
+  for (const m of sim.missiles) {
+    const fade = m.done ? 1 - (m.fade || 0) / 0.6 : 1;
+    if (m.trail.length > 1) {
+      ctx.strokeStyle = `rgba(200,210,225,${0.28 * fade})`;
+      ctx.beginPath();
+      m.trail.forEach(([x, y], i) => i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y)));
+      ctx.lineTo(sx(m.x), sy(m.y));
+      ctx.stroke();
+    }
+    if (m.done) continue;
+    const X = sx(m.x), Y = sy(m.y), dx = Math.cos(m.hd), dy = -Math.sin(m.hd);
+    const len = { S: 7, M: 9, L: 12 }[m.d.launcher];
+    const burning = m.age >= m.s.L.popup && m.age - m.s.L.popup < m.s.burn;
+    if (burning) {
+      ctx.strokeStyle = "rgba(255,154,60,.9)"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(X - dx * len * 0.5, Y - dy * len * 0.5); ctx.lineTo(X - dx * len * 1.6, Y - dy * len * 1.6); ctx.stroke();
+    }
+    ctx.strokeStyle = m.decoy ? "#e0a24a" : m.locked ? "#f2f5fa" : "#9aa6b8"; ctx.lineWidth = m.d.launcher === "L" ? 3 : 2;
+    ctx.beginPath(); ctx.moveTo(X - dx * len * 0.5, Y - dy * len * 0.5); ctx.lineTo(X + dx * len * 0.5, Y + dy * len * 0.5); ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  // explosions
+  for (const f of sim.fx) {
+    const p = f.age / f.life;
+    const r = Math.max(3, f.r * view.s * (0.4 + 0.6 * p));
+    ctx.strokeStyle = f.kind === "emp" ? `rgba(122,168,255,${1 - p})` : f.kind === "puff" ? `rgba(150,160,175,${0.6 * (1 - p)})` : `rgba(255,160,70,${1 - p})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), r, 0, 7); ctx.stroke();
+    if (f.kind === "blast") { ctx.fillStyle = `rgba(255,200,120,${0.35 * (1 - p)})`; ctx.fill(); }
+    ctx.lineWidth = 1;
+  }
+}
+
+function renderTally() {
+  const t = sim.tally;
+  const live = alive().length, total = sim.cells.length;
+  const items = [["Launched", t.launched], ["Hit", t.hit], ["Shot down", t.shot], ["Fooled", t.fooled], ["Missed", t.missed], ["Damage", fmt(t.dmg)], ["Blocks lost", `${t.blocks}<small style="font-size:11px;color:var(--faint)"> / ${total}</small>`]];
+  $("tally").innerHTML = items.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+  const s = sim.lastSalvo;
+  const pdLeft = sim.cells.filter(c => c.kind === "pd" && c.hp > 0).length;
+  const engLeft = sim.cells.filter(c => c.kind === "engine" && c.hp > 0).length;
+  const engAll = sim.cells.filter(c => c.kind === "engine").length;
+  let line = s
+    ? `Last salvo: <b>${s.n}</b> fired · <b>${s.hit}</b> hit · <b>${s.shot}</b> shot down · <b>${s.fooled}</b> fooled · <b>${s.missed}</b> missed · <b>${fmt(s.dmg)}</b> damage, <b>${s.blocks}</b> blocks destroyed` + (s.off ? ` · <b>${s.off}</b> blocks shut off` : "") + (s.impacts.length ? ` · first impact after <b>${s.impacts[0].toFixed(1)} s</b>` : "")
+    : "Fire a salvo. The target crosses your bow and can dodge, shoot back at your missiles, and throw decoys.";
+  line += `<br>Target: <b>${live}</b> of ${total} blocks standing · point defence <b>${pdLeft}</b> of ${pdCount} · engines <b>${engLeft}</b> of ${engAll}.`;
+  $("readout").innerHTML = line;
+}
+
+// ---- controls ------------------------------------------------------------------
+function seg(id, options, get, set) {
+  const el = $(id);
+  const render = () => {
+    el.innerHTML = "";
+    for (const [label, value] of options) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.setAttribute("aria-pressed", get() === value);
+      b.onclick = () => { set(value); render(); };
+      el.appendChild(b);
+    }
+  };
+  render();
+}
+seg("salvo", [["1", 1], ["4", 4], ["8", 8], ["12", 12]], () => salvoSize, v => salvoSize = v);
+seg("pd", [["0", 0], ["2", 2], ["4", 4], ["6", 6]], () => pdCount, v => { pdCount = v; newSim(); });
+seg("speed", [["½×", 0.5], ["1×", 1], ["2×", 2]], () => timeScale, v => timeScale = v);
+$("fire").onclick = () => fireSalvo();
+$("reset").onclick = () => newSim();
+distEl.oninput = () => { $("distOut").textContent = `${fmt(+distEl.value)} u`; setView(); renderStats(); };
+$("distOut").textContent = `${fmt(+distEl.value)} u`;
+cv.addEventListener("pointerdown", e => {
+  const r = cv.getBoundingClientRect();
+  const px = (e.clientX - r.left) * CW / r.width, py = (e.clientY - r.top) * CH / r.height;
+  const wx = px / view.s + view.x0, wy = (CH / 2 - py) / view.s;
+  const [c, d] = nearest(wx, wy);
+  if (c && d < CELL * 2) { sim.aimCell = c; }
+});
+
+let last = performance.now(), acc = 0, tallyTimer = 0;
+function frame(now) {
+  const real = Math.min(0.25, (now - last) / 1000);
+  last = now;
+  acc += real * timeScale;
+  const STEP = 1 / 120;
+  while (acc >= STEP) { tick(STEP); acc -= STEP; }
+  draw();
+  tallyTimer += real;
+  if (tallyTimer > 0.2) { tallyTimer = 0; renderTally(); }
+  requestAnimationFrame(frame);
+}
+
+renderLegend();
+newSim();
+refresh();
+draw();
+setTimeout(() => fireSalvo(), 600);
+requestAnimationFrame(frame);
+</script>

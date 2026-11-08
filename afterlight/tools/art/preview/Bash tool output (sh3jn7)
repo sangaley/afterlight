@@ -1,0 +1,14 @@
+Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk3s1s1   228Gi    12Gi   117Mi   100%    459k  1.2M   28%   /
+/dev/disk3s5     228Gi   195Gi   117Mi   100%    851k  1.2M   41%   /System/Volumes/Data
+=== my scratchpad usage ===
+ 96K	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run.log
+548K	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/full
+2.1M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run6
+3.4M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run5
+3.6M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run1
+3.6M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run4
+5.3M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/frames
+5.3M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run7
+8.3M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run3
+ 12M	/private/tmp/claude-502/-Users-shhh-afterlight/abc0cdcc-720e-45f0-b344-5aa24ee4a634/scratchpad/run2

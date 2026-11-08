@@ -1,6 +1,6 @@
 # Demo Checklist
 
-What has to be true before Depths Below goes out as a playable demo.
+What has to be true before Afterlight goes out as a playable demo.
 Compiled 2026-09-20 from three audits of the tree at `cascade-story`.
 
 `ROADMAP.md` is the plan; this is the punch list. Where the two disagree, this

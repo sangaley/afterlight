@@ -1,4 +1,4 @@
-# Depths Below — Install & Run
+# Afterlight — Install & Run
 
 A step-by-step guide to getting the game building and running on a **Mac with Apple
 Silicon** (M1/M2/M3/M4). It is written for someone who has never touched Rust — every
@@ -73,12 +73,12 @@ Rust is strongly backwards compatible.
 ## 3. Get the code
 
 ```bash
-git clone https://github.com/sangaley/depths_below.git
-cd depths_below/depths_below
+git clone https://github.com/sangaley/afterlight.git
+cd afterlight/afterlight
 ```
 
-**That doubled directory name is not a typo.** The repository is called `depths_below`
-and the Rust package inside it is also called `depths_below`. You must be in the *inner*
+**That doubled directory name is not a typo.** The repository is called `afterlight`
+and the Rust package inside it is also called `afterlight`. You must be in the *inner*
 one to build or run, because the game loads its sprites, audio and ship designs from
 paths relative to wherever you started it. Run it from the outer directory and you'll get
 a window full of missing textures.
@@ -133,10 +133,10 @@ The essentials to not die immediately:
 | `Esc` | Pause |
 
 The full control list is in [README.md](README.md), and
-[depths_below/docs/GAME_DESIGN_DOC.MD](depths_below/docs/GAME_DESIGN_DOC.MD) explains
+[afterlight/docs/GAME_DESIGN_DOC.MD](afterlight/docs/GAME_DESIGN_DOC.MD) explains
 what the game is actually trying to be.
 
-Your saves are written into the `depths_below/` folder you're running from, so don't
+Your saves are written into the `afterlight/` folder you're running from, so don't
 delete it between sessions.
 
 ---
@@ -147,13 +147,13 @@ You have read access to the repository but not write access, which is the normal
 arrangement — you work on your own copy and offer changes back.
 
 1. Click **Fork** at the top right of
-   [github.com/sangaley/depths_below](https://github.com/sangaley/depths_below). You now
+   [github.com/sangaley/afterlight](https://github.com/sangaley/afterlight). You now
    have your own full copy.
 2. Clone your fork instead of the original:
 
    ```bash
-   git clone https://github.com/YOUR-USERNAME/depths_below.git
-   cd depths_below/depths_below
+   git clone https://github.com/YOUR-USERNAME/afterlight.git
+   cd afterlight/afterlight
    ```
 
 3. Work on a branch, never on `master`:
@@ -172,8 +172,8 @@ arrangement — you work on your own copy and offer changes back.
 5. Push the branch to your fork and open a **Pull Request** on GitHub. That's the request
    for the change to be pulled into the real repo.
 
-The source lives in `depths_below/src/` — 166 files, organised by subject (`combat/`,
-`crew/`, `building/`, `celestial/`). `depths_below/CLAUDE.md` is the working notes on how
+The source lives in `afterlight/src/` — 166 files, organised by subject (`combat/`,
+`crew/`, `building/`, `celestial/`). `afterlight/CLAUDE.md` is the working notes on how
 the systems fit together and is the fastest way in.
 
 > **On the licence:** this repo is public to *read*, but [LICENSE](LICENSE) reserves all
@@ -198,7 +198,7 @@ This is almost always a **full disk**, not a broken compiler. Run `df -h /`. If 
 under a couple of GB, free some space and try again.
 
 **The window opens but textures are missing, or it panics on startup**
-You're in the wrong directory. You must be in the *inner* `depths_below/depths_below`,
+You're in the wrong directory. You must be in the *inner* `afterlight/afterlight`,
 not the repository root. Check with `ls` — you want to see `Cargo.toml` and `assets`.
 
 **`dyld: Library not loaded: @rpath/libbevy_dylib...`**
@@ -209,7 +209,7 @@ Bevy dynamically. Always launch with `cargo run`.
 That's expected during the first build. Leave it.
 
 **You want the ~10 GB back**
-From `depths_below/depths_below`, run `cargo clean`. The next `cargo run` will be slow
+From `afterlight/afterlight`, run `cargo clean`. The next `cargo run` will be slow
 again, so only do this when you're finished.
 
 ---
@@ -219,7 +219,7 @@ again, so only do this when you're finished.
 Everything above, once you're set up:
 
 ```bash
-cd depths_below/depths_below
+cd afterlight/afterlight
 cargo run                # play
 cargo check              # fast: does my change compile?
 cargo build --release    # slow, optimised build (15+ min; only if you want the framerate)

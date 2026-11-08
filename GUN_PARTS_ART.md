@@ -228,7 +228,7 @@ from the bottom edge to the right edge`.
 
 ## When they're done
 
-Drop the PNGs into `depths_below/assets/sprites/gun_parts/` with the file names above. I'll
+Drop the PNGs into `afterlight/assets/sprites/gun_parts/` with the file names above. I'll
 swap them into the Gun Deck preview so you can judge them on the ship before anything goes
 into the game. Steam needs AI-generated art declared in its content survey, as it already does
 for the module art.

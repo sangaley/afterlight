@@ -1,0 +1,737 @@
+<title>Gun Foundry</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a workbench -- the gun's grid on the left, its shell, numbers and file on the right; one column on a phone. */
+:root {
+  --bg: #eef0f2;
+  --panel: #f8f9fa;
+  --ink: #1d232b;
+  --dim: #5d6773;
+  --line: #c7ced6;
+  --grid: #dde2e7;
+  --accent: #c4581c;
+  --accent-ink: #ffffff;
+  --good: #2f7d4f;
+  --warn: #a86a0a;
+  --bad: #b23a2c;
+  --steel: #8a97a6;
+  --brass: #c89b3c;
+  --ice: #5fa8d3;
+  --copper: #b8693f;
+  --breech: #d0702c;
+  --olive: #7c8a5a;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --panel: #191e25; --ink: #dfe5eb; --dim: #8b96a3; --line: #2c343e; --grid: #222932;
+    --accent: #e57a3a; --accent-ink: #1a0e05; --good: #5fbf84; --warn: #e0a640; --bad: #e66a5a;
+    --steel: #7d8b9b; --brass: #d3a64a; --ice: #6fb6e0; --copper: #c97a4f; --breech: #e07f3a; --olive: #8e9c6a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --panel: #191e25; --ink: #dfe5eb; --dim: #8b96a3; --line: #2c343e; --grid: #222932;
+  --accent: #e57a3a; --accent-ink: #1a0e05; --good: #5fbf84; --warn: #e0a640; --bad: #e66a5a;
+  --steel: #7d8b9b; --brass: #d3a64a; --ice: #6fb6e0; --copper: #c97a4f; --breech: #e07f3a; --olive: #8e9c6a;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 40px; max-width: 1280px; margin: 0 auto; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 14px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 34px; letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+.sub { color: var(--dim); max-width: 70ch; margin: 0; line-height: 1.45; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-left: auto; }
+.status.ok { color: var(--good); }
+.layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+h2 small { font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--dim); }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+canvas { display: block; width: 100%; max-width: 100%; border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; touch-action: manipulation; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.part { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.sw { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.cost { font-family: var(--mono); font-size: 11px; opacity: .75; }
+.label { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.strip button { font-family: var(--mono); font-size: 12px; }
+.hint { color: var(--dim); font-size: 12.5px; line-height: 1.45; margin: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.stat { border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; }
+.stat b { display: block; font-family: var(--mono); font-weight: 500; font-size: 17px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 11px; color: var(--dim); }
+.problems { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.45; }
+.problems li.bad { color: var(--bad); }
+.problems li.ok { color: var(--good); list-style: none; margin-left: -18px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-width: 0; }
+textarea { resize: vertical; min-height: 48px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.saved { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+.saved .item { display: flex; gap: 8px; align-items: center; justify-content: space-between; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: 13px; }
+.saved .item.current { border-color: var(--accent); }
+.saved .meta { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+pre { font-family: var(--mono); font-size: 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px; overflow: auto; max-height: 160px; margin: 0; }
+.modes { margin-bottom: 14px; }
+.toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.confirm { border: 1px solid var(--bad); border-radius: 4px; padding: 8px; font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Gun Foundry</h1>
+    <p class="sub">Draw a Afterlight gun or laser unit from its parts and save it for the game's <code>designs/guns</code>. The firing piece or laser core is fixed in the middle, facing the bow on the right.</p>
+    <span class="status" id="status">editing locally</span>
+  </header>
+  <div class="row modes"><span class="label">Building</span><div class="chips" id="modes"></div></div>
+
+  <div class="layout">
+    <div class="col">
+      <section class="panel">
+        <h2>Workbench <small id="gridnote">click to place · click a part again to turn it · right-click to remove</small></h2>
+        <canvas id="bench" width="900" height="500" aria-label="Gun parts grid"></canvas>
+        <div class="label">Parts</div>
+        <div class="chips" id="palette"></div>
+        <div class="row">
+          <span class="label">Facing</span>
+          <div class="chips" id="facing"></div>
+          <button id="clear" type="button">Clear to the firing piece</button>
+        </div>
+        <p class="hint" id="benchhint"></p>
+      </section>
+
+      <section class="panel" id="shellpanel">
+        <h2>Shell <small id="shellnote"></small></h2>
+        <div class="label">Strip, back to front (click a casing or body to remove it)</div>
+        <div class="chips strip" id="strip"></div>
+        <div class="label">Add</div>
+        <div class="chips" id="adds"></div>
+        <div class="label">Head</div>
+        <div class="chips" id="heads"></div>
+        <div class="label">Base</div>
+        <div class="chips" id="bases"></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <h2>What it adds up to <small id="summary"></small></h2>
+        <div class="stats" id="stats"></div>
+        <ul class="problems" id="problems"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Design</h2>
+        <div class="field"><label class="label" for="name">Name</label><input id="name" maxlength="60"></div>
+        <div class="field"><label class="label" for="faction">Faction (whose ships carry it)</label><select id="faction"></select></div>
+        <div class="field"><label class="label" for="desc">Description</label><textarea id="desc" maxlength="400"></textarea></div>
+        <label class="toggle"><input type="checkbox" id="pd"> <span id="pdlabel">Point defence: shoots incoming missiles, never ships</span></label>
+        <div class="row">
+          <button class="primary" id="save" type="button">Save design</button>
+          <button id="copy" type="button">Copy JSON</button>
+          <span class="row" id="seeds"></span>
+        </div>
+        <div id="confirmbox"></div>
+        <pre id="json"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Saved designs <small id="savedcount"></small></h2>
+        <div class="saved" id="saved"><p class="hint">Saved designs show here. Save one and it's kept for Claude to copy into the game.</p></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // ---- The game's rules, ported from combat/gun_math.rs, combat/shell.rs, combat/gun_assembly.rs,
+  // combat/turret_deck.rs and combat/lasers.rs ----
+  var PARTS = {
+    FiringPiece:    { name: "Firing Piece",    short: "FP", cost: 60, color: "--breech", mass: 4 },
+    GaugeIncreaser: { name: "Gauge Increaser", short: "GI", cost: 25, color: "--steel",  mass: 1.5 },
+    GaugeReducer:   { name: "Gauge Reducer",   short: "GR", cost: 20, color: "--olive",  mass: 0.3 },
+    Loader:         { name: "Loader",          short: "LD", cost: 30, color: "--brass",  mass: 1.2 },
+    ClipRack:       { name: "Clip Rack",       short: "CL", cost: 20, color: "--brass",  mass: 0.8 },
+    ShellFeeder:    { name: "Shell Feeder",    short: "FD", cost: 15, color: "--brass",  mass: 0.5 },
+    BreechCooler:   { name: "Breech Cooler",   short: "CO", cost: 25, color: "--ice",    mass: 1.5 },
+    RecoilAbsorber: { name: "Recoil Absorber", short: "RA", cost: 30, color: "--olive",  mass: 2 },
+    GunBarrel:      { name: "Barrel",          short: "B",  cost: 20, color: "--steel",  mass: 0.9 },
+    MuzzleBrake:    { name: "Muzzle Brake",    short: "MB", cost: 30, color: "--steel",  mass: 1 },
+    Mantlet:        { name: "Mantlet",         short: "MN", cost: 45, color: "--steel",  mass: 3 },
+    RailMagnet:     { name: "Rail Magnet",     short: "RM", cost: 40, color: "--copper", mass: 1.5 },
+    // A laser unit: the Laser Lab's parts (tools/laser-lab), the game's costs.
+    LaserCore:         { name: "Laser Core",    short: "CO", cost: 90, color: "#e8eef8", laser: true },
+    LaserCoupler:      { name: "Coupler",       short: "CP", cost: 25, color: "#9aa7bc", laser: true },
+    LaserCavity:       { name: "Cavity",        short: "CV", cost: 40, color: "#5b84e6", laser: true },
+    LaserPump:         { name: "Pump",          short: "PU", cost: 45, color: "#5fc9a3", laser: true },
+    QSwitch:           { name: "Q-switch",      short: "QS", cost: 50, color: "#e0a24a", laser: true },
+    FrequencyDoubler:  { name: "Doubler",       short: "FD", cost: 60, color: "#b48cff", laser: true },
+    LaserDestabiliser: { name: "Destabiliser",  short: "DS", cost: 45, color: "#ff7a5c", laser: true },
+    LaserEmitter:      { name: "Emitter",       short: "EM", cost: 70, color: "#e2483c", laser: true },
+    LaserLens:         { name: "Lens",          short: "LN", cost: 30, color: "#a8d8ff", laser: true },
+    BeamRelay:         { name: "Beam Relay",    short: "BR", cost: 40, color: "#c4c9d0", laser: true }
+  };
+  var BODY = { GaugeIncreaser: 1, GaugeReducer: 1, Loader: 1, ClipRack: 1, ShellFeeder: 1, BreechCooler: 1, RecoilAbsorber: 1 };
+  var ROT = ["East", "South", "West", "North"]; // clockwise from the bow
+  var DIR = { East: [1, 0], South: [0, -1], West: [-1, 0], North: [0, 1] };
+  var HEADS = [["Ap", "AP"], ["Heat", "HEAT"], ["He", "HE"], ["Frag", "Frag"], ["Emp", "EMP"], ["Incendiary", "Incendiary"]];
+  var BODIES = [["Solid", "Solid"], ["He", "HE"], ["Frag", "Frag"], ["Emp", "EMP"], ["Incendiary", "Incendiary"], ["ProximityFuse", "Prox fuse"]];
+  var BASES = [["None", "No base"], ["Tracer", "Tracer"], ["Bleeder", "Base bleeder"]];
+  var FACTIONS = ["", "TerranHegemony", "EternalHegemony", "RecursiveKingdom", "GildedThrone", "MerchantPrinces",
+    "FreeHaulersCompact", "StellarPreserve", "SynthesisCollective", "BrokenChoir", "CorpseStars", "Shepherd", "TheSilence"];
+  var MAX_MODULES = 20;
+
+  // 60 mm bare; +55 an increaser (eight count), -20 a reducer; 20 to 500 mm.
+  function gaugeMm(n, r) { return Math.max(20, Math.min(60 + 55 * Math.min(n, 8) - 20 * (r || 0), 500)); }
+  // A gun's parts weigh in proportion to its bore below 100 mm (turret_deck::gun_weight_scale).
+  function weightScale(gauge) { return Math.max(0.2, Math.min(gauge / 100, 1)); }
+  function shellLen(s) { return (s.base !== "None" ? 1 : 0) + 0.5 * s.casings + s.bodies.length + 1; }
+  function shellModules(s) { return (s.base !== "None" ? 1 : 0) + s.casings + s.bodies.length + 1; }
+  function projMods(s) { return 1 + s.bodies.length + (s.base === "None" ? 0 : 0.5); }
+  function fullBurn(s) { return Math.min(850 * Math.sqrt(s.casings / projMods(s)), 1800); }
+  function kineticWeight(s) {
+    var head = s.head === "Ap" ? 1 : s.head === "Heat" ? 0.4 : 0.5;
+    return head + s.bodies.reduce(function (a, b) { return a + (b === "Solid" ? 1 : 0.3); }, 0);
+  }
+  function solids(s) { return s.bodies.filter(function (b) { return b === "Solid"; }).length; }
+  function penFactor(s) { return s.head === "Ap" ? 0.9 + 0.1 * solids(s) : s.head === "Heat" ? 0 : 0.25; }
+  function payload(s) {
+    var p = { He: 0, Frag: 0, Emp: 0, Incendiary: 0 };
+    s.bodies.forEach(function (b) { if (b in p) p[b]++; });
+    if (s.head in p) p[s.head]++;
+    return p;
+  }
+  function dominant(s) {
+    var p = payload(s), best = null;
+    ["He", "Incendiary", "Emp", "Frag"].forEach(function (k) { if (p[k] > 0 && (!best || p[k] > p[best])) best = k; });
+    return best;
+  }
+  function onHit(s) {
+    var d = dominant(s);
+    if (s.bodies.indexOf("ProximityFuse") >= 0) return "bursts beside a missile as flak" + (d ? ", " + ({ He: "blast", Frag: "fragments", Emp: "EMP", Incendiary: "fire" })[d] + " on a ship" : "");
+    if (s.head === "Ap" && d === "He") return "punches in, then bursts";
+    if (d === "He") return "bursts on the surface";
+    if (d === "Frag") return "shreds crew";
+    if (d === "Emp") return "knocks out systems";
+    if (d === "Incendiary") return "starts a fire";
+    if (s.head === "Heat") return "burns through armour at any angle";
+    return "punches through";
+  }
+
+  function stats(gp) {
+    var s = gp.shell, gauge = gaugeMm(gp.gauge, gp.reducers), g = gauge / 100;
+    var shellM = gauge * shellLen(s) / 1000;
+    var burnM = 0.5 * g * s.casings;
+    var frac = burnM > 0 ? Math.min(gp.barrel / burnM, 1) : 1;
+    var vel = fullBurn(s) * Math.sqrt(frac) + 90 * gp.magnets;
+    var speed = vel / 850;
+    var dmg = 30 * g * g * speed * kineticWeight(s) / 2;
+    var pen;
+    if (s.head === "Heat") { dmg += 22 * g * g; pen = gauge * 1.6; } else { pen = gauge * 1.1 * speed * penFactor(s); }
+    var base = 2.4 * Math.pow(g, 1.35) * shellM, rpmL = 0, working = 0, ready = 0, fastest = Infinity;
+    gp.loaders.forEach(function (l) {
+      if (l.length + 1e-4 < shellM) return;
+      var reload = base / (1 + 0.25 * l.clips);
+      fastest = Math.min(fastest, reload); rpmL += 60 / reload; working++;
+      ready += 1 + Math.floor(3 * l.clips);
+    });
+    var heat = Math.pow(g, 1.5) * 0.3 * s.casings;
+    var cooling = 0.2 + 0.6 * gp.coolers;
+    var rpmH = heat > 0 ? 60 * cooling / heat : Infinity;
+    var rpm = Math.min(rpmL, rpmH);
+    var recoil = Math.pow(g, 1.5) * speed * 0.3 * projMods(s) / 2 * (gp.brake ? 0.5 : 1);
+    var spread = (1.6 / (1 + 0.5 * gp.barrel) + 0.25 * Math.max(recoil - gp.absorbers, 0) + (gp.brake ? 0.1 : 0)
+      + 0.5 * Math.max(3 - shellLen(s), 0)) * (s.base === "Tracer" ? 0.75 : 1);
+    return { gauge: gauge, shellM: shellM, burnM: burnM, vel: vel, dmg: dmg, pen: pen, working: working,
+      reload: isFinite(fastest) ? fastest : 0, rpmL: rpmL, rpmH: rpmH, rpm: rpm, ready: ready, recoil: recoil,
+      spread: spread, rail: 1.5 * gp.magnets, heat: heat };
+  }
+
+  function key(x, y) { return x + "," + y; }
+
+  // One gun, firing piece at (0, 0) facing East: gun_assembly::assemble_parts for a single gun.
+  function assemble(parts, shell) {
+    var claimed = {}; claimed[key(0, 0)] = 1;
+    var at = function (x, y) { return parts.get(key(x, y)); };
+    var c = 1, mantlet = false, barrel = [], brake = false;
+    if (at(1, 0) && at(1, 0).t === "Mantlet") { mantlet = true; claimed[key(1, 0)] = 1; c = 2; }
+    while (at(c, 0) && (at(c, 0).t === "GunBarrel" || at(c, 0).t === "MuzzleBrake")) {
+      claimed[key(c, 0)] = 1; barrel.push(c);
+      if (at(c, 0).t === "MuzzleBrake") { brake = true; break; }
+      c++;
+    }
+    var mine = {}, queue = [[0, 0]];
+    mine[key(0, 0)] = 1;
+    while (queue.length) {
+      var q = queue.shift();
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+        var nx = q[0] + d[0], ny = q[1] + d[1], k = key(nx, ny);
+        if (mine[k] || claimed[k]) return;
+        var p = at(nx, ny);
+        if (p && BODY[p.t]) { mine[k] = 1; queue.push([nx, ny]); }
+      });
+    }
+    var members = {}; Object.keys(mine).forEach(function (k) { members[k] = 1; });
+    Object.keys(claimed).forEach(function (k) { members[k] = 1; });
+    var magnets = 0;
+    barrel.forEach(function (bx) {
+      [1, -1].forEach(function (sy) {
+        var k = key(bx, sy), p = at(bx, sy);
+        if (p && p.t === "RailMagnet" && !claimed[k]) { claimed[k] = 1; members[k] = 1; magnets++; }
+      });
+    });
+    var count = function (t) { return Object.keys(mine).filter(function (k) { var p = parts.get(k); return p && p.t === t && k !== key(0, 0); }).length; };
+    // Loader runs along the way each loader faces.
+    var loaderCells = Object.keys(mine).filter(function (k) { return parts.get(k).t === "Loader"; });
+    var seen = {}, runs = [];
+    var isLoader = function (x, y, axis) { var p = at(x, y); return p && p.t === "Loader" && mine[key(x, y)] && sameAxis(p.r, axis); };
+    function sameAxis(r, axis) { var d = DIR[r]; return Math.abs(d[0]) === axis[0] && Math.abs(d[1]) === axis[1]; }
+    loaderCells.map(function (k) { return k.split(",").map(Number); })
+      .sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; })
+      .forEach(function (s) {
+        if (seen[key(s[0], s[1])]) return;
+        var d = DIR[at(s[0], s[1]).r], axis = [Math.abs(d[0]), Math.abs(d[1])];
+        var hx = s[0], hy = s[1];
+        while (isLoader(hx - axis[0], hy - axis[1], axis) && !seen[key(hx - axis[0], hy - axis[1])]) { hx -= axis[0]; hy -= axis[1]; }
+        var run = [], x = hx, y = hy;
+        while (isLoader(x, y, axis) && !seen[key(x, y)]) { seen[key(x, y)] = 1; run.push(key(x, y)); x += axis[0]; y += axis[1]; }
+        runs.push(run);
+      });
+    var clipOwner = {}, cq = [];
+    runs.forEach(function (run, i) { run.forEach(function (k) { cq.push([k, i]); }); });
+    while (cq.length) {
+      var e = cq.shift(), xy = e[0].split(",").map(Number);
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+        var k = key(xy[0] + d[0], xy[1] + d[1]), p = parts.get(k);
+        if (p && p.t === "ClipRack" && mine[k] && !(k in clipOwner)) { clipOwner[k] = e[1]; cq.push([k, e[1]]); }
+      });
+    }
+    var loaders = runs.map(function (run, i) {
+      var clips = Object.keys(clipOwner).filter(function (k) { return clipOwner[k] === i; }).length;
+      return { length: run.length, clips: clips / Math.max(run.length, 1) };
+    });
+    var gp = { gauge: count("GaugeIncreaser"), reducers: count("GaugeReducer"), loaders: loaders, barrel: barrel.length, coolers: count("BreechCooler"),
+      absorbers: count("RecoilAbsorber"), magnets: magnets, brake: brake, shell: shell, feeders: count("ShellFeeder") };
+    var st = stats(gp);
+    var problems = [];
+    if (!barrel.length) problems.push("No barrel. Lay Barrels in a straight line out of the firing piece's front.");
+    else if (barrel.length < st.burnM) problems.push("The barrel is " + (st.burnM - barrel.length).toFixed(1) + " m short of a full burn, so shells leave at " + Math.round(100 * Math.sqrt(barrel.length / st.burnM)) + "% speed.");
+    if (shell.casings === 0 && magnets === 0) problems.push("The shell has no casings and nothing else drives it: it won't leave the barrel.");
+    if (!loaders.length) problems.push("No loader. Put Loader blocks behind or beside the firing piece.");
+    else if (st.working === 0) problems.push("Every loader is too short for a " + st.shellM.toFixed(2) + " m shell. Lengthen one or drop gauge.");
+    if (gp.gauge > 8) problems.push(gp.gauge + " gauge increasers; only 8 count.");
+    if (gp.reducers && st.gauge <= 20 && 60 + 55 * Math.min(gp.gauge, 8) - 20 * gp.reducers < 20) problems.push("The bore bottoms out at 20 mm: a reducer here does nothing.");
+    if (st.rpm > 0 && st.rpm === st.rpmH && st.rpmH < st.rpmL) problems.push("Heat, not the loaders, sets the pace. Another Breech Cooler would let it fire faster.");
+    var loose = [];
+    parts.forEach(function (p, k) { if (!members[k]) loose.push(PARTS[p.t].name + " at " + k); });
+    if (loose.length) problems.push("Not part of the gun (it would assemble without them): " + loose.join(", ") + ".");
+    if (!gp.feeders) problems.push("No Shell Feeder: on the hull it fires only its ready rack until rearmed. Fine for a turret gun fed by a hoist.");
+    var mass = 0, scale = weightScale(st.gauge);
+    parts.forEach(function (p, k) { if (members[k]) mass += PARTS[p.t].mass * scale; });
+    return { gp: gp, st: st, problems: problems, members: members, mass: mass };
+  }
+
+  // One laser unit, core at (0, 0): lasers::lay_out_bank and bank_stats, as the Laser Lab works them.
+  var N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  function analyseLaser(parts) {
+    var at = function (x, y) { var p = parts.get(key(x, y)); return p ? p.t : null; };
+    var net = {}; net[key(0, 0)] = 1;
+    var q = [[0, 0]];
+    while (q.length) {
+      var c = q.pop();
+      N4.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1]; if (at(nx, ny) === "LaserCoupler" && !net[key(nx, ny)]) { net[key(nx, ny)] = 1; q.push([nx, ny]); } });
+    }
+    var touchesNet = function (x, y) { return N4.some(function (d) { return net[key(x + d[0], y + d[1])]; }); };
+    var cav = {}; q = [];
+    parts.forEach(function (p, k) { var xy = k.split(",").map(Number); if (p.t === "LaserCavity" && touchesNet(xy[0], xy[1])) { cav[k] = 1; q.push(xy); } });
+    while (q.length) {
+      var v = q.pop();
+      N4.forEach(function (d) { var nx = v[0] + d[0], ny = v[1] + d[1], k = key(nx, ny); if (at(nx, ny) === "LaserCavity" && !cav[k]) { cav[k] = 1; q.push([nx, ny]); } });
+    }
+    var members = {}; Object.keys(net).forEach(function (k) { members[k] = 1; }); Object.keys(cav).forEach(function (k) { members[k] = 1; });
+    var pumps = 0, qs = 0, ds = 0, xs = 0, relays = 0, emitters = [];
+    parts.forEach(function (p, k) {
+      var xy = k.split(",").map(Number);
+      if (p.t === "LaserPump" && N4.some(function (d) { return cav[key(xy[0] + d[0], xy[1] + d[1])]; })) { pumps++; members[k] = 1; }
+      else if (touchesNet(xy[0], xy[1]) && (p.t === "QSwitch" || p.t === "FrequencyDoubler" || p.t === "LaserDestabiliser" || p.t === "BeamRelay" || p.t === "LaserEmitter")) {
+        members[k] = 1;
+        if (p.t === "QSwitch") qs++; else if (p.t === "FrequencyDoubler") ds++; else if (p.t === "LaserDestabiliser") xs++; else if (p.t === "BeamRelay") relays++;
+        else {
+          // Lenses in a straight line out of its front (lasers::count_lenses).
+          var dir = DIR[p.r], n = 0, lx = xy[0] + dir[0], ly = xy[1] + dir[1];
+          while (at(lx, ly) === "LaserLens") { members[key(lx, ly)] = 1; n++; lx += dir[0]; ly += dir[1]; }
+          emitters.push({ at: k, lenses: n });
+        }
+      }
+    });
+    var qn = Math.min(qs, 4), dn = Math.min(ds, 4), storage = 100 * Object.keys(cav).length, recharge = 12 * pumps;
+    var drain = 1 - Math.pow(0.75, xs + 1), dpc = qn ? 1.0 : 0.75;
+    var out = { members: members, cavities: Object.keys(cav).length, pumps: pumps, qs: qs, ds: ds, xs: xs, relays: relays, emitters: emitters,
+      storage: storage, recharge: recharge, power: 60 * pumps, drain: drain, dpc: dpc, shots: [0, 1, 2, 4, 8][qn],
+      intensity: (qn ? 40 : 60) + 15 * dn, wavelength: Math.round(1064 / (1 + dn)) };
+    out.burst = storage * drain;
+    out.sustained = Math.min(recharge, out.burst);
+    return out;
+  }
+  // How much of the beam is left after d units, and the arc a hull emitter swings through.
+  function reaching(d, lenses, pd) { return Math.exp(-d / (3000 * Math.sqrt(1 + lenses) * (pd ? 2 : 1))); }
+  function maxRange(lenses) { return 3 * 3000 * Math.sqrt(1 + lenses); }
+  function hullArc(lenses) { return 75 / (1 + 0.25 * lenses); }
+
+  // ---- State ----
+  var SEEDS = {
+    s170: {"name": "170 mm Turret Gun", "description": "A light gun for a 3x3 turret deck: one loader and a clip, three metres of barrel.", "parts": [{"module_type": "ClipRack", "offset": [-2, 0], "rotation": "East"}, {"module_type": "Loader", "offset": [-1, 0], "rotation": "East"}, {"module_type": "BreechCooler", "offset": [-1, 1], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [0, -1], "rotation": "East"}, {"module_type": "FiringPiece", "offset": [0, 0], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [0, 1], "rotation": "East"}, {"module_type": "Mantlet", "offset": [1, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [2, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [3, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [4, 0], "rotation": "East"}], "shell": null},
+    s280: {"name": "280 mm Spinal", "description": "A heavy spinal gun: three loaders with clips, six metres of barrel, a feeder for the magazine behind it. Aim it by turning the ship.", "parts": [{"module_type": "ShellFeeder", "offset": [-4, 0], "rotation": "East"}, {"module_type": "ClipRack", "offset": [-3, -1], "rotation": "East"}, {"module_type": "ClipRack", "offset": [-3, 0], "rotation": "East"}, {"module_type": "ClipRack", "offset": [-3, 1], "rotation": "East"}, {"module_type": "Loader", "offset": [-2, -1], "rotation": "East"}, {"module_type": "Loader", "offset": [-2, 0], "rotation": "East"}, {"module_type": "Loader", "offset": [-2, 1], "rotation": "East"}, {"module_type": "BreechCooler", "offset": [-1, -2], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [-1, -1], "rotation": "East"}, {"module_type": "RecoilAbsorber", "offset": [-1, 0], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [-1, 1], "rotation": "East"}, {"module_type": "BreechCooler", "offset": [-1, 2], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [0, -1], "rotation": "East"}, {"module_type": "FiringPiece", "offset": [0, 0], "rotation": "East"}, {"module_type": "GaugeIncreaser", "offset": [0, 1], "rotation": "East"}, {"module_type": "Mantlet", "offset": [1, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [2, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [3, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [4, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [5, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [6, 0], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [7, 0], "rotation": "East"}], "shell": null}
+  };
+  SEEDS.ciws = {"name": "20 mm CIWS", "description": "Close-in point defence, compact and agile: the whole 20 mm gun fits on a 3x3 deck, fires about 26 tiny flak rounds a second and snaps round fast.", "point_defence": true, "parts": [{"module_type": "FiringPiece", "offset": [0, 0], "rotation": "East"}, {"module_type": "GaugeReducer", "offset": [0, 1], "rotation": "East"}, {"module_type": "GaugeReducer", "offset": [0, -1], "rotation": "East"}, {"module_type": "GunBarrel", "offset": [1, 0], "rotation": "East"}, {"module_type": "Loader", "offset": [-1, 0], "rotation": "East"}, {"module_type": "ClipRack", "offset": [-1, 1], "rotation": "East"}, {"module_type": "BreechCooler", "offset": [-1, -1], "rotation": "East"}, {"module_type": "BreechCooler", "offset": [1, 1], "rotation": "East"}], "shell": {"base": "None", "casings": 2, "bodies": ["Frag", "ProximityFuse"], "head": "Frag"}};
+  // Laser units, laid out as the Laser Lab's presets: the core at (0, 0), emitters firing at the bow.
+  function laserSeed(name, description, pd, rows, emitter) {
+    var out = [], cy = rows.findIndex(function (r) { return r.indexOf("C") >= 0; }), cx = rows[cy].indexOf("C");
+    var T = { C: "LaserCore", K: "LaserCoupler", V: "LaserCavity", P: "LaserPump", Q: "QSwitch", D: "FrequencyDoubler", X: "LaserDestabiliser", E: "LaserEmitter", L: "LaserLens" };
+    rows.forEach(function (r, y) { r.split("").forEach(function (ch, x) { if (T[ch]) out.push({ module_type: T[ch], offset: [x - cx, cy - y], rotation: "East" }); }); });
+    return { name: name, description: description, point_defence: pd, parts: out, shell: null };
+  }
+  SEEDS.cutter = laserSeed("Cutter", "A steady beam that slices: a doubler for armour, two destabilisers to let it go, two lenses for reach.", false, [
+    ".PVVVVVP..",
+    ".PV.VXVP..",
+    ".PVDCKELL.",
+    ".PV.VXVP..",
+    ".PVVVVVP..",
+  ]);
+  SEEDS.pdlaser = laserSeed("PD Laser", "Point defence: four pulses a second at whatever the warners spot, fed fast by its pumps.", true, [
+    "...PPP...",
+    "...VVV...",
+    "...PVP...",
+    "..QKCKEL.",
+    "...QXQ...",
+  ]);
+  var X0 = -8, X1 = 11, Y0 = -5, Y1 = 5; // the bench, in cells
+  var parts = new Map(), shell = defaultShell(), tool = "GaugeIncreaser", facing = "East";
+  // What's on the bench: a gun (a firing piece at 0, 0) or a laser unit (a core there). Each keeps its own bench.
+  var mode = "gun", benches = {};
+  function anchor() { return mode === "laser" ? "LaserCore" : "FiringPiece"; }
+  var db = null, savedDocs = [], currentId = null, pendingDelete = null;
+
+  function defaultShell() { return { base: "None", casings: 2, bodies: ["Solid"], head: "Ap" }; }
+  function isDefaultShell(s) { return s.base === "None" && s.casings === 2 && s.bodies.length === 1 && s.bodies[0] === "Solid" && s.head === "Ap"; }
+
+  function load(design) {
+    mode = (design.parts || []).some(function (p) { return p.module_type === "LaserCore"; }) ? "laser" : "gun";
+    if (mode === "laser" && !PARTS[tool].laser) tool = "LaserCavity";
+    if (mode === "gun" && PARTS[tool].laser) tool = "GaugeIncreaser";
+    parts = new Map();
+    (design.parts || []).forEach(function (p) { if (PARTS[p.module_type]) parts.set(key(p.offset[0], p.offset[1]), { t: p.module_type, r: p.rotation || "East" }); });
+    parts.set(key(0, 0), { t: anchor(), r: "East" });
+    el("pd").checked = !!design.point_defence;
+    shell = design.shell ? { base: design.shell.base || "None", casings: design.shell.casings, bodies: design.shell.bodies.slice(), head: design.shell.head } : defaultShell();
+    el("name").value = design.name || "";
+    el("desc").value = design.description || "";
+    el("faction").value = design.faction || "";
+    renderPalette();
+    render();
+  }
+
+  function design() {
+    var out = [];
+    parts.forEach(function (p, k) { var xy = k.split(",").map(Number); out.push({ module_type: p.t, offset: xy, rotation: p.r }); });
+    out.sort(function (a, b) { return a.offset[0] - b.offset[0] || a.offset[1] - b.offset[1]; });
+    var d = { name: el("name").value.trim() || (mode === "laser" ? "Unnamed laser" : "Unnamed gun"), description: el("desc").value.trim(), parts: out,
+      shell: mode === "laser" || isDefaultShell(shell) ? null : { base: shell.base, casings: shell.casings, bodies: shell.bodies.slice(), head: shell.head } };
+    if (el("faction").value) d.faction = el("faction").value;
+    if (el("pd").checked) d.point_defence = true;
+    return d;
+  }
+  function slug(s) { var k = s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""); return k || "gun"; }
+
+  // ---- Drawing ----
+  var canvas = el("bench"), ctx = canvas.getContext("2d");
+  function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function colourOf(t) { var c = PARTS[t].color; return c.charAt(0) === "-" ? css(c) : c; }
+  // Dark lettering on a light part, light on a dark one.
+  function inkOn(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return css("--panel");
+    var n = parseInt(m[1], 16), lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+    return lum > 0.6 ? "#1d232b" : "#f8f9fa";
+  }
+  function cellPx() { return canvas.width / (X1 - X0 + 1); }
+  function toScreen(x, y) { var c = cellPx(); return [(x - X0) * c, (Y1 - y) * c]; }
+  function draw(result) {
+    var c = cellPx();
+    canvas.height = Math.round(c * (Y1 - Y0 + 1));
+    ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1;
+    for (var x = 0; x <= X1 - X0 + 1; x++) { ctx.beginPath(); ctx.moveTo(x * c + .5, 0); ctx.lineTo(x * c + .5, canvas.height); ctx.stroke(); }
+    for (var y = 0; y <= Y1 - Y0 + 1; y++) { ctx.beginPath(); ctx.moveTo(0, y * c + .5); ctx.lineTo(canvas.width, y * c + .5); ctx.stroke(); }
+    // The bore line and the bow.
+    var o = toScreen(0, 0);
+    ctx.strokeStyle = css("--line"); ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(o[0] + c / 2, o[1] + c / 2); ctx.lineTo(canvas.width, o[1] + c / 2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css("--dim"); ctx.font = "500 " + Math.max(10, c * 0.22) + "px " + css("--mono");
+    ctx.textAlign = "right"; ctx.fillText("BOW →", canvas.width - 6, o[1] - 4);
+    parts.forEach(function (p, k) {
+      var xy = k.split(",").map(Number), s = toScreen(xy[0], xy[1]), pad = c * 0.08;
+      var loose = result && !result.members[k];
+      ctx.globalAlpha = loose ? 0.4 : 1;
+      var col = colourOf(p.t);
+      ctx.fillStyle = col;
+      ctx.fillRect(s[0] + pad, s[1] + pad, c - 2 * pad, c - 2 * pad);
+      ctx.fillStyle = inkOn(col);
+      ctx.font = "600 " + Math.max(9, c * 0.26) + "px " + css("--mono"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(PARTS[p.t].short, s[0] + c / 2, s[1] + c / 2);
+      if (p.t === "LaserEmitter") { // which way it fires: a notch on its front edge
+        var f = DIR[p.r], cx = s[0] + c / 2, cy = s[1] + c / 2, r = c / 2 - pad;
+        var tip = [cx + f[0] * r, cy - f[1] * r], side = [-f[1], -f[0]];
+        ctx.fillStyle = inkOn(col);
+        ctx.beginPath();
+        ctx.moveTo(tip[0], tip[1]);
+        ctx.lineTo(tip[0] - f[0] * c * .16 + side[0] * c * .12, tip[1] + f[1] * c * .16 + side[1] * c * .12);
+        ctx.lineTo(tip[0] - f[0] * c * .16 - side[0] * c * .12, tip[1] + f[1] * c * .16 - side[1] * c * .12);
+        ctx.fill();
+      }
+      if (p.t === "Loader") { // which way it runs
+        var d = DIR[p.r]; ctx.strokeStyle = inkOn(col); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(s[0] + c / 2 - d[0] * c * .3, s[1] + c / 2 + d[1] * c * .3); ctx.lineTo(s[0] + c / 2 + d[0] * c * .3, s[1] + c / 2 - d[1] * c * .3); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // ---- Panels ----
+  function el(id) { return document.getElementById(id); }
+  function btn(label, on, onClick, title) {
+    var b = document.createElement("button"); b.type = "button"; b.textContent = label;
+    if (on) b.className = "on"; if (title) b.title = title; b.addEventListener("click", onClick); return b;
+  }
+  function fill(id, nodes) { var e = el(id); e.textContent = ""; nodes.forEach(function (n) { e.appendChild(n); }); }
+
+  function renderPalette() {
+    var nodes = Object.keys(PARTS).filter(function (t) { return t !== anchor() && !!PARTS[t].laser === (mode === "laser") && t !== "FiringPiece"; }).map(function (t) {
+      var b = btn("", tool === t, function () { tool = t; renderPalette(); });
+      b.classList.add("part");
+      var sw = document.createElement("span"); sw.className = "sw"; sw.style.background = PARTS[t].color.charAt(0) === "-" ? "var(" + PARTS[t].color + ")" : PARTS[t].color;
+      var nm = document.createElement("span"); nm.textContent = PARTS[t].name;
+      var cs = document.createElement("span"); cs.className = "cost"; cs.textContent = PARTS[t].cost + "c";
+      b.append(sw, nm, cs); return b;
+    });
+    fill("palette", nodes);
+    fill("facing", ROT.map(function (r) { return btn(r, facing === r, function () { facing = r; renderPalette(); }); }));
+    fill("modes", [["gun", "Gun"], ["laser", "Laser unit"]].map(function (m) { return btn(m[1], mode === m[0], function () { switchMode(m[0]); }); }));
+    var seeds = mode === "laser"
+      ? [["cutter", "Start from Cutter"], ["pdlaser", "Start from PD laser"]]
+      : [["s170", "Start from 170 mm turret gun"], ["s280", "Start from 280 mm spinal"], ["ciws", "Start from 20 mm CIWS"]];
+    fill("seeds", seeds.map(function (sd) { return btn(sd[1], false, function () { currentId = null; load(SEEDS[sd[0]]); renderSaved(); }); }));
+    el("clear").textContent = mode === "laser" ? "Clear to the core" : "Clear to the firing piece";
+    el("benchhint").textContent = mode === "laser"
+      ? "Couplers extend the core. Cavities touching the core, a coupler or a counted cavity store charge; pumps go beside a cavity. Q-switches, doublers, destabilisers and emitters touch the core or a coupler. Lenses go in a straight line out of an emitter's front. On a turret, a Beam Relay beside the ring feeds the turret's emitters."
+      : "Barrels and a mantlet go in a line straight out of the firing piece's front, rail magnets beside the barrel. Everything else touches the firing piece or a part that does. Loaders in a straight row along the way they face are one long loader; clip racks belong to the loader they touch.";
+    el("shellpanel").hidden = mode === "laser";
+    el("pdlabel").textContent = mode === "laser" ? "Point defence: its emitters shoot incoming missiles, never ships" : "Point defence: shoots incoming missiles, never ships";
+  }
+  function switchMode(m) {
+    if (m === mode) return;
+    benches[mode] = { parts: parts, shell: shell, tool: tool, name: el("name").value, desc: el("desc").value, pd: el("pd").checked, id: currentId };
+    var b = benches[m];
+    if (b) {
+      mode = m; parts = b.parts; shell = b.shell; tool = b.tool; currentId = b.id;
+      el("name").value = b.name; el("desc").value = b.desc; el("pd").checked = b.pd;
+      renderPalette(); render(); renderSaved();
+    } else { currentId = null; load(m === "laser" ? SEEDS.cutter : SEEDS.s170); renderSaved(); }
+  }
+
+  function renderShell() {
+    var strip = [];
+    if (shell.base !== "None") strip.push(btn(shell.base === "Tracer" ? "Tracer" : "Bleeder", false, function () { shell.base = "None"; render(); }, "Take the base off"));
+    for (var i = 0; i < shell.casings; i++) strip.push(btn("casing", false, function () { shell.casings--; render(); }, "Take a casing out"));
+    shell.bodies.forEach(function (b, i) { strip.push(btn(b, false, function () { shell.bodies.splice(i, 1); render(); }, "Take this body out")); });
+    var head = btn(HEADS.filter(function (h) { return h[0] === shell.head; })[0][1], true, function () {
+      var i = HEADS.findIndex(function (h) { return h[0] === shell.head; }); shell.head = HEADS[(i + 1) % HEADS.length][0]; render();
+    }, "The head: click to change it");
+    strip.push(head);
+    fill("strip", strip);
+    var room = shellModules(shell) < MAX_MODULES;
+    var adds = [btn("+ Casing", false, function () { if (room) { shell.casings++; render(); } }, "Propellant, half a gauge long")]
+      .concat(BODIES.map(function (b) { return btn("+ " + b[1], false, function () { if (room) { shell.bodies.push(b[0]); render(); } }); }));
+    fill("adds", adds);
+    fill("heads", HEADS.map(function (h) { return btn(h[1], shell.head === h[0], function () { shell.head = h[0]; render(); }); }));
+    fill("bases", BASES.map(function (b) { return btn(b[1], shell.base === b[0], function () { if (room || shell.base !== "None" || b[0] === "None") { shell.base = b[0]; render(); } }); }));
+    el("shellnote").textContent = shellModules(shell) + "/" + MAX_MODULES + " modules · " + shellLen(shell) + " gauges long";
+  }
+
+  function stat(label, value) {
+    var d = document.createElement("div"); d.className = "stat";
+    var b = document.createElement("b"); b.textContent = value; var s = document.createElement("span"); s.textContent = label;
+    d.append(b, s); return d;
+  }
+
+  function fmt(n, d) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: d || 0, minimumFractionDigits: d || 0 }); }
+  function renderLaser() {
+    var a = analyseLaser(parts), pd = el("pd").checked;
+    draw(a);
+    var cost = 0; parts.forEach(function (p) { cost += PARTS[p.t].cost; });
+    var best = a.emitters.reduce(function (m, e) { return Math.max(m, e.lenses); }, 0);
+    el("summary").textContent = (a.shots ? a.shots + " pulses/s" : "steady beam") + " · " + parts.size + " parts · " + cost + "c";
+    var pct = function (d) { return fmt(100 * reaching(d, best, pd)) + "%"; };
+    fill("stats", [
+      stat("mode", a.shots ? a.shots + " pulse" + (a.shots > 1 ? "s" : "") + " a second" : "steady beam"),
+      stat("stored", fmt(a.storage) + " charge"),
+      stat("recharge", fmt(a.recharge) + " /s"),
+      stat("power while filling", fmt(a.power) + " MW"),
+      stat("lets go", fmt(a.drain * 100) + "% /s"),
+      stat("opening burst", fmt(a.burst * a.dpc) + " dmg/s"),
+      stat("sustained", fmt(a.sustained * a.dpc) + " dmg/s"),
+      stat("per pulse", a.shots ? fmt(a.burst * a.dpc / a.shots) + " dmg" : "steady"),
+      stat("intensity", a.intensity + " · " + a.wavelength + " nm"),
+      stat("vs steel / Ti / abyssal", [15, 30, 80].map(function (t) { return fmt(100 * Math.max(0.1, Math.min(1, a.intensity / t))) + "%"; }).join(" / ")),
+      stat("emitters", a.emitters.length + (a.emitters.length ? " · " + best + " lens" + (best === 1 ? "" : "es") : "")),
+      stat(pd ? "reach (point defence)" : "at 2k / 4k / 7k", pd ? "3,500" : pct(2000) + " / " + pct(4000) + " / " + pct(7000)),
+      stat("max range", pd ? "3,500" : fmt(maxRange(best))),
+      stat("hull arc", "±" + fmt(hullArc(best)) + "°")
+    ]);
+    var probs = [];
+    if (!a.cavities) probs.push("No cavity touches the core: there's nowhere to store charge.");
+    else if (!a.pumps) probs.push("No pumps: it fires what it holds once, then it's dry.");
+    if (!a.emitters.length) probs.push(a.relays ? "No emitter on the hull: the Beam Relay feeds emitters on the turret beside it. Fine for a turret laser." : "No emitter touches the core or a coupler: nothing fires it.");
+    if (a.qs > 4 || a.ds > 4) probs.push("Only four Q-switches and four doublers count.");
+    if (a.pumps && a.recharge > a.burst * 1.05) probs.push("The pumps fill it faster than it lets go: " + fmt(a.recharge - a.burst) + " charge a second goes unused. Add destabilisers or cavities.");
+    if (a.pumps && a.burst > a.recharge * 3) probs.push("Opens at " + fmt(a.burst / a.recharge, 1) + "× what it can keep up: let it charge between targets.");
+    if (a.intensity < 65) probs.push("Against armour plate (40) a beam this cool burns in part. Frequency doublers fix that.");
+    var loose = []; parts.forEach(function (p, k) { if (!a.members[k]) loose.push(PARTS[p.t].name + " at " + k); });
+    if (loose.length) probs.push("Not part of the unit (it would do nothing): " + loose.join(", ") + ".");
+    var head = document.createElement("li"); head.className = "ok";
+    head.textContent = "Draws " + fmt(a.power) + " MW while its bank fills, 2 MW a pump when full." + (pd ? " On point defence it fires only at missiles its ship's warners spot." : "");
+    fill("problems", [head].concat(probs.map(function (t) { var li = document.createElement("li"); li.className = "bad"; li.textContent = t; return li; })));
+    el("json").textContent = JSON.stringify(design(), null, 1);
+  }
+
+  function render() {
+    if (mode === "laser") { renderLaser(); return; }
+    var r = assemble(parts, shell), st = r.st;
+    draw(r);
+    renderShell();
+    var cost = 0; parts.forEach(function (p) { cost += PARTS[p.t].cost; });
+    el("summary").textContent = Math.round(st.gauge) + " mm · " + parts.size + " parts · " + cost + "c";
+    var p = payload(shell), pl = Object.keys(p).filter(function (k) { return p[k] > 0; }).map(function (k) { return p[k] + " " + k; }).join(", ") || "none";
+    fill("stats", [
+      stat("gauge", Math.round(st.gauge) + " mm"),
+      stat("shell length", st.shellM.toFixed(2) + " m"),
+      stat("muzzle velocity", Math.round(st.vel) + " m/s"),
+      stat("damage", Math.round(st.dmg)),
+      stat("penetration", Math.round(st.pen) + " mm"),
+      stat("rate of fire", st.rpm.toFixed(1) + " rpm"),
+      stat("loaders working", st.working + " of " + r.gp.loaders.length),
+      stat("ready rack", st.ready + " shells"),
+      stat("barrel / burn", r.gp.barrel + " / " + st.burnM.toFixed(1) + " m"),
+      stat("spread", st.spread.toFixed(2) + "°"),
+      stat("recoil", st.recoil.toFixed(2)),
+      stat("turret mass", r.mass.toFixed(1) + " t")
+    ]);
+    var probs = r.problems.map(function (t) { var li = document.createElement("li"); li.className = "bad"; li.textContent = t; return li; });
+    var hit = document.createElement("li"); hit.className = "ok";
+    hit.textContent = "On hit: " + onHit(shell) + ". Payload " + pl + (st.rail ? ". Rail magnets draw " + st.rail + " MW." : ".");
+    fill("problems", [hit].concat(probs));
+    el("json").textContent = JSON.stringify(design(), null, 1);
+  }
+
+  // ---- Bench input ----
+  function cellAt(ev) {
+    var rect = canvas.getBoundingClientRect(), c = cellPx() * rect.width / canvas.width;
+    var x = Math.floor((ev.clientX - rect.left) / c) + X0, y = Y1 - Math.floor((ev.clientY - rect.top) / c);
+    return [x, y];
+  }
+  canvas.addEventListener("click", function (ev) {
+    var xy = cellAt(ev), k = key(xy[0], xy[1]);
+    if (k === key(0, 0)) return; // the firing piece stays
+    var p = parts.get(k);
+    if (p && p.t === tool) { p.r = ROT[(ROT.indexOf(p.r) + 1) % 4]; }
+    else parts.set(k, { t: tool, r: facing });
+    render();
+  });
+  canvas.addEventListener("contextmenu", function (ev) {
+    ev.preventDefault();
+    var xy = cellAt(ev), k = key(xy[0], xy[1]);
+    if (k !== key(0, 0)) { parts.delete(k); render(); }
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.target.matches("input, textarea, select")) return;
+    if (ev.key === "r" || ev.key === "R") { facing = ROT[(ROT.indexOf(facing) + 1) % 4]; renderPalette(); }
+  });
+  el("clear").addEventListener("click", function () { parts = new Map([[key(0, 0), { t: anchor(), r: "East" }]]); render(); });
+  ["name", "desc", "faction"].forEach(function (id) { el(id).addEventListener("input", render); });
+  el("pd").addEventListener("change", render);
+  el("copy").addEventListener("click", function () {
+    var text = JSON.stringify(design(), null, 1);
+    var done = function () { say("copied"); };
+    try { navigator.clipboard.writeText(text).then(done, function () { selectJson(); }); } catch (e) { selectJson(); }
+  });
+  function selectJson() { var r = document.createRange(); r.selectNodeContents(el("json")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); say("JSON selected: copy it"); }
+
+  // ---- Saving ----
+  function say(text, ok) { var s = el("status"); s.textContent = text; s.className = "status" + (ok ? " ok" : ""); }
+  el("save").addEventListener("click", function () {
+    if (!db) { say("saving isn't available here: copy the JSON instead"); return; }
+    var d = design(), id = currentId || slug(d.name);
+    d.savedAt = new Date().toISOString();
+    say("saving…");
+    db.doc("guns/" + id).set(d).then(function () { currentId = id; say("saved " + d.name, true); }, function () { say("couldn't save: try again"); });
+  });
+
+  function renderSaved() {
+    el("savedcount").textContent = savedDocs.length ? savedDocs.length + " saved" : "";
+    if (!savedDocs.length) return;
+    fill("saved", savedDocs.map(function (doc) {
+      var d = doc.data, item = document.createElement("div"); item.className = "item" + (doc.id === currentId ? " current" : "");
+      var left = document.createElement("div");
+      var nm = document.createElement("div"); nm.textContent = d.name;
+      var meta = document.createElement("div"); meta.className = "meta";
+      var isLaser = (d.parts || []).some(function (p) { return p.module_type === "LaserCore"; });
+      meta.textContent = (isLaser ? "laser · " : "") + (d.point_defence ? "point defence · " : "") + (d.parts || []).length + " parts" + (d.faction ? " · " + d.faction : "") + (d.savedAt ? " · " + new Date(d.savedAt).toLocaleString() : "");
+      left.append(nm, meta);
+      var acts = document.createElement("div"); acts.className = "row";
+      acts.append(btn("Open", false, function () { currentId = doc.id; load(d); renderSaved(); say("editing " + d.name); }),
+        btn("Delete", false, function () { pendingDelete = doc; renderConfirm(); }));
+      item.append(left, acts); return item;
+    }));
+  }
+  function renderConfirm() {
+    var box = el("confirmbox"); box.textContent = "";
+    if (!pendingDelete) return;
+    var c = document.createElement("div"); c.className = "confirm";
+    var t = document.createElement("span"); t.textContent = "Delete " + pendingDelete.data.name + " for good?";
+    c.append(t, btn("Delete", false, function () {
+      var id = pendingDelete.id; pendingDelete = null; renderConfirm();
+      db.doc("guns/" + id).delete().then(function () { if (currentId === id) currentId = null; say("deleted", true); }, function () { say("couldn't delete"); });
+    }), btn("Keep it", false, function () { pendingDelete = null; renderConfirm(); }));
+    box.appendChild(c);
+  }
+
+  // ---- Start ----
+  fill("faction", FACTIONS.map(function (f) { var o = document.createElement("option"); o.value = f; o.textContent = f || "Any / the player's"; return o; }));
+  load(SEEDS.s170);
+  window.addEventListener("resize", function () { render(); });
+  if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { render(); });
+  if (window.claude && window.claude.use) {
+    window.claude.use("db").then(function (d) {
+      db = d;
+      if (!db) { say("saving isn't available here: copy the JSON instead"); return; }
+      say("saving on", true);
+      db.collection("guns").onSnapshot(function (q) {
+        savedDocs = q.docs.map(function (s) { return { id: s.id, data: s.data() }; }).filter(function (s) { return s.data && s.data.parts; })
+          .sort(function (a, b) { return String(b.data.savedAt).localeCompare(String(a.data.savedAt)); });
+        renderSaved();
+      }, function () { say("couldn't read saved designs"); });
+    }, function () { say("saving isn't available here: copy the JSON instead"); });
+  }
+})();
+</script>

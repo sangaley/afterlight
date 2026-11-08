@@ -1,4 +1,4 @@
-# Depths Below
+# Afterlight
 
 A 2D space survival game built in Rust with Bevy. Build a ship at a station, staff it with crew, then push out into an increasingly hostile stretch of space to find out what's out there.
 
@@ -30,7 +30,7 @@ project before, follow [TUTORIAL.md](TUTORIAL.md) instead — it covers the whol
 from a clean machine.
 
 ```bash
-cd depths_below
+cd afterlight
 cargo run                # Run the game (dev profile, dynamic linking)
 cargo build --release    # Release build (LTO, single codegen unit)
 cargo check              # Fast type-check without a full build

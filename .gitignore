@@ -27,4 +27,4 @@ __pycache__/
 *.gif
 
 # Runtime save files
-depths_below/saves/
+afterlight/saves/

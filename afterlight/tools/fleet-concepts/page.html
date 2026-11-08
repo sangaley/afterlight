@@ -1,0 +1,289 @@
+<title>Fleet Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: a shipyard review ledger. One section per faction; each concept is a wide plate (render) with its spec sheet beside it. Committed dark: the renders are drawn on the game's own void. */
+:root {
+  color-scheme: dark;
+  --void: #0b0f17;
+  --panel: #121826;
+  --panel-hi: #182032;
+  --line: #243046;
+  --ink: #d7deea;
+  --dim: #8a97ab;
+  --faint: #56637a;
+  --accent: #a6b3cc;
+  --ok: #5fc9a3;
+  --rework: #e0a23c;
+  --reject: #e06a6a;
+  --display: "Saira Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { background: var(--void); color: var(--ink); font: 15px/1.55 var(--body); padding-inline: clamp(16px, 4vw, 48px); padding-block: 28px 64px; }
+a { color: var(--accent); }
+.wrap { max-width: 1400px; margin: 0 auto; display: grid; gap: 40px; }
+
+header.top { display: grid; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 22px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+h1 { font: 700 clamp(40px, 6vw, 68px)/0.95 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.lede { max-width: 68ch; color: var(--dim); margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 13px/1.4 var(--mono); color: var(--dim); }
+.legend b { color: var(--ink); font-weight: 500; }
+
+nav.factions { display: flex; flex-wrap: wrap; gap: 8px; }
+nav.factions a, nav.factions span { font: 500 13px/1 var(--mono); padding: 8px 12px; border: 1px solid var(--line); border-radius: 3px; text-decoration: none; }
+nav.factions a { color: var(--ink); background: var(--panel); }
+nav.factions span { color: var(--faint); }
+nav.factions span::after { content: " · queued"; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 13px/1 var(--mono); color: var(--dim); }
+.filters button { font: 500 13px/1 var(--mono); padding: 8px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.filters button[aria-pressed="true"] { border-color: var(--ink); background: var(--panel-hi); }
+.filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filters .count { color: var(--faint); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.revised { display: grid; gap: 4px; padding: 10px 12px; border: 1px dashed color-mix(in srgb, var(--rework) 60%, var(--line)); border-radius: 3px; font-size: 14px; }
+.revised b { font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rework); }
+
+section.faction { display: grid; gap: 24px; }
+.fhead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: end; }
+.fhead h2 { font: 600 clamp(30px, 4vw, 44px)/1 var(--display); margin: 0; color: var(--fac); }
+.fhead p { margin: 6px 0 0; color: var(--dim); max-width: 70ch; }
+.tally { font: 13px/1.6 var(--mono); color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.tally .n-ok { color: var(--ok); } .tally .n-rw { color: var(--rework); } .tally .n-rj { color: var(--reject); }
+.grammar { margin: 0; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; display: grid; gap: 4px; list-style: none; }
+.grammar li { padding-left: 18px; position: relative; color: var(--ink); }
+.grammar li::before { content: ""; position: absolute; left: 0; top: .7em; width: 8px; height: 2px; background: var(--fac); }
+.grammar .gl { font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); padding: 0 0 6px; }
+.grammar .gl::before { display: none; }
+
+figure.lineup { margin: 0; display: grid; gap: 8px; }
+figure.lineup .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: #0c1019; }
+figure.lineup img { display: block; max-width: none; height: auto; width: 1500px; }
+figcaption { font: 13px/1.4 var(--mono); color: var(--faint); }
+
+.concept { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); border: 1px solid var(--line); border-radius: 4px; background: var(--panel); overflow: hidden; }
+.concept[data-v="approve"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.concept[data-v="rework"] { border-color: color-mix(in srgb, var(--rework) 55%, var(--line)); }
+.concept[data-v="reject"] { border-color: color-mix(in srgb, var(--reject) 55%, var(--line)); }
+.plate { background: #0c1019; display: grid; place-items: center; padding: 8px; min-width: 0; cursor: zoom-in; border: 0; }
+.plate img { width: 100%; height: auto; max-height: 560px; object-fit: contain; image-rendering: auto; }
+.plate:focus-visible { outline: 2px solid var(--fac); outline-offset: -2px; }
+.sheet { padding: 20px 22px; display: grid; gap: 14px; align-content: start; border-left: 1px solid var(--line); min-width: 0; }
+.sheet h3 { margin: 0; font: 600 30px/1 var(--display); }
+.cls { display: inline-block; font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--fac); border: 1px solid currentColor; padding: 4px 6px; border-radius: 2px; margin-bottom: 8px; }
+.note { margin: 0; color: var(--ink); }
+dl.specs { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font: 13px/1.45 var(--mono); font-variant-numeric: tabular-nums; }
+dl.specs dt { color: var(--faint); }
+dl.specs dd { margin: 0; color: var(--ink); min-width: 0; }
+.scale { display: grid; gap: 4px; }
+.bar { height: 6px; background: var(--panel-hi); border-radius: 3px; position: relative; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--fac); border-radius: 3px; }
+.bar .pin { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+.scale small { font: 12px/1.3 var(--mono); color: var(--faint); }
+
+.verdict { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.vbtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.vbtns button { font: 600 13px/1 var(--body); padding: 9px 14px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel-hi); color: var(--ink); cursor: pointer; }
+.vbtns button:hover { border-color: var(--dim); }
+.vbtns button:focus-visible, textarea:focus-visible { outline: 2px solid var(--fac); outline-offset: 2px; }
+.vbtns button[aria-pressed="true"][data-v="approve"] { background: var(--ok); border-color: var(--ok); color: #08130f; }
+.vbtns button[aria-pressed="true"][data-v="rework"] { background: var(--rework); border-color: var(--rework); color: #1a1003; }
+.vbtns button[aria-pressed="true"][data-v="reject"] { background: var(--reject); border-color: var(--reject); color: #1c0707; }
+.vbtns button:disabled { opacity: .45; cursor: not-allowed; }
+textarea { width: 100%; min-height: 64px; resize: vertical; font: 14px/1.45 var(--body); color: var(--ink); background: var(--void); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
+.status { font: 12px/1.3 var(--mono); color: var(--faint); min-height: 1.3em; }
+
+.queued { border: 1px dashed var(--line); border-radius: 4px; padding: 18px 20px; color: var(--dim); display: grid; gap: 6px; }
+.queued h2 { margin: 0; font: 600 22px/1 var(--display); color: var(--ink); }
+
+dialog { border: 1px solid var(--line); background: #0c1019; color: var(--ink); padding: 0; max-width: 96vw; max-height: 92vh; }
+dialog::backdrop { background: rgba(4, 6, 10, .82); }
+dialog .zoom { overflow: auto; max-width: 96vw; max-height: calc(92vh - 44px); }
+dialog img { display: block; max-width: none; }
+dialog .bar2 { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); color: var(--dim); }
+dialog button { font: 600 13px var(--body); background: var(--panel-hi); color: var(--ink); border: 1px solid var(--line); padding: 6px 12px; border-radius: 3px; cursor: pointer; }
+
+@media (max-width: 860px) {
+  .concept { grid-template-columns: minmax(0, 1fr); }
+  .sheet { border-left: 0; border-top: 1px solid var(--line); }
+  .fhead { grid-template-columns: minmax(0, 1fr); }
+  .tally { text-align: left; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vbtns button { transition: background .12s, border-color .12s; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Afterlight · NPC fleet redesign · concept review</div>
+    <h1>Fleet Concepts</h1>
+    <p class="lede">Every non-player ship, redrawn bigger and with a role, one faction at a time. These are pictures only: nothing here is in the game yet. Everything is drawn top-down, and every room, corridor and gun is placed by hand. The renders use the game's own hull tiles and module art, and every plate shows your Pincer at the same scale.</p>
+    <div class="legend">
+      <span><b>× Pincer</b> hull cells compared with your ship (210)</span>
+      <span><b>Plates</b> angled armour, bow / tips / engine belt only</span>
+      <span><b>Click a render</b> to see it at full size</span>
+    </div>
+  </header>
+  <nav class="factions" id="nav" aria-label="Factions"></nav>
+  <div class="filters" role="group" aria-label="Show">
+    <span>Show</span>
+    <button type="button" data-f="all" aria-pressed="true">All<span class="count" data-c="all"></span></button>
+    <button type="button" data-f="open" aria-pressed="false">Still open<span class="count" data-c="open"></span></button>
+    <button type="button" data-f="approve" aria-pressed="false">Approved<span class="count" data-c="approve"></span></button>
+    <button type="button" data-f="rework" aria-pressed="false">Rework<span class="count" data-c="rework"></span></button>
+    <button type="button" data-f="reject" aria-pressed="false">Rejected<span class="count" data-c="reject"></span></button>
+  </div>
+  <main id="main" class="wrap"></main>
+</div>
+
+<dialog id="zoom">
+  <div class="bar2"><span id="zoomTitle"></span><button type="button" id="zoomClose">Close</button></div>
+  <div class="zoom"><img id="zoomImg" alt=""></div>
+</dialog>
+
+<script>
+const DATA = /*DATA*/null;
+const LABEL = { approve: "Approve", rework: "Rework", reject: "Reject" };
+const state = {};         // id -> {verdict, note}
+let db = null;
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const maxHull = f => Math.max(...f.items.map(i => i.hull));
+
+function render() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = DATA.factions.map(f => `<a href="#${f.slug}">${esc(f.name)}</a>`).join("")
+    + DATA.upcoming.map(n => `<span>${esc(n)}</span>`).join("");
+  const main = document.getElementById("main");
+  main.innerHTML = DATA.factions.map(f => `
+    <section class="faction" id="${f.slug}" style="--fac:${f.accent}">
+      <div class="fhead">
+        <div><div class="eyebrow">Faction ${DATA.factions.indexOf(f) + 1} of ${DATA.factions.length}</div>
+          <h2>${esc(f.name)}</h2><p>${esc(f.tagline)}</p></div>
+        <div class="tally" data-tally="${f.slug}"></div>
+      </div>
+      <ul class="grammar"><li class="gl">Design grammar (holds at every size)</li>${f.grammar.map(g => `<li>${esc(g)}</li>`).join("")}</ul>
+      <figure class="lineup"><div class="scroll"><img src="${f.lineup}" alt="All ${esc(f.name)} concepts side by side at one scale, with the Pincer"></div>
+        <figcaption>The whole set at one scale, Pincer first. Scroll sideways on a narrow screen.</figcaption></figure>
+      ${f.items.map(i => concept(f, i)).join("")}
+    </section>`).join("")
+    + (DATA.upcoming.length ? `<div class="queued"><h2>Next up</h2><div>${DATA.upcoming.map(esc).join(" · ")}</div></div>` : "");
+  wire();
+  paint();
+}
+
+function concept(f, i) {
+  const pct = Math.min(100, i.hull / maxHull(f) * 100), pin = Math.min(100, 210 / maxHull(f) * 100);
+  return `<article class="concept" data-id="${i.id}">
+    <button class="plate" type="button" data-zoom="${i.img}" data-title="${esc(f.name)} · ${esc(i.name)}" aria-label="Open ${esc(i.name)} at full size">
+      <img src="${i.img}" width="${i.iw}" height="${i.ih}" alt="${esc(i.name)} render beside the Pincer" loading="lazy"></button>
+    <div class="sheet">
+      <div><span class="cls">${esc(i.cls)}</span><h3>${esc(i.name)}</h3></div>
+      <p class="note">${esc(i.note)}</p>
+      ${i.revised ? `<div class="revised"><b>${esc(i.badge || "Changed after your note")}</b>${esc(i.revised)}</div>` : ""}
+      <div class="scale"><div class="bar"><i style="width:${pct}%"></i><span class="pin" style="left:${pin}%" title="Pincer"></span></div>
+        <small>${i.hull} hull cells · ${i.x}× Pincer · white tick = Pincer</small></div>
+      <dl class="specs">
+        <dt>Size</dt><dd>${i.w} × ${i.h} cells</dd>
+        <dt>Modules</dt><dd>${i.mods} + ${i.plates} plates</dd>
+        <dt>Weapons</dt><dd>${esc(i.weapons)}</dd>
+        <dt>Power</dt><dd>${i.reactors} reactors · ${i.engines} engines · ${i.shields} shield emitters</dd>
+      </dl>
+      <div class="verdict">
+        <div class="vbtns" role="group" aria-label="Verdict for ${esc(i.name)}">
+          ${Object.keys(LABEL).map(v => `<button type="button" data-v="${v}" aria-pressed="false" disabled>${LABEL[v]}</button>`).join("")}
+        </div>
+        <label class="eyebrow" for="note-${i.id}">Notes for Claude</label>
+        <textarea id="note-${i.id}" placeholder="What to change, keep or drop" disabled></textarea>
+        <div class="status" aria-live="polite">Connecting…</div>
+      </div>
+    </div>
+  </article>`;
+}
+
+let filter = "all";
+function applyFilter() {
+  const counts = { all: 0, open: 0, approve: 0, rework: 0, reject: 0 };
+  for (const el of document.querySelectorAll(".concept")) {
+    const v = (state[el.dataset.id] || {}).verdict || "open";
+    counts.all++; counts[v]++;
+    el.hidden = !(filter === "all" || filter === v);
+  }
+  for (const [k, n] of Object.entries(counts)) {
+    const c = document.querySelector(`[data-c="${k}"]`); if (c) c.textContent = n;
+  }
+  for (const b of document.querySelectorAll(".filters button")) b.setAttribute("aria-pressed", String(b.dataset.f === filter));
+}
+
+function paint() {
+  for (const el of document.querySelectorAll(".concept")) {
+    const s = state[el.dataset.id] || {};
+    el.dataset.v = s.verdict || "";
+    for (const b of el.querySelectorAll(".vbtns button")) b.setAttribute("aria-pressed", String(b.dataset.v === s.verdict));
+    const ta = el.querySelector("textarea");
+    if (document.activeElement !== ta && ta.value !== (s.note || "")) ta.value = s.note || "";
+  }
+  for (const f of DATA.factions) {
+    const c = { approve: 0, rework: 0, reject: 0 };
+    f.items.forEach(i => { const v = (state[i.id] || {}).verdict; if (c[v] !== undefined) c[v]++; });
+    const open = f.items.length - c.approve - c.rework - c.reject;
+    document.querySelector(`[data-tally="${f.slug}"]`).innerHTML =
+      `<span class="n-ok">${c.approve} approved</span> · <span class="n-rw">${c.rework} rework</span> · <span class="n-rj">${c.reject} rejected</span><br>${open} of ${f.items.length} still open`;
+  }
+  applyFilter();
+}
+
+async function save(id, patch, statusEl) {
+  const next = { ...(state[id] || {}), ...patch, at: new Date().toISOString() };
+  state[id] = next;
+  paint();
+  if (!db) return;
+  statusEl.textContent = "Saving…";
+  try {
+    await db.collection("verdicts").doc(id).set({ verdict: next.verdict || "", note: next.note || "", at: next.at });
+    statusEl.textContent = "Saved. Claude can read this.";
+  } catch (e) {
+    statusEl.textContent = e && e.code === "not_granted" ? "You can view but not save here. Reply in chat instead." : "Couldn't save. Try again, or reply in chat.";
+  }
+}
+
+function wire() {
+  for (const el of document.querySelectorAll(".concept")) {
+    const id = el.dataset.id, st = el.querySelector(".status");
+    for (const b of el.querySelectorAll(".vbtns button"))
+      b.addEventListener("click", () => save(id, { verdict: (state[id] || {}).verdict === b.dataset.v ? "" : b.dataset.v }, st));
+    const ta = el.querySelector("textarea");
+    ta.addEventListener("blur", () => { if (ta.value !== ((state[id] || {}).note || "")) save(id, { note: ta.value }, st); });
+  }
+  const dlg = document.getElementById("zoom");
+  for (const p of document.querySelectorAll("[data-zoom]"))
+    p.addEventListener("click", () => {
+      document.getElementById("zoomImg").src = p.dataset.zoom;
+      document.getElementById("zoomTitle").textContent = p.dataset.title;
+      dlg.showModal();
+    });
+  document.getElementById("zoomClose").addEventListener("click", () => dlg.close());
+  dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+}
+
+render();
+for (const b of document.querySelectorAll(".filters button"))
+  b.addEventListener("click", () => { filter = b.dataset.f; applyFilter(); });
+
+(async () => {
+  const setAll = (msg, enabled) => document.querySelectorAll(".concept").forEach(el => {
+    el.querySelector(".status").textContent = msg;
+    el.querySelectorAll("button[data-v], textarea").forEach(c => c.disabled = !enabled);
+  });
+  try { db = window.claude ? await window.claude.use("db") : null; } catch { db = null; }
+  if (!db) { setAll("Verdicts can't be saved in this view. Reply in chat instead.", false); return; }
+  setAll("", true);
+  db.collection("verdicts").onSnapshot(snap => {
+    for (const d of snap.docs) state[d.id] = { ...d.data() };
+    paint();
+  }, () => setAll("Lost the connection to saved verdicts. Reload, or reply in chat.", false));
+})();
+</script>
