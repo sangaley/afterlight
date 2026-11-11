@@ -28,3 +28,4 @@ __pycache__/
 
 # Runtime save files
 afterlight/saves/
+afterlight/meta/tips.json

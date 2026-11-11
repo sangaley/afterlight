@@ -1621,10 +1621,24 @@ fn drive_tutorial(
         Advance::Thrust => {
             d.hold(KeyCode::KeyW);
         }
+        Advance::Inside => {
+            // [.] in, then [.] out on the next beat.
+            if beat_ready {
+                d.beat = 0.0;
+                d.tap(KeyCode::Period);
+            }
+        }
         Advance::Scan => {
             if beat_ready {
                 d.beat = 0.0;
                 d.tap(KeyCode::KeyZ);
+            }
+        }
+        Advance::Lock => {
+            // No mouse here: `\` picking the raider counts as the lock.
+            if beat_ready {
+                d.beat = 0.0;
+                d.tap(KeyCode::Backslash);
             }
         }
         Advance::Kill => {

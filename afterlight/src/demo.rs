@@ -73,6 +73,8 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //   AFTERLIGHT_CASCADE=0.85 — pin the story's progress level, so a late beat can
 //                          be looked at without an hour of flying first.
 //   AFTERLIGHT_CASCADE_TRACE=1 — print the arc's state once a second.
+//   AFTERLIGHT_TUTORIAL_STEP=<n> — a new expedition starts the shakedown at step n
+//                          (0-based), to test a late step without playing the rest.
 //   AFTERLIGHT_BUILD_TAB=<name> — stop at the station, open build mode and select
 //                          that build tab, so the palette can be looked at
 //                          without clicking through to it. Name matches

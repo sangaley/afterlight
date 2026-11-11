@@ -64,8 +64,9 @@ Built in Rust with [Bevy](https://bevyengine.org/).
 
 | Key | Action |
 |---|---|
-| `W` `A` `S` `D` | Thrust and turn |
-| Mouse | Aim |
+| Mouse | Steer: the nose follows the cursor |
+| `W` / `S` | Thrust / reverse |
+| `A` / `D` | Strafe |
 | `Space` / left click | Fire |
 | Right click a ship | Lock on and hold gun range |
 | `Shift` + right click | Mark or unmark a target |
@@ -94,6 +95,7 @@ Built in Rust with [Bevy](https://bevyengine.org/).
 | `J` | Jobs |
 | `C` | Crew |
 | `H` | Hire |
+| Right click one of your guns | Tune it: shells, missiles, point defence (outside the shipyard) |
 | `Enter` | Launch |
 
 **Building**
@@ -108,7 +110,6 @@ Built in Rust with [Bevy](https://bevyengine.org/).
 | `I` | Costs |
 | `F2` | Power view |
 | `PgUp` / `PgDn` | Turret deck and gun-house roof |
-| Right click a weapon | Tune it: shells, missiles, point defence |
 | `Esc` | Done |
 
 ---

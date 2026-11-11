@@ -12,8 +12,10 @@ use crate::ui::theme::{ThemeColors, ThemeFonts, ThemeSpacing};
 
 // ============================================================================
 // GUIDED TUTORIAL
-// A "Flight Training" card teaches a new pilot the whole loop — and the ideas
-// behind it, not just the keys. It alternates two kinds of step:
+// The shakedown: Chief Marlow, the deck chief, walks the ship's newly woken
+// mind (the player: the Halyard's AI, not its captain) through the loop, and
+// the ideas behind it, not just the keys. The deeper systems are left to
+// first-time tips (crate::tips). It alternates two kinds of step:
 //   * ACTION steps advance when the player performs the action (thrust, ping,
 //     kill, salvage, dock, build, ...).
 //   * INFO steps (Advance::Continue) explain a concept — what the HUD means,
@@ -42,7 +44,9 @@ pub enum Advance {
     Launch,    // reached open space (launched from the station)
     Continue,  // an info step — read it, press [Space]
     Thrust,    // held W / Up
+    Inside,    // looked inside the hull with [.] and came back out
     Scan,      // pressed Z (also the step the training raider spawns on)
+    Lock,      // locked onto the training raider (right-click, or `\` picks it)
     Kill,      // the training raider became a wreck
     Salvage,   // a salvage detail is out
     Dock,      // docked at a station again
@@ -75,59 +79,63 @@ struct TutorialStep {
 const STEPS: &[TutorialStep] = &[
     TutorialStep {
         advance: Advance::Launch,
-        body: "Welcome aboard, captain. You're docked at your home station - safe here. Use the Build button below to rebuild your ship anytime, and Launch when you're ready for the void. Every button shows its shortcut key if you'd rather use those.",
+        body: "Core's up. Good. I'm Marlow, deck chief. You're the Halyard's mind now, and we're its hands. We're berthed at Haven. When you're ready, take us out: Launch [Enter].",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "That bar across the top is your ship's life. HULL is your armor, PWR is power - reactors make it, every module spends it - and FUEL burns whenever you thrust. Let PWR fall short and systems start to fail.",
+        body: "The bar across the top is the ship. HULL is what's still holding, PWR is reactor output against what we're drawing, FUEL burns whenever you thrust, and CREW is us. Keep an eye on all four.",
     },
     TutorialStep {
         advance: Advance::Thrust,
-        body: "Hold [W] to thrust forward. Your nose always tracks the mouse, so you steer by aiming where you want to go. [S] reverses, [A]/[D] strafe. Watch FUEL tick down as you burn.",
+        body: "The nose follows your cursor. [W] burns forward, [S] backs off, [A] and [D] slide us sideways. Give her a push.",
     },
     TutorialStep {
-        advance: Advance::Continue,
-        body: "Your ship is built from modules locked to a grid - reactor, engines, guns, radar, cargo. Take a hit and individual modules break, and whatever they did stops working. All of it is repairable back home.",
+        advance: Advance::Inside,
+        body: "Press [.] to look inside the hull. That's all of us in there, and the air we breathe. [Q] shows the air itself. Press [.] again to come back out.",
     },
     TutorialStep {
         advance: Advance::Scan,
-        body: "The void is dark - you can't see far. Hit the Ping button (or [Z]) to sweep radar; the sweep lights up contacts around you. But a ping is loud, spiking your NOISE and drawing hunters. See what it reveals out there.",
+        body: "Out here you find things by listening. [Z] pings the radar: anything in range shows up. Try it.",
+    },
+    TutorialStep {
+        advance: Advance::Lock,
+        body: "Contact. A raider, a light one. Right-click it to lock on. We'll hold the best range for our guns on our own.",
     },
     TutorialStep {
         advance: Advance::Kill,
-        body: "That contact is a raider, holding position at range. Thrust out to it, put your nose on it, and hold [SPACE] to fire. Your guns shoot where you aim and burn AMMO - so aim, don't just spray.",
+        body: "Hold [Space] or the left button to fire. The turrets turn by themselves; the big one is slow, but it hits like a hammer. Don't waste shells on empty space.",
     },
     TutorialStep {
         advance: Advance::Salvage,
-        body: "Destroyed - but a kill pays nothing by itself. The reward is the wreck it leaves. Fly in close and use Dock: idle crew suit up, cross over, and strip its cargo into your hold. Dock again recalls them.",
+        body: "Scratch one. The pay is in the wreck: get in close and press [F]. Anyone off shift suits up and strips it.",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "That cargo isn't credits yet - you sell it at a station. That's the whole loop out here: hunt, salvage, sell, and pour it back into a stronger ship. Time to head home.",
+        body: "What they carry back is cargo, not credits. We sell it at a station. Hunt, salvage, sell, build: that's how the Halyard gets stronger.",
     },
     TutorialStep {
         advance: Advance::Dock,
-        body: "Turn around and fly back to your home station. Ease in close and dock to unload your haul and resupply.",
+        body: "Take us home. Ease up to Haven and dock with [F].",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "Docked. This is where you spend what you earn - rebuild the ship, take on contracts, and manage your crew. Let's walk each one.",
+        body: "Home. This is where we spend it: the shipyard, the job board and the crew roster.",
     },
     TutorialStep {
         advance: Advance::Build,
-        body: "Use the Build button to open the shipyard. Place modules on the grid - but keep it balanced: every module draws power, so add reactors to match, and wrap the whole thing in hull so it can take hits.",
+        body: "[B] opens the shipyard. Everything you place draws power, so match it with reactors. The KITS tab has turrets ready to drop in. Outside the yard, right-click any of our guns to tune its shells.",
     },
     TutorialStep {
         advance: Advance::Contracts,
-        body: "Use the Jobs button for the bounty board. Contracts pay credits and shift your standing with the factions - reputation decides who meets you with guns and who meets you with trade.",
+        body: "[J] is the job board. Contacts post work on real ships out there. Who we work for decides who shoots at us.",
     },
     TutorialStep {
         advance: Advance::Crew,
-        body: "Use the Crew button to manage crew. Hire hands and post them to stations - an unmanned reactor or gun runs at a fraction of its output. Crew are what actually bring the ship to life.",
+        body: "[C] is the roster, [H] to hire. A station nobody's manning runs at a fraction. We're what make her work.",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "That's the loop, captain: hunt, salvage, sell, and pour it back into a stronger ship. One more thing. An expedition came out here before us and never reported back - they left records scattered across the wrecks, and the company wants them recovered. Your progress is tracked under the top bar. Use the Map button for the star map, then Radar there for the whole galaxy.",
+        body: "That's the shakedown. One more thing: someone's been trying to raise us since you woke up. [M] is the map, and [L] keeps every record we find. Take us out when you're ready.",
     },
 ];
 
@@ -144,6 +152,8 @@ pub struct Tutorial {
     enemy_spawned: bool,
     /// Set once the raider's weapons have been clamped to short range.
     enemy_tamed: bool,
+    /// The inside-view step: the player has looked in (and must come back out).
+    looked_inside: bool,
 }
 
 impl Tutorial {
@@ -151,10 +161,12 @@ impl Tutorial {
     /// launches from the main menu.
     pub fn begin(&mut self) {
         self.active = true;
-        self.step = 0;
+        // AFTERLIGHT_TUTORIAL_STEP=<n> (testing): start at step n, 0-based.
+        self.step = std::env::var("AFTERLIGHT_TUTORIAL_STEP").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
         self.enemy = None;
         self.enemy_spawned = false;
         self.enemy_tamed = false;
+        self.looked_inside = false;
     }
 
     fn current(&self) -> Option<&'static TutorialStep> {
@@ -268,7 +280,7 @@ fn spawn_tutorial_card(mut commands: Commands) {
                     })
                     .with_children(|header| {
                         header.spawn((
-                            Text::new("FLIGHT TRAINING"),
+                            Text::new("SHAKEDOWN  ·  CHIEF MARLOW"),
                             TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
                             TextColor(ThemeColors::ACCENT_BLUE),
                         ));
@@ -291,7 +303,7 @@ fn spawn_tutorial_card(mut commands: Commands) {
                     // Footer prompt — continue hint (info steps) + dismiss hint.
                     // Updated per step; Semicolon dismisses (not ESC, which pauses).
                     card.spawn((
-                        Text::new("[;] dismiss training"),
+                        Text::new("[;] skip the shakedown"),
                         TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
                         TextColor(ThemeColors::TEXT_MUTED),
                         Node { margin: UiRect::top(Val::Px(ThemeSpacing::XS)), ..default() },
@@ -382,6 +394,9 @@ fn advance_tutorial(
     keyboard: Res<ButtonInput<KeyCode>>,
     wreck_q: Query<(), With<AiShipWreck>>,
     eva_q: Query<(), With<EvaSalvaging>>,
+    see_inside: Res<crate::vfx::ship_roof::SeeInside>,
+    aim_lock: Res<crate::combat::targeting::AimLock>,
+    selection: Res<crate::combat::targeting::TargetSelection>,
     mut notifications: MessageWriter<ShowNotification>,
 ) {
     if !tutorial.active {
@@ -393,7 +408,7 @@ fn advance_tutorial(
     if keyboard.just_pressed(KeyCode::Semicolon) {
         tutorial.active = false;
         notifications.write(ShowNotification {
-            message: "Flight training dismissed.".into(),
+            message: "Shakedown skipped.".into(),
             notification_type: NotificationType::Info,
             duration: 2.5,
         });
@@ -410,7 +425,15 @@ fn advance_tutorial(
         Advance::Thrust => {
             in_space && (keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp))
         }
+        Advance::Inside => {
+            if see_inside.on {
+                tutorial.looked_inside = true;
+            }
+            in_space && tutorial.looked_inside && !see_inside.on
+        }
         Advance::Scan => in_space && keyboard.just_pressed(KeyCode::KeyZ),
+        // Right-click locks the raider; `\` picking it as the target counts too.
+        Advance::Lock => tutorial.enemy.is_some_and(|e| aim_lock.ship == Some(e) || selection.target == Some(e)),
         // The raider has been reduced to a wreck (Wreck/AiShipWreck attached in
         // place by ai_ship::wreck::ai_ship_death_system).
         Advance::Kill => tutorial.enemy.is_some_and(|e| wreck_q.get(e).is_ok()),
@@ -437,7 +460,7 @@ fn advance_tutorial(
     if tutorial.step >= STEPS.len() {
         tutorial.active = false;
         notifications.write(ShowNotification {
-            message: "Training complete - good luck out there, captain.".into(),
+            message: "Shakedown done. Marlow is back on deck.".into(),
             notification_type: NotificationType::Success,
             duration: 6.0,
         });
@@ -479,9 +502,9 @@ fn update_tutorial_card(
     }
     if let Ok(mut foot) = foot_q.single_mut() {
         let text = if step.advance == Advance::Continue {
-            "[Space] continue      [;] dismiss training"
+            "[Space] continue      [;] skip the shakedown"
         } else {
-            "[;] dismiss training"
+            "[;] skip the shakedown"
         };
         if foot.0.as_str() != text {
             foot.0 = text.to_string();
@@ -505,6 +528,9 @@ mod dock_step_tests {
         app.init_state::<BuildState>();
         app.init_resource::<MissionBoardOpen>();
         app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<crate::vfx::ship_roof::SeeInside>();
+        app.init_resource::<crate::combat::targeting::AimLock>();
+        app.init_resource::<crate::combat::targeting::TargetSelection>();
         app.add_message::<ShowNotification>();
         app.insert_resource(Tutorial { active: true, step: dock_step(), ..default() });
         app.add_systems(Update, advance_tutorial);
