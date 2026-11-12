@@ -288,6 +288,21 @@ pub fn write_gun_design(design: &GunDesign) -> std::io::Result<std::path::PathBu
 #[derive(Resource, Default, Debug)]
 pub struct WeaponKits(pub Vec<GunDesign>);
 
+/// The build tab a pre-made weapon is offered in: a gun in Guns, a laser
+/// unit in Lasers, anything else (launchers, the missile-defence pack) in
+/// Weapons. Each tab shows its kits ahead of its parts.
+pub fn kit_tab(kit: &GunDesign) -> crate::resources::BuildCategory {
+    use crate::resources::BuildCategory;
+    let has = |t: ModuleType| kit.parts.iter().any(|p| p.module_type == t);
+    if has(ModuleType::FiringPiece) {
+        BuildCategory::Guns
+    } else if has(ModuleType::LaserCore) {
+        BuildCategory::Lasers
+    } else {
+        BuildCategory::Weapons
+    }
+}
+
 pub const KIT_DIR: &str = "designs/kits";
 
 pub fn read_kits(dir: &std::path::Path) -> Vec<GunDesign> {

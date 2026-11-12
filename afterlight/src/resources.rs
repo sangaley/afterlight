@@ -876,8 +876,6 @@ pub enum BuildCategory {
     Crew,
     Utility,
     Structural,
-    /// Pre-made weapons (combat::gun_design::WeaponKits).
-    Premade,
 }
 
 impl BuildCategory {
@@ -895,7 +893,6 @@ impl BuildCategory {
         BuildCategory::Crew,
         BuildCategory::Utility,
         BuildCategory::Structural,
-        BuildCategory::Premade,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -913,14 +910,13 @@ impl BuildCategory {
             BuildCategory::Crew => "Crew",
             BuildCategory::Utility => "Utility",
             BuildCategory::Structural => "Structural",
-            BuildCategory::Premade => "Pre-made",
         }
     }
 
-    /// Convert to ModuleCategory. Returns None for Hull and Pre-made.
+    /// Convert to ModuleCategory. Returns None for Hull.
     pub fn to_module_category(&self) -> Option<ModuleCategory> {
         match self {
-            BuildCategory::Hull | BuildCategory::Premade => None,
+            BuildCategory::Hull => None,
             BuildCategory::Power => Some(ModuleCategory::Power),
             BuildCategory::Propulsion => Some(ModuleCategory::Propulsion),
             BuildCategory::LifeSupport => Some(ModuleCategory::LifeSupport),
@@ -943,13 +939,17 @@ impl BuildCategory {
     /// after the hull layers so you can wall a ship in without changing tabs.
     /// Listing them in both places would put the same item under two labels.
     ///
-    /// Hull and Pre-made own no modules, so they answer with nothing -- the Hull
-    /// tab's own items are HULL_LAYERS plus HULL_PLATING, resolved in
-    /// `current_selection`.
+    /// Hull owns no modules, so it answers with nothing -- its own items are
+    /// HULL_LAYERS plus HULL_PLATING, resolved in `current_selection`.
+    ///
+    /// The pre-made weapons (combat::gun_design::WeaponKits) aren't here
+    /// either: they're read from disk and come first in their tab, ahead of
+    /// these (`BuildingState::kits_here`).
     pub fn items(&self) -> &'static [ModuleType] {
         match self {
-            BuildCategory::Hull | BuildCategory::Premade => &[],
+            BuildCategory::Hull => &[],
             BuildCategory::Structural => STRUCTURAL_PALETTE,
+            BuildCategory::Weapons => WEAPONS_PALETTE,
             other => other
                 .to_module_category()
                 .map(|c| c.module_types())
@@ -961,8 +961,6 @@ impl BuildCategory {
         match self {
             // Outer, Inner, Hallway, Void, BulkheadDoor, then the angled plating.
             BuildCategory::Hull => HULL_LAYERS.len() + HULL_PLATING.len(),
-            // Read from disk: `BuildingState::kit_count`.
-            BuildCategory::Premade => 0,
             other => other.items().len(),
         }
     }
@@ -1002,9 +1000,12 @@ pub struct BuildingState {
     /// Which deck build mode is working on: the hull, or the turret decks
     /// above it (building::turret_build).
     pub deck: BuildDeck,
-    /// How many pre-made weapons the Pre-made tab offers (the kits read
-    /// from disk), for cycling through them.
-    pub kit_count: usize,
+    /// The tab each pre-made weapon (combat::gun_design::WeaponKits, read
+    /// from disk) sits in, by its index: guns in Guns, laser units in
+    /// Lasers, launchers and the missile-defence pack in Weapons. Each tab
+    /// offers its kits first, then its parts, the way From the Depths puts a
+    /// working weapon in front of the blocks it's built from.
+    pub kit_tabs: Vec<BuildCategory>,
     /// The signature version picked with V (diplomacy::signatures), by id.
     /// It only applies while the selected block is the one it's built on.
     pub signature: Option<&'static str>,
@@ -1045,6 +1046,24 @@ const HULL_PLATING: [ModuleType; 2] = [
 /// `building::placement_armor_value` -- could not be built by any means.
 /// `structural_palette_matches_module_category` keeps this list and that one
 /// from drifting apart again.
+/// The Weapons tab: missile launchers and the special weapons, nothing else.
+///
+/// `ModuleCategory::Weapons` still holds the old single-block guns (Cannon,
+/// Railgun, Coilgun, Gatling, the one-block Laser and missile racks) and the
+/// bolt-on upgrades that went with them. Guns are built from parts now (the
+/// Guns and Lasers tabs) and those blocks only live on as data for older
+/// ships, so the shipyard stopped offering them.
+const WEAPONS_PALETTE: &[ModuleType] = &[
+    ModuleType::LaunchPad,
+    ModuleType::RailLauncher,
+    ModuleType::VlsSilo,
+    ModuleType::PlasmaCaster,
+    ModuleType::IonDisruptor,
+    ModuleType::EMPPulse,
+    ModuleType::TractorBeam,
+    ModuleType::MiningDrill,
+];
+
 const STRUCTURAL_PALETTE: &[ModuleType] = &[
     ModuleType::ArmorPlate,
     // The two armours that aren't plain plate, each beside its wedge.
@@ -1095,7 +1114,7 @@ impl Default for BuildingState {
             auto_rotated: true,
             hull_rect_anchor: None,
             deck: BuildDeck::Hull,
-            kit_count: 0,
+            kit_tabs: Vec::new(),
             signature: None,
         }
     }
@@ -1121,16 +1140,20 @@ impl BuildingState {
                     None => BuildSelection::Module(HULL_PLATING[idx - HULL_LAYERS.len()]),
                 }
             }
-            // A whole pre-made weapon is picked (`premade_index`), placed by
-            // building::gun_stamp; this stands in for code that wants a block.
-            BuildCategory::Premade => BuildSelection::Module(ModuleType::TurretRingSmall),
             _ => {
                 let types = cat.items();
-                if types.is_empty() {
+                let kits = self.kits_here();
+                if types.is_empty() && kits == 0 {
                     BuildSelection::Module(ModuleType::StandardReactor)
                 } else {
-                    let idx = self.selected_index % types.len();
-                    BuildSelection::Module(types[idx])
+                    let idx = self.selected_index % (kits + types.len());
+                    match idx.checked_sub(kits) {
+                        Some(i) => BuildSelection::Module(types[i]),
+                        // A whole pre-made weapon is picked (`premade_index`),
+                        // placed by building::gun_stamp; this stands in for
+                        // code that wants a block.
+                        None => BuildSelection::Module(ModuleType::TurretRingSmall),
+                    }
                 }
             }
         }
@@ -1154,17 +1177,27 @@ impl BuildingState {
         self.selected_index = 0;
     }
 
-    /// Items the current tab offers.
-    fn items_here(&self) -> usize {
-        match self.current_category() {
-            BuildCategory::Premade => self.kit_count,
-            cat => cat.item_count(),
-        }
+    /// How many pre-made weapons the current tab opens with.
+    pub fn kits_here(&self) -> usize {
+        let cat = self.current_category();
+        self.kit_tabs.iter().filter(|t| **t == cat).count()
     }
 
-    /// The pre-made weapon picked, when the Pre-made tab is open.
+    /// Items the current tab offers: its kits, then its blocks.
+    fn items_here(&self) -> usize {
+        self.kits_here() + self.current_category().item_count()
+    }
+
+    /// The pre-made weapon picked (its index in WeaponKits), when the
+    /// selection is on one of the current tab's kits.
     pub fn premade_index(&self) -> Option<usize> {
-        (self.current_category() == BuildCategory::Premade && self.kit_count > 0).then(|| self.selected_index % self.kit_count)
+        let total = self.items_here();
+        if total == 0 {
+            return None;
+        }
+        let cat = self.current_category();
+        let nth = self.selected_index % total;
+        self.kit_tabs.iter().enumerate().filter(|(_, t)| **t == cat).nth(nth).map(|(i, _)| i)
     }
 
     pub fn next_item(&mut self) {
@@ -1998,13 +2031,52 @@ mod tests {
         );
     }
 
+    /// Guns are built from parts: the old one-block guns and their bolt-on
+    /// upgrades stay as data for older ships but no tab offers them.
+    #[test]
+    fn no_tab_offers_the_old_single_block_guns() {
+        let old = [
+            ModuleType::Cannon, ModuleType::Railgun, ModuleType::Coilgun, ModuleType::Gatling,
+            ModuleType::Laser, ModuleType::HeavyMissile, ModuleType::GuidedMissile, ModuleType::ClusterRocket,
+            ModuleType::AmmoAutoloader, ModuleType::BarrelExtension, ModuleType::AmmoFeedUnit,
+            ModuleType::CoolingJacket, ModuleType::OverchargeCapacitor, ModuleType::BoreEvacuator,
+            ModuleType::MagneticAccelerator, ModuleType::FocusingArray, ModuleType::WarheadBay,
+        ];
+        for cat in BuildCategory::ALL {
+            for mt in cat.items() {
+                assert!(!old.contains(mt), "the {} tab still offers {:?}", cat.name(), mt);
+            }
+        }
+        for mt in [ModuleType::LaunchPad, ModuleType::RailLauncher, ModuleType::VlsSilo, ModuleType::PlasmaCaster] {
+            assert!(BuildCategory::Weapons.items().contains(&mt), "{:?} went missing", mt);
+        }
+    }
+
+    /// A tab's pre-made weapons come first, then its blocks, and only its own
+    /// kits count: Guns doesn't offer the laser unit sitting between them.
+    #[test]
+    fn a_tab_offers_its_kits_before_its_blocks() {
+        let guns = BuildCategory::ALL.iter().position(|c| *c == BuildCategory::Guns).unwrap();
+        let state = |i| BuildingState {
+            category_index: guns,
+            selected_index: i,
+            kit_tabs: vec![BuildCategory::Guns, BuildCategory::Lasers, BuildCategory::Guns],
+            ..Default::default()
+        };
+        assert_eq!(state(0).premade_index(), Some(0));
+        assert_eq!(state(1).premade_index(), Some(2));
+        assert_eq!(state(2).premade_index(), None);
+        let first_part = BuildCategory::Guns.items()[0];
+        assert!(matches!(state(2).current_selection(), BuildSelection::Module(mt) if mt == first_part));
+        // Cycling wraps through kits and blocks together.
+        let total = 2 + BuildCategory::Guns.items().len();
+        assert_eq!(state(total).premade_index(), Some(0));
+    }
+
     /// Every tab must offer something, or players hit a dead panel.
     #[test]
     fn every_build_tab_has_items() {
         for cat in BuildCategory::ALL {
-            if matches!(cat, BuildCategory::Premade) {
-                continue; // its items are read from disk (designs/kits)
-            }
             assert!(
                 cat.item_count() > 0,
                 "{} tab is empty",
@@ -2018,9 +2090,6 @@ mod tests {
     #[test]
     fn selection_walks_every_slot_of_every_tab() {
         for (ci, cat) in BuildCategory::ALL.iter().enumerate() {
-            if matches!(cat, BuildCategory::Premade) {
-                continue;
-            }
             let mut seen = Vec::new();
             for i in 0..cat.item_count() {
                 let state = BuildingState {

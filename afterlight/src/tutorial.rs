@@ -123,7 +123,7 @@ const STEPS: &[TutorialStep] = &[
     },
     TutorialStep {
         advance: Advance::Build,
-        body: "[B] opens the shipyard. Everything you place draws power, so match it with reactors. The KITS tab has turrets ready to drop in. Outside the yard, right-click any of our guns to tune its shells.",
+        body: "[B] opens the shipyard. Everything you place draws power, so match it with reactors. The Guns tab opens with ready-made guns, then the parts to build your own. Outside the yard, right-click any of our guns to tune its shells.",
     },
     TutorialStep {
         advance: Advance::Contracts,

@@ -243,8 +243,9 @@ pub fn stamp_gun_design(
 
 /// Keep the Pre-made tab's count in step with the kits read from disk.
 pub fn sync_kit_count(kits: Res<WeaponKits>, mut build_state: ResMut<BuildingState>) {
-    if build_state.kit_count != kits.0.len() {
-        build_state.kit_count = kits.0.len();
+    let tabs: Vec<_> = kits.0.iter().map(crate::combat::gun_design::kit_tab).collect();
+    if build_state.kit_tabs != tabs {
+        build_state.kit_tabs = tabs;
     }
 }
 

@@ -805,7 +805,6 @@ fn category_color(cat: BuildCategory) -> Color {
         BuildCategory::Crew => Color::srgb(0.7, 0.5, 0.7),
         BuildCategory::Utility => Color::srgb(0.5, 0.6, 0.5),
         BuildCategory::Structural => Color::srgb(0.62, 0.62, 0.64),
-        BuildCategory::Premade => Color::srgb(0.9, 0.6, 0.9),
     }
 }
 
@@ -829,7 +828,6 @@ fn category_icon(cat: BuildCategory) -> &'static str {
         BuildCategory::Crew => "ui/icons/cat_crew.png",
         BuildCategory::Utility => "ui/icons/cat_utility.png",
         BuildCategory::Structural => "ui/icons/cat_structural.png",
-        BuildCategory::Premade => "ui/icons/cat_custom.png",
     }
 }
 
@@ -848,7 +846,6 @@ fn category_short_name(cat: BuildCategory) -> &'static str {
         BuildCategory::Crew => "CREW",
         BuildCategory::Utility => "UTIL",
         BuildCategory::Structural => "STRU",
-        BuildCategory::Premade => "KITS",
     }
 }
 
@@ -1109,21 +1106,22 @@ fn spawn_item_slots(
                 spawn_single_slot(parent, i, label, *color, 0);
             }
         }
-        BuildCategory::Premade => {
-            for (i, kit) in kits.0.iter().enumerate() {
+        _ => {
+            // The tab's pre-made weapons first, then its parts: slot indices
+            // run straight through both, as BuildingState::current_selection
+            // and premade_index read them.
+            let mut i = 0;
+            for kit in kits.0.iter().filter(|k| crate::combat::gun_design::kit_tab(k) == *category) {
                 let (label, color) = kit_slot(kit);
                 spawn_single_slot(parent, i, &label, color, kit.cost(registry));
+                i += 1;
             }
-        }
-        _ => {
-            {
-                let types = category.items();
-                for (i, mt) in types.iter().enumerate() {
-                    let def = registry.get(*mt);
-                    // Use first 3 chars of name as label
-                    let label: String = def.name.chars().take(4).collect();
-                    spawn_single_slot(parent, i, &label, def.color, def.cost);
-                }
+            for mt in category.items() {
+                let def = registry.get(*mt);
+                // Use first 3 chars of name as label
+                let label: String = def.name.chars().take(4).collect();
+                spawn_single_slot(parent, i, &label, def.color, def.cost);
+                i += 1;
             }
         }
     }
@@ -1313,7 +1311,7 @@ pub fn update_build_panel(
     }
 
     // Rebuild item slots if category changed
-    if *last_category != Some(cat_index) || (category == BuildCategory::Premade && kits.is_changed()) {
+    if *last_category != Some(cat_index) || kits.is_changed() {
         *last_category = Some(cat_index);
         if let Ok((container_entity, children)) = container_query.single() {
             // Despawn old slots
@@ -1341,7 +1339,6 @@ pub fn update_build_panel(
         if let Ok((mut text, mut text_color)) = text_query.get_mut(entity) {
             text.0 = match build_state.premade_index().and_then(|i| kits.0.get(i)) {
                 Some(kit) => kit.name.clone(),
-                None if category == BuildCategory::Premade => "No pre-made weapons in designs/kits".to_string(),
                 None => match build_state.current_selection() {
                     // A signature version picked with V (diplomacy::signatures).
                     BuildSelection::Module(mt) => match build_state.signature_for(mt) {
