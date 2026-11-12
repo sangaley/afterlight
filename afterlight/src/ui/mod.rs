@@ -7,6 +7,7 @@ pub mod cursor;
 pub mod menu_buttons;
 pub mod offscreen_markers;
 pub mod map;
+pub mod callouts;
 
 use std::collections::{HashMap, HashSet};
 
@@ -34,6 +35,7 @@ impl Plugin for UiPlugin {
             .init_resource::<windows::notification_log::NotificationHistory>()
             .init_resource::<PendingWarpTarget>()
             .add_plugins(map::MapPlugin)
+            .add_plugins(callouts::CalloutsPlugin)
             .init_resource::<menu_buttons::GameSettings>()
             .init_resource::<menu_buttons::SettingsMenu>()
             // UiScale is normally inserted by Bevy's UiPlugin; init defensively
@@ -1003,6 +1005,20 @@ fn setup_ui(mut commands: Commands) {
                         c.spawn((value("500", ThemeColors::ACCENT_YELLOW), CreditsText));
                     });
                 });
+                // Small callout lines: their words, numbered to match the ship.
+                block.spawn((
+                    Node {
+                        display: Display::None,
+                        padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                        border: UiRect::top(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BorderColor::all(Sheet::RULE),
+                    Text::new(""),
+                    TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                    TextColor(ThemeColors::TEXT_SECONDARY),
+                    callouts::CalloutLegend,
+                ));
             });
         });
     });

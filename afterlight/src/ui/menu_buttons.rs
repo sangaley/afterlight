@@ -90,6 +90,17 @@ pub struct GameSettings {
     pub invert_aim_y: bool,
     /// Right-stick deadzone, 0.05..=0.60.
     pub aim_deadzone: f32,
+
+    // --- Callout lines (ui::callouts): the notes pinned to the ship ---
+    /// 0 Full (line and words), 1 Small (a stub and a number; the words go
+    /// in the title block), 2 Off.
+    pub callout_style: u8,
+    /// Words on the lines (Full only).
+    pub callout_words: bool,
+    /// The heading arrow while thrusting.
+    pub callout_heading: bool,
+    /// Most notes on screen at once, 1..=6.
+    pub callout_max: u8,
 }
 
 impl Default for GameSettings {
@@ -109,6 +120,10 @@ impl Default for GameSettings {
             ui_scale: 1.0,
             invert_aim_y: false,
             aim_deadzone: 0.35,
+            callout_style: 0,
+            callout_words: true,
+            callout_heading: true,
+            callout_max: 4,
         }
     }
 }
@@ -168,6 +183,10 @@ pub enum SettingsValue {
     UiScale,
     InvertAimY,
     AimDeadzone,
+    CalloutStyle,
+    CalloutWords,
+    CalloutHeading,
+    CalloutMax,
 }
 
 // ============================================================================
@@ -212,6 +231,12 @@ pub enum MenuAction {
     // --- Controls ---
     ToggleInvertAimY,
     AdjustAimDeadzone { up: bool },
+
+    // --- Callout lines ---
+    CycleCalloutStyle { up: bool },
+    ToggleCalloutWords,
+    ToggleCalloutHeading,
+    AdjustCalloutMax { up: bool },
 
     /// Restore every setting to its default.
     ResetSettings,
@@ -469,6 +494,19 @@ pub fn menu_button_dispatch(
                 game_settings.aim_deadzone = round2(d);
             }
 
+            MenuAction::CycleCalloutStyle { up } => {
+                game_settings.callout_style = (game_settings.callout_style + if up { 1 } else { 2 }) % 3;
+            }
+            MenuAction::ToggleCalloutWords => {
+                game_settings.callout_words = !game_settings.callout_words;
+            }
+            MenuAction::ToggleCalloutHeading => {
+                game_settings.callout_heading = !game_settings.callout_heading;
+            }
+            MenuAction::AdjustCalloutMax { up } => {
+                game_settings.callout_max = if up { (game_settings.callout_max + 1).min(6) } else { game_settings.callout_max.saturating_sub(1).max(1) };
+            }
+
             MenuAction::ResetSettings => {
                 *game_settings = GameSettings::default();
             }
@@ -607,6 +645,16 @@ pub fn update_settings_values(
             SettingsValue::Fullscreen => set_toggle(&mut text, &mut color, game_settings.fullscreen, ThemeColors::ACCENT_GREEN),
             SettingsValue::Vsync => set_toggle(&mut text, &mut color, game_settings.vsync, ThemeColors::ACCENT_GREEN),
             SettingsValue::InvertAimY => set_toggle(&mut text, &mut color, game_settings.invert_aim_y, ThemeColors::ACCENT_GREEN),
+            SettingsValue::CalloutWords => set_toggle(&mut text, &mut color, game_settings.callout_words, ThemeColors::ACCENT_GREEN),
+            SettingsValue::CalloutHeading => set_toggle(&mut text, &mut color, game_settings.callout_heading, ThemeColors::ACCENT_GREEN),
+            SettingsValue::CalloutStyle => {
+                text.0 = ["FULL", "SMALL", "OFF"][(game_settings.callout_style % 3) as usize].to_string();
+                color.0 = ThemeColors::ACCENT_BLUE;
+            }
+            SettingsValue::CalloutMax => {
+                text.0 = game_settings.callout_max.to_string();
+                color.0 = ThemeColors::ACCENT_BLUE;
+            }
             SettingsValue::Resolution => {
                 let (w, h) = game_settings.resolution();
                 text.0 = format!("{}x{}", w, h);
@@ -767,6 +815,24 @@ fn graphics_tab(content: &mut ChildSpawnerCommands) {
         MenuAction::AdjustUiScale { up: true },
     );
     caption(content, "Resolution applies in windowed mode.");
+    divider_thin(content);
+    generic_stepper_row(
+        content,
+        "CALLOUT LINES",
+        SettingsValue::CalloutStyle,
+        MenuAction::CycleCalloutStyle { up: false },
+        MenuAction::CycleCalloutStyle { up: true },
+    );
+    toggle_row(content, "WORDS ON THE LINES", SettingsValue::CalloutWords, MenuAction::ToggleCalloutWords);
+    toggle_row(content, "HEADING ARROW", SettingsValue::CalloutHeading, MenuAction::ToggleCalloutHeading);
+    generic_stepper_row(
+        content,
+        "MOST NOTES AT ONCE",
+        SettingsValue::CalloutMax,
+        MenuAction::AdjustCalloutMax { up: false },
+        MenuAction::AdjustCalloutMax { up: true },
+    );
+    caption(content, "Callout lines are the notes pinned to your ship. Small puts a number on the ship and the words in the title block.");
 }
 
 fn controls_tab(content: &mut ChildSpawnerCommands) {
