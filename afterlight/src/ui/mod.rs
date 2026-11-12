@@ -842,85 +842,29 @@ fn setup_ui(mut commands: Commands) {
         Visibility::Hidden,
         HudRoot,
     )).with_children(|parent| {
-        // ===== TOP BAR — Ship Vitals =====
-        // Credits used to also show as a separate top-right floating counter
-        // (removed — same currency.credits value shown twice on screen at
-        // once; the CRED group below is now the one place to look).
-        parent.spawn((Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(Val::Px(ThemeSpacing::LG), Val::Px(ThemeSpacing::LG), Val::Px(ThemeSpacing::SM), Val::Px(ThemeSpacing::SM)),
-                column_gap: Val::Px(ThemeSpacing::XS),
-                align_items: AlignItems::Center,
-                ..default()
-            }, BackgroundColor(ThemeColors::HUD_BG_SOLID), HudTopBar)).with_children(|top_bar| {
-            // Three scannable clusters: ship vitals (severity meters) · nav
-            // (system / depth / noise) · resources (credits / crew / cargo).
-            // The nav cluster grows to push resources to the right edge.
-
-            // ---- CLUSTER: ship vitals ----
-            top_bar.spawn(Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(14.0),
-                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
-                ..default()
-            }).with_children(|c| {
-                spawn_meter(c, "HULL", HudBarKind::Hull, ThemeColors::STATUS_OK, |r| {
-                    r.spawn((Text::new("100%"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), HullText));
-                });
-                spawn_meter(c, "PWR", HudBarKind::Power, ThemeColors::ACCENT_CYAN, |r| {
-                    r.spawn((Text::new("0/0"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), PowerText));
-                });
-                spawn_meter(c, "FUEL", HudBarKind::Fuel, ThemeColors::ACCENT_CYAN, |r| {
-                    r.spawn((Text::new("100%"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), FuelText));
-                });
-                spawn_meter(c, "THRS", HudBarKind::Thrust, ThemeColors::ACCENT_CYAN, |r| {
-                    r.spawn((Text::new("0%"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), ThrusterText));
-                });
-            });
-
-            // ---- CLUSTER: navigation (grows to push resources right) ----
-            top_bar.spawn((Node {
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(22.0),
-                padding: UiRect::axes(Val::Px(18.0), Val::Px(6.0)),
-                margin: UiRect::left(Val::Px(6.0)),
-                border: UiRect::left(Val::Px(1.0)),
-                ..default()
-            }, BorderColor::all(ThemeColors::BORDER_SUBTLE))).with_children(|c| {
-                spawn_stack(c, "SYS", false, |g| {
-                    g.spawn((Text::new("Haven"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_TITLE), SystemInfoText));
-                    g.spawn((Text::new("Station Orbit"), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), DepthZoneText));
-                });
-                spawn_stack(c, "HAVEN", false, |g| {
-                    g.spawn((Text::new("0.0 km"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), DepthText));
-                    g.spawn((Text::new(""), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), GravityIndicatorText));
-                });
-                spawn_stack(c, "NOISE", false, |g| {
-                    g.spawn((Text::new("0"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), NoiseText));
-                });
-            });
-
-            // ---- CLUSTER: resources (right) ----
-            top_bar.spawn((Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(18.0),
-                padding: UiRect::axes(Val::Px(16.0), Val::Px(6.0)),
-                border: UiRect::left(Val::Px(1.0)),
-                ..default()
-            }, BorderColor::all(ThemeColors::BORDER_SUBTLE))).with_children(|c| {
-                spawn_stack(c, "CRED", true, |g| {
-                    g.spawn((Text::new("500"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::ACCENT_YELLOW), CreditsText));
-                });
-                spawn_stack(c, "CREW", true, |g| {
-                    g.spawn((Text::new("0/0"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY), CrewText));
-                });
-                spawn_stack(c, "CARGO", true, |g| {
-                    g.spawn((Text::new("0/0"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::ACCENT_CYAN), CargoText));
-                });
+        // ===== PLACE BLOCK (top-left) =====
+        // Where the ship is, as the corner block of a chart: system, zone,
+        // distance from Haven, gravity, noise. It keeps HudTopBar, so every
+        // BelowTopBar panel (training card, right column) still sits under it.
+        parent.spawn((
+            {
+                let (mut node, bg, edge) = sheet_node(None);
+                node.position_type = PositionType::Absolute;
+                node.left = Val::Px(Sheet::MARGIN);
+                node.top = Val::Px(Sheet::MARGIN);
+                node.padding = UiRect::axes(Val::Px(12.0), Val::Px(7.0));
+                node.row_gap = Val::Px(2.0);
+                (node, bg, edge)
+            },
+            HudTopBar,
+        )).with_children(|place| {
+            place.spawn((Text::new("Haven"), TextFont { font_size: FontSize::Px(15.0), ..default() }, TextColor(Sheet::TITLE), SystemInfoText));
+            place.spawn((Text::new("Station Orbit"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), DepthZoneText));
+            place.spawn(Node { column_gap: Val::Px(10.0), align_items: AlignItems::Baseline, ..default() }).with_children(|row| {
+                row.spawn((Text::new("0.0 km"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL), DepthText));
+                row.spawn((Text::new(""), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL), GravityIndicatorText));
+                row.spawn((Text::new("noise"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+                row.spawn((Text::new("0"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), NoiseText));
             });
         });
 
@@ -933,7 +877,7 @@ fn setup_ui(mut commands: Commands) {
         parent.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                right: Val::Px(ThemeSpacing::LG),
+                right: Val::Px(Sheet::MARGIN),
                 top: Val::Px(RIGHT_COLUMN_TOP),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::FlexEnd,
@@ -954,75 +898,112 @@ fn setup_ui(mut commands: Commands) {
             ));
         });
 
-        // ===== BOTTOM BAR — Controls =====
-        parent.spawn((Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(24.0),
-                padding: UiRect::new(Val::Px(ThemeSpacing::XL), Val::Px(ThemeSpacing::XL), Val::Px(ThemeSpacing::SM), Val::Px(ThemeSpacing::SM)),
-                align_items: AlignItems::Center,
-                ..default()
-            }, BackgroundColor(ThemeColors::HUD_BG_SOLID))).with_children(|bar| {
+        // The old bottom line of control hints. Kept (build_ui writes it every
+        // frame) but not shown: the keys box below says the same thing.
+        parent.spawn((
+            Node { display: Display::None, ..default() },
+        )).with_children(|bar| {
             bar.spawn((
-                // Immediately overwritten every frame by build_ui::update_controls_help
-                // once GameState resolves — this is just the pre-first-frame fallback.
-                (Text::new("Mouse: Aim | WASD: Move | Space: Fire | B: Build | ESC: Pause"), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_MUTED)),
+                (Text::new(""), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_MUTED)),
                 build_ui::ControlsHelpText,
             ));
         });
 
-        // Contextual action bar. Every shortcut worth knowing shows up here as
-        // a labelled button for the current state, so the player never has to
-        // memorize a key. Buttons synthesize their KeyCode (see
-        // hud_action_button_press), so existing handlers fire unchanged.
-        // Children are rebuilt by rebuild_action_toolbar on state change.
+        // ===== KEYS BOX (bottom-left) =====
+        // Every action for the current state, as "key  action" in a ruled
+        // box. Buttons synthesize their KeyCode (see hud_action_button_press),
+        // so existing handlers fire unchanged; rebuild_action_toolbar refills
+        // it when the state changes.
         parent.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(30.0),
-                left: Val::Px(12.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                ..default()
+            {
+                let (mut node, bg, edge) = sheet_node(None);
+                node.position_type = PositionType::Absolute;
+                node.left = Val::Px(Sheet::MARGIN);
+                node.bottom = Val::Px(Sheet::MARGIN);
+                node.flex_direction = FlexDirection::Row;
+                node.flex_wrap = FlexWrap::Wrap;
+                node.max_width = Val::Px(440.0);
+                node.padding = UiRect::axes(Val::Px(6.0), Val::Px(4.0));
+                (node, bg, edge)
             },
-            // The strip had no background at all: only the buttons did, so the
-            // gaps between them were holes onto the play area and the station
-            // showed through the row.
-            BackgroundColor(ThemeColors::HUD_BG_SOLID),
             FlightToolbar,
         ));
 
-        // ===== WEAPON RACK (bottom-center, flight only) =====
-        parent.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(12.0),
-                right: Val::Px(12.0),
-                width: Val::Px(420.0),
-                flex_direction: FlexDirection::Column,
-                border: UiRect::all(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(ThemeColors::HUD_BG_SOLID),
-            BorderColor::all(ThemeColors::BORDER_DEFAULT),
-            WeaponRackPanel,
-        )).with_children(|rack| {
-            rack.spawn((Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
-                border: UiRect::bottom(Val::Px(1.0)),
-                ..default()
-            }, BorderColor::all(ThemeColors::BORDER_SUBTLE))).with_children(|h| {
-                h.spawn((Text::new("WEAPONS"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY)));
+        // ===== SHIP SHEET (bottom-right): guns over the title block =====
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(Sheet::MARGIN),
+            bottom: Val::Px(Sheet::MARGIN),
+            width: Val::Px(340.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(8.0),
+            ..default()
+        }).with_children(|col| {
+            // Guns: what each weapon is doing, one ruled line each.
+            col.spawn((
+                sheet_node(None),
+                WeaponRackPanel,
+            )).with_children(|rack| {
+                spawn_sheet_title(rack, "GUNS", "");
+                rack.spawn((Node {
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                    row_gap: Val::Px(2.0),
+                    ..default()
+                }, WeaponRackRoot));
             });
-            rack.spawn((Node {
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
-                row_gap: Val::Px(2.0),
-                ..default()
-            }, WeaponRackRoot));
+
+            // The title block: the ship's name, then hull / power / fuel with
+            // hairlines, then crew / cargo / credits.
+            col.spawn(sheet_node(None)).with_children(|block| {
+                block.spawn((
+                    Node {
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                        border: UiRect::bottom(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BorderColor::all(Sheet::EDGE),
+                )).with_children(|strip| {
+                    strip.spawn((Text::new("CSS HALYARD"), TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() }, TextColor(Sheet::TITLE)));
+                    strip.spawn(Node { column_gap: Val::Px(6.0), align_items: AlignItems::Center, ..default() }).with_children(|t| {
+                        t.spawn((Text::new("thrust"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+                        t.spawn((Text::new("0%"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), ThrusterText));
+                        t.spawn(Node { width: Val::Px(40.0), ..default() }).with_children(|w| {
+                            spawn_hairline(w, ThemeColors::ACCENT_CYAN, HudBar { kind: HudBarKind::Thrust });
+                        });
+                    });
+                });
+                let value = |text: &str, color: Color| (Text::new(text.to_string()), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(color));
+                block.spawn(Node {
+                    display: Display::Grid,
+                    grid_template_columns: RepeatedGridTrack::flex(3, 1.0),
+                    ..default()
+                }).with_children(|grid| {
+                    spawn_sheet_cell(grid, "HULL", true, true, |c| {
+                        c.spawn((value("100%", ThemeColors::TEXT_PRIMARY), HullText));
+                        spawn_hairline(c, ThemeColors::STATUS_OK, HudBar { kind: HudBarKind::Hull });
+                    });
+                    spawn_sheet_cell(grid, "POWER", true, true, |c| {
+                        c.spawn((value("0/0", ThemeColors::TEXT_PRIMARY), PowerText));
+                        spawn_hairline(c, ThemeColors::ACCENT_CYAN, HudBar { kind: HudBarKind::Power });
+                    });
+                    spawn_sheet_cell(grid, "FUEL", false, true, |c| {
+                        c.spawn((value("100%", ThemeColors::TEXT_PRIMARY), FuelText));
+                        spawn_hairline(c, ThemeColors::ACCENT_ORANGE, HudBar { kind: HudBarKind::Fuel });
+                    });
+                    spawn_sheet_cell(grid, "CREW", true, false, |c| {
+                        c.spawn((value("0/0", ThemeColors::TEXT_PRIMARY), CrewText));
+                    });
+                    spawn_sheet_cell(grid, "CARGO", true, false, |c| {
+                        c.spawn((value("0/0", ThemeColors::TEXT_PRIMARY), CargoText));
+                    });
+                    spawn_sheet_cell(grid, "CREDITS", false, false, |c| {
+                        c.spawn((value("500", ThemeColors::ACCENT_YELLOW), CreditsText));
+                    });
+                });
+            });
         });
     });
 }
@@ -1064,7 +1045,11 @@ fn hud_action_button_hover(
     mut buttons: Query<(&Interaction, &mut BackgroundColor), (With<HudActionButton>, Changed<Interaction>)>,
 ) {
     for (interaction, mut bg) in buttons.iter_mut() {
-        *bg = theme::button_color_for_interaction(interaction).into();
+        *bg = match interaction {
+            Interaction::None => Color::NONE,
+            other => theme::button_color_for_interaction(other),
+        }
+        .into();
     }
 }
 
@@ -1109,31 +1094,26 @@ fn rebuild_action_toolbar(
             for a in actions {
                 toolbar.spawn((
                     Node {
-                        padding: UiRect::new(Val::Px(11.0), Val::Px(11.0),
-                                             Val::Px(6.0), Val::Px(5.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Center,
-                        row_gap: Val::Px(1.0),
+                        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                        column_gap: Val::Px(5.0),
+                        align_items: AlignItems::Baseline,
                         ..default()
                     },
-                    BackgroundColor(ThemeColors::BG_ELEVATED),
-                    BorderColor::all(ThemeColors::BORDER_SUBTLE),
+                    BackgroundColor(Color::NONE),
                     Button,
                     Interaction::default(),
                     HudActionButton { key: a.key, modifier: a.modifier },
                 )).with_children(|b| {
-                    b.spawn((
-                        Text::new(a.label),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() },
-                        TextColor(ThemeColors::TEXT_PRIMARY),
-                    ));
-                    // The key stays visible but recessive: available to learn,
-                    // never required to act.
+                    // Key first, bright; the action after it, quiet.
                     b.spawn((
                         Text::new(a.key_disp),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
-                        TextColor(ThemeColors::TEXT_MUTED),
+                        TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
+                        TextColor(ThemeColors::TEXT_PRIMARY),
+                    ));
+                    b.spawn((
+                        Text::new(a.label.to_lowercase()),
+                        TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
+                        TextColor(Sheet::LABEL),
                     ));
                 });
             }
@@ -1457,7 +1437,10 @@ fn update_weapon_rack(
         let name = commands.spawn((
             Text::new(line.name.clone()),
             Node { flex_grow: 1.0, ..default() },
-            TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() },
+            // One line each: the sheet is narrow, and a wrapped name broke
+            // the ruled rows apart.
+            TextLayout::no_wrap(),
+            TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
             TextColor(ThemeColors::TEXT_PRIMARY),
             WeaponRackDynText,
         )).id();
@@ -1467,14 +1450,15 @@ fn update_weapon_rack(
             WeaponRackBarFill,
         )).id();
         let bar_track = commands.spawn((
-            Node { width: Val::Px(64.0), height: Val::Px(4.0), ..default() },
-            BackgroundColor(Color::srgba(0.04, 0.06, 0.11, 0.9)),
+            Node { width: Val::Px(44.0), height: Val::Px(2.0), ..default() },
+            BackgroundColor(theme::Sheet::TRACK),
         )).id();
         commands.entity(bar_track).add_child(bar_fill);
         let ammo = commands.spawn((
             Text::new(line.ammo.clone()),
-            Node { min_width: Val::Px(56.0), ..default() },
-            TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
+            Node { min_width: Val::Px(62.0), ..default() },
+            TextLayout::no_wrap(),
+            TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
             TextColor(ThemeColors::TEXT_SECONDARY),
             WeaponRackDynText,
         )).id();
@@ -1490,8 +1474,8 @@ fn update_weapon_rack(
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(10.0),
-                padding: UiRect::axes(Val::Px(4.0), Val::Px(3.0)),
+                column_gap: Val::Px(7.0),
+                padding: UiRect::axes(Val::Px(2.0), Val::Px(2.0)),
                 ..default()
             },
             WeaponRackRow { key: *key, name, bar: bar_fill, ammo, state },

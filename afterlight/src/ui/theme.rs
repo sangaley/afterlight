@@ -27,8 +27,8 @@ impl ThemeColors {
     pub const BG_PRESSED: Color = Color::srgba(0.18, 0.22, 0.35, 1.0);     // Pressed state
 
     // --- Borders ---
-    pub const BORDER_SUBTLE: Color = Color::srgba(0.15, 0.18, 0.25, 0.5);  // Barely visible separation
-    pub const BORDER_DEFAULT: Color = Color::srgba(0.22, 0.26, 0.35, 0.7); // Standard border
+    pub const BORDER_SUBTLE: Color = Color::srgb(0.173, 0.200, 0.278);     // Rules between rows (Sheet::RULE)
+    pub const BORDER_DEFAULT: Color = Color::srgb(0.298, 0.333, 0.439);   // A sheet's edge (Sheet::EDGE)
     pub const BORDER_BRIGHT: Color = Color::srgba(0.35, 0.40, 0.55, 0.8);  // Highlighted border
     pub const BORDER_ACTIVE: Color = Color::srgba(0.4, 0.6, 1.0, 0.8);     // Selected/active border
 
@@ -40,7 +40,7 @@ impl ThemeColors {
     // hints are all small text. Nudged up just past the floor; still well
     // below TEXT_SECONDARY, so it keeps reading as the quiet tier.
     pub const TEXT_MUTED: Color = Color::srgba(0.46, 0.49, 0.56, 1.0);
-    pub const TEXT_TITLE: Color = Color::srgba(0.70, 0.82, 1.0, 1.0);      // Titles, headers
+    pub const TEXT_TITLE: Color = Color::srgb(0.702, 0.820, 1.0);          // Titles, headers (Sheet::TITLE)
 
     // --- Accent colors (functional) ---
     pub const ACCENT_BLUE: Color = Color::srgb(0.30, 0.55, 1.0);           // Primary action, links
@@ -75,6 +75,107 @@ impl ThemeColors {
     pub const NOTIF_WARN_BG: Color = Color::srgba(0.18, 0.15, 0.03, 0.90);
     pub const NOTIF_DANGER_BG: Color = Color::srgba(0.25, 0.04, 0.04, 0.92);
     pub const NOTIF_SUCCESS_BG: Color = Color::srgba(0.03, 0.15, 0.06, 0.90);
+}
+
+/// The sheet look (UI rework, 2026-11, "B"): every panel is a sheet off a
+/// chart -- a 1 px edge, a title strip, ruled rows, small grey labels over
+/// bright values -- like the title block in the corner of an engineering
+/// drawing, and like the map's side panel it grew from.
+pub struct Sheet;
+
+impl Sheet {
+    /// The sheet's ground: the map side panel's #0a0d1a, nearly opaque.
+    pub const BG: Color = Color::srgba(0.039, 0.051, 0.102, 0.93);
+    /// Its outer edge and the rule under its title strip (#4c5570).
+    pub const EDGE: Color = Color::srgb(0.298, 0.333, 0.439);
+    /// The faint rules between rows and cells (#2c3347).
+    pub const RULE: Color = Color::srgb(0.173, 0.200, 0.278);
+    /// A sheet's own name (#b3d1ff).
+    pub const TITLE: Color = Color::srgb(0.702, 0.820, 1.0);
+    /// Small capital labels over values (#757d8f).
+    pub const LABEL: Color = Color::srgb(0.459, 0.490, 0.561);
+    /// Whatever is picked: corner brackets, the selected row's edge (#ffd966).
+    pub const PICKED: Color = Color::srgb(1.0, 0.851, 0.4);
+    /// The selected row's ground (#141a2c).
+    pub const ROW_PICKED: Color = Color::srgb(0.078, 0.102, 0.173);
+    /// Hairline meter track.
+    pub const TRACK: Color = Color::srgb(0.102, 0.129, 0.220);
+    /// Gap kept between a sheet and the screen edge.
+    pub const MARGIN: f32 = 16.0;
+}
+
+/// A sheet: edge, ground and a column inside. Add your own position.
+pub fn sheet_node(width: Option<f32>) -> (Node, BackgroundColor, BorderColor) {
+    (
+        Node {
+            width: width.map_or(Val::Auto, Val::Px),
+            flex_direction: FlexDirection::Column,
+            border: UiRect::all(Val::Px(1.0)),
+            ..default()
+        },
+        BackgroundColor(Sheet::BG),
+        BorderColor::all(Sheet::EDGE),
+    )
+}
+
+/// A sheet's title strip: its name on the left, an aside on the right.
+pub fn spawn_sheet_title(parent: &mut ChildSpawnerCommands, title: &str, aside: &str) {
+    parent
+        .spawn((
+            Node {
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(12.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(Sheet::EDGE),
+        ))
+        .with_children(|strip| {
+            strip.spawn((Text::new(title), TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() }, TextColor(Sheet::TITLE)));
+            if !aside.is_empty() {
+                strip.spawn((Text::new(aside), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+            }
+        });
+}
+
+/// One cell of a ruled grid: a small grey label over whatever `value` spawns.
+pub fn spawn_sheet_cell(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    rule_right: bool,
+    rule_bottom: bool,
+    value: impl FnOnce(&mut ChildSpawnerCommands),
+) {
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                border: UiRect {
+                    right: Val::Px(if rule_right { 1.0 } else { 0.0 }),
+                    bottom: Val::Px(if rule_bottom { 1.0 } else { 0.0 }),
+                    ..default()
+                },
+                ..default()
+            },
+            BorderColor::all(Sheet::RULE),
+        ))
+        .with_children(|cell| {
+            cell.spawn((Text::new(label), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+            value(cell);
+        });
+}
+
+/// A 2 px hairline meter; `fill` goes on the bar whose width is set.
+pub fn spawn_hairline(parent: &mut ChildSpawnerCommands, color: Color, fill: impl Bundle) {
+    parent
+        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(2.0), ..default() }, BackgroundColor(Sheet::TRACK)))
+        .with_children(|track| {
+            track.spawn(((Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(color)), fill));
+        });
 }
 
 /// Font size scale — consistent typographic hierarchy
