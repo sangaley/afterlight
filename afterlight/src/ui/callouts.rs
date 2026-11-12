@@ -155,7 +155,7 @@ fn gather(
         notes.push(Note {
             kind: Kind::Missiles,
             at: pd.unwrap_or(pos),
-            words: format!("point defence  ·  {missiles} missile{}", if missiles == 1 { "" } else { "s" }),
+            words: format!("point defence - {missiles} missile{}", if missiles == 1 { "" } else { "s" }),
             color: ThemeColors::ACCENT_CYAN,
         });
     }
@@ -164,7 +164,7 @@ fn gather(
         notes.push(Note {
             kind: Kind::Lock,
             at,
-            words: format!("locked  ·  {}", super::format_range_km(at.distance(pos))),
+            words: format!("locked - {}", super::format_range_km(at.distance(pos))),
             color: Sheet::PICKED,
         });
     }
@@ -178,7 +178,7 @@ fn gather(
         notes.push(Note {
             kind: Kind::Reload,
             at: gt.translation().truncate(),
-            words: format!("{:.0} mm  ·  {:.0} s", a.stats.gauge_mm, cd.timer.remaining_secs().ceil()),
+            words: format!("{:.0} mm - {:.0} s", a.stats.gauge_mm, cd.timer.remaining_secs().ceil()),
             color: ThemeColors::ACCENT_YELLOW,
         });
     }

@@ -83,7 +83,7 @@ const STEPS: &[TutorialStep] = &[
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "The bar across the top is the ship. HULL is what's still holding, PWR is reactor output against what we're drawing, FUEL burns whenever you thrust, and CREW is us. Keep an eye on all four.",
+        body: "The block at the bottom right is the ship. HULL is what's still holding, POWER is reactor output against what we're drawing, FUEL burns whenever you thrust, and CREW is us. Keep an eye on all four.",
     },
     TutorialStep {
         advance: Advance::Thrust,
@@ -248,41 +248,35 @@ fn spawn_tutorial_card(mut commands: Commands) {
         .with_children(|wrapper| {
             wrapper
                 .spawn((
+                    // A sheet, like every panel since the UI rework.
                     Node {
                         flex_direction: FlexDirection::Column,
                         width: Val::Px(460.0),
                         max_width: Val::Percent(92.0),
-                        padding: UiRect::all(Val::Px(ThemeSpacing::LG)),
-                        row_gap: Val::Px(ThemeSpacing::SM),
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
-                    BackgroundColor(ThemeColors::BG_CARD),
+                    BackgroundColor(crate::ui::theme::Sheet::BG),
+                    BorderColor::all(crate::ui::theme::Sheet::EDGE),
                 ))
                 .with_children(|card| {
-                    // Subtle accent line — marks this as the training card
-                    // (same idiom as the main-menu title accents).
+                    // Title strip: who's talking, and how far along.
                     card.spawn((
                         Node {
                             width: Val::Percent(100.0),
-                            height: Val::Px(2.0),
-                            margin: UiRect::bottom(Val::Px(ThemeSpacing::XS)),
+                            justify_content: JustifyContent::SpaceBetween,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                            border: UiRect::bottom(Val::Px(1.0)),
                             ..default()
                         },
-                        BackgroundColor(ThemeColors::ACCENT_BLUE),
-                    ));
-
-                    // Header: title + progress.
-                    card.spawn(Node {
-                        width: Val::Percent(100.0),
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    })
+                        BorderColor::all(crate::ui::theme::Sheet::EDGE),
+                    ))
                     .with_children(|header| {
                         header.spawn((
-                            Text::new("SHAKEDOWN  ·  CHIEF MARLOW"),
-                            TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
-                            TextColor(ThemeColors::ACCENT_BLUE),
+                            Text::new("SHAKEDOWN - CHIEF MARLOW"),
+                            TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                            TextColor(crate::ui::theme::Sheet::TITLE),
                         ));
                         header.spawn((
                             Text::new(format!("1 / {}", STEPS.len())),
@@ -295,8 +289,9 @@ fn spawn_tutorial_card(mut commands: Commands) {
                     // Instruction/lesson line for the current step.
                     card.spawn((
                         Text::new(STEPS[0].body),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() },
+                        TextFont { font_size: FontSize::Px(13.5), ..default() },
                         TextColor(ThemeColors::TEXT_PRIMARY),
+                        Node { margin: UiRect::axes(Val::Px(12.0), Val::Px(10.0)), ..default() },
                         TutorialBodyText,
                     ));
 
@@ -304,9 +299,10 @@ fn spawn_tutorial_card(mut commands: Commands) {
                     // Updated per step; Semicolon dismisses (not ESC, which pauses).
                     card.spawn((
                         Text::new("[;] skip the shakedown"),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
-                        TextColor(ThemeColors::TEXT_MUTED),
-                        Node { margin: UiRect::top(Val::Px(ThemeSpacing::XS)), ..default() },
+                        TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                        TextColor(crate::ui::theme::Sheet::LABEL),
+                        Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+                        BorderColor::all(crate::ui::theme::Sheet::RULE),
                         TutorialFooterText,
                     ));
                 });

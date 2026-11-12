@@ -1912,34 +1912,21 @@ fn handle_notifications(
             }
         }
 
-        let (color, bg_color, prefix) = match event.notification_type {
-            NotificationType::Danger => (
-                theme::ThemeColors::STATUS_DANGER,
-                theme::ThemeColors::NOTIF_DANGER_BG,
-                "! ",
-            ),
-            NotificationType::Warning => (
-                theme::ThemeColors::STATUS_WARN,
-                theme::ThemeColors::NOTIF_WARN_BG,
-                "* ",
-            ),
-            NotificationType::Success => (
-                theme::ThemeColors::ACCENT_GREEN,
-                theme::ThemeColors::NOTIF_SUCCESS_BG,
-                "+ ",
-            ),
-            NotificationType::Info => (
-                theme::ThemeColors::TEXT_PRIMARY,
-                theme::ThemeColors::NOTIF_INFO_BG,
-                "",
-            ),
+        // A row on the sheet ground, its kind told by a thin left edge and,
+        // for warnings and danger, the text's tint. No symbols, no slabs.
+        let (edge, color) = match event.notification_type {
+            NotificationType::Danger => (theme::ThemeColors::STATUS_DANGER, Color::srgb(1.0, 0.76, 0.76)),
+            NotificationType::Warning => (theme::ThemeColors::STATUS_WARN, Color::srgb(1.0, 0.886, 0.541)),
+            NotificationType::Success => (theme::ThemeColors::ACCENT_GREEN, theme::ThemeColors::TEXT_PRIMARY),
+            NotificationType::Info => (theme::ThemeColors::ACCENT_CYAN, theme::ThemeColors::TEXT_SECONDARY),
         };
-        let msg = format!("{}{}", prefix, event.message);
+        let bg_color = theme::Sheet::BG;
         let toast = commands.spawn((
-            Text::new(&msg), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY), ..default() }, TextColor(color), Node { margin: UiRect::bottom(Val::Px(theme::ThemeSpacing::XS)),
+            Text::new(&event.message), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY_SMALL), ..default() }, TextColor(color), Node { margin: UiRect::bottom(Val::Px(theme::ThemeSpacing::XS)),
                 padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(5.0), Val::Px(5.0)),
+                border: UiRect::left(Val::Px(2.0)),
                 max_width: Val::Px(340.0),
-                ..default() }, BackgroundColor(bg_color),
+                ..default() }, BackgroundColor(bg_color), BorderColor::all(edge),
             NotificationToast { timer: Timer::from_seconds(event.duration, TimerMode::Once) },
             ToastBackground(bg_color),
         )).insert(ChildOf(container)).id();
@@ -1957,9 +1944,9 @@ struct ToastBackground(Color);
 fn update_notifications(
     mut commands: Commands,
     time: Res<Time>,
-    mut toast_query: Query<(Entity, &mut NotificationToast, &mut TextColor, Option<(&mut BackgroundColor, &ToastBackground)>)>,
+    mut toast_query: Query<(Entity, &mut NotificationToast, &mut TextColor, Option<(&mut BackgroundColor, &ToastBackground)>, Option<&mut BorderColor>)>,
 ) {
-    for (entity, mut toast, mut text_color, background) in toast_query.iter_mut() {
+    for (entity, mut toast, mut text_color, background, edge) in toast_query.iter_mut() {
         toast.timer.tick(time.delta());
         let remaining = toast.timer.remaining_secs() / toast.timer.duration().as_secs_f32();
         if remaining < 0.3 {
@@ -1969,6 +1956,9 @@ fn update_notifications(
             // last moments of every notice were an empty coloured box.
             if let Some((mut bg, base)) = background {
                 bg.0 = base.0.with_alpha(base.0.alpha() * alpha);
+            }
+            if let Some(mut edge) = edge {
+                edge.left.set_alpha(alpha);
             }
         }
         if toast.timer.is_finished() {

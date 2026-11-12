@@ -94,60 +94,72 @@ fn spawn_log_card(mut commands: Commands) {
             LogCardRoot,
         ))
         .with_children(|wrapper| {
+            // A sheet: the kicker and the close key in the title strip, then
+            // the title, the bold line and the text.
             wrapper
                 .spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
-                        width: Val::Px(520.0),
+                        width: Val::Px(540.0),
                         max_width: Val::Percent(92.0),
-                        padding: UiRect::all(Val::Px(ThemeSpacing::LG)),
-                        row_gap: Val::Px(ThemeSpacing::SM),
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
-                    BackgroundColor(ThemeColors::BG_CARD),
+                    BackgroundColor(crate::ui::theme::Sheet::BG.with_alpha(0.97)),
+                    BorderColor::all(crate::ui::theme::Sheet::EDGE),
                 ))
                 .with_children(|card| {
                     card.spawn((
                         Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(2.0),
-                            margin: UiRect::bottom(Val::Px(ThemeSpacing::XS)),
+                            justify_content: JustifyContent::SpaceBetween,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                            border: UiRect::bottom(Val::Px(1.0)),
                             ..default()
                         },
-                        BackgroundColor(ThemeColors::ACCENT_ORANGE),
-                    ));
-                    card.spawn((
-                        Text::new("RECOVERED LOG"),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
-                        TextColor(ThemeColors::ACCENT_ORANGE),
-                        LogCardKicker,
-                    ));
-                    card.spawn((
-                        Text::new(""),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() },
-                        TextColor(ThemeColors::TEXT_PRIMARY),
-                        LogCardTitle,
-                    ));
-                    card.spawn((
-                        Text::new(""),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() },
-                        TextColor(ThemeColors::ACCENT_ORANGE),
-                        Node { display: Display::None, margin: UiRect::vertical(Val::Px(ThemeSpacing::XS)), ..default() },
-                        LogCardGist,
-                    ));
-                    card.spawn((
-                        Text::new(""),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() },
-                        TextColor(ThemeColors::TEXT_SECONDARY),
-                        LogCardBody,
-                    ));
-                    card.spawn((
-                        Text::new("[Space] close"),
-                        TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() },
-                        TextColor(ThemeColors::TEXT_MUTED),
-                        Node { margin: UiRect::top(Val::Px(ThemeSpacing::XS)), ..default() },
-                        LogCardFooter,
-                    ));
+                        BorderColor::all(crate::ui::theme::Sheet::EDGE),
+                    ))
+                    .with_children(|strip| {
+                        strip.spawn((
+                            Text::new("RECOVERED LOG"),
+                            TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                            TextColor(ThemeColors::ACCENT_ORANGE),
+                            LogCardKicker,
+                        ));
+                        strip.spawn((
+                            Text::new("[Space] close"),
+                            TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                            TextColor(crate::ui::theme::Sheet::LABEL),
+                            LogCardFooter,
+                        ));
+                    });
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(ThemeSpacing::SM),
+                        padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(14.0)),
+                        ..default()
+                    })
+                    .with_children(|inner| {
+                        inner.spawn((
+                            Text::new(""),
+                            TextFont { font_size: FontSize::Px(16.0), ..default() },
+                            TextColor(crate::ui::theme::Sheet::TITLE),
+                            LogCardTitle,
+                        ));
+                        inner.spawn((
+                            Text::new(""),
+                            TextFont { font_size: FontSize::Px(ThemeFonts::BODY), weight: FontWeight::BOLD, ..default() },
+                            TextColor(Color::srgb(1.0, 0.914, 0.659)),
+                            Node { display: Display::None, margin: UiRect::vertical(Val::Px(ThemeSpacing::XS)), ..default() },
+                            LogCardGist,
+                        ));
+                        inner.spawn((
+                            Text::new(""),
+                            TextFont { font_size: FontSize::Px(13.0), ..default() },
+                            TextColor(ThemeColors::TEXT_SECONDARY),
+                            LogCardBody,
+                        ));
+                    });
                 });
         });
 }
