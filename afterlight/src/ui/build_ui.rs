@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use crate::ui::theme::Sheet;
 use smallvec::SmallVec;
 use crate::states::BuildState;
 use crate::resources::*;
@@ -894,8 +895,9 @@ pub fn spawn_build_panel(
                         Val::Px(10.0), Val::Px(10.0),
                         Val::Px(8.0), Val::Px(8.0),
                     ),
+                    border: UiRect::all(Val::Px(1.0)),
                     ..default()
-                }, BackgroundColor(ThemeColors::HUD_BG_SOLID)))
+                }, BackgroundColor(Sheet::BG), BorderColor::all(Sheet::EDGE)))
             .with_children(|hints| {
                 hints.spawn((
                     (
@@ -912,18 +914,21 @@ pub fn spawn_build_panel(
                     width: Val::Percent(100.0),
                     height: Val::Px(32.0),
                     flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Stretch,
+                    border: UiRect::top(Val::Px(1.0)),
                     ..default()
-                }, BackgroundColor(Color::srgba(0.04, 0.05, 0.10, 0.95))))
+                }, BackgroundColor(Sheet::BG.with_alpha(1.0)), BorderColor::all(Sheet::EDGE)))
             .with_children(|tabs_row| {
                 // Mode indicator on the left
                 tabs_row.spawn((
-                    Text::new(" PLACING "), TextFont { font_size: FontSize::Px(16.0), ..default() }, TextColor(Color::BLACK), Node {
+                    Text::new("PLACING"), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(Sheet::PICKED), Node {
                             padding: UiRect::new(
-                                Val::Px(8.0), Val::Px(8.0),
-                                Val::Px(6.0), Val::Px(6.0),
+                                Val::Px(14.0), Val::Px(14.0),
+                                Val::Px(9.0), Val::Px(6.0),
                             ),
+                            border: UiRect::right(Val::Px(1.0)),
                             ..default()
-                        }, BackgroundColor(Color::srgb(0.0, 1.0, 0.0)),
+                        }, BorderColor::all(Sheet::RULE),
                     BuildModeText,
                 ));
 
@@ -948,7 +953,7 @@ pub fn spawn_build_panel(
                                 border: UiRect::bottom(Val::Px(2.0)),
                                 ..default()
                             },
-                            BackgroundColor(ThemeColors::BG_CARD),
+                            BackgroundColor(Color::NONE),
                             BorderColor::all(Color::NONE)),
                         CategoryTab { index: i },
                         CategoryTabBg,
@@ -976,8 +981,9 @@ pub fn spawn_build_panel(
                     width: Val::Percent(100.0),
                     height: Val::Px(116.0),
                     flex_direction: FlexDirection::Row,
+                    border: UiRect::top(Val::Px(1.0)),
                     ..default()
-                }, BackgroundColor(Color::srgba(0.03, 0.04, 0.09, 0.94))))
+                }, BackgroundColor(Sheet::BG.with_alpha(1.0)), BorderColor::all(Sheet::RULE)))
             .with_children(|content| {
                 // LEFT: Item slots — a horizontal strip that actually scrolls.
                 // Categories like Weapons hold more 60px slots than 60% of any
@@ -1008,21 +1014,21 @@ pub fn spawn_build_panel(
                         height: Val::Percent(80.0),
                         align_self: AlignSelf::Center,
                         ..default()
-                    }, BackgroundColor(Color::srgba(0.20, 0.23, 0.30, 0.4))));
+                    }, BackgroundColor(Sheet::RULE)));
 
                 // RIGHT: Info panel
                 content.spawn((Node {
                         width: Val::Percent(40.0),
                         height: Val::Percent(100.0),
                         flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        row_gap: Val::Px(2.0),
+                        padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                        row_gap: Val::Px(3.0),
                         ..default()
                     }))
                 .with_children(|info| {
                     // Item name
                     info.spawn((
-                        (Text::new("Outer Hull"), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::WHITE)),
+                        (Text::new("Outer Hull"), TextFont { font_size: FontSize::Px(16.0), ..default() }, TextColor(Sheet::TITLE)),
                         BuildItemName,
                     ));
 
@@ -1034,7 +1040,7 @@ pub fn spawn_build_panel(
 
                     // Rotation
                     info.spawn((
-                        (Text::new("R: Rotate | North"), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.45, 0.55, 0.65))),
+                        (Text::new("R: Rotate | North"), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Sheet::LABEL)),
                         BuildRotationText,
                     ));
 
@@ -1046,13 +1052,13 @@ pub fn spawn_build_panel(
 
                     // Description
                     info.spawn((
-                        (Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::srgb(0.55, 0.55, 0.6))),
+                        (Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Sheet::LABEL)),
                         BuildDescText,
                     ));
 
                     // Power & shielding summary
                     info.spawn((
-                        (Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::srgb(0.5, 0.6, 0.7))),
+                        (Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Sheet::LABEL)),
                         BuildSummaryText,
                     ));
                 });
@@ -1127,6 +1133,12 @@ fn spawn_item_slots(
     }
 }
 
+/// A slot's ground: the sheet, tinted a little toward its category.
+fn slot_ground(color: Color) -> Color {
+    let c = color.to_srgba();
+    Color::srgb(0.039 + c.red * 0.10, 0.051 + c.green * 0.10, 0.102 + c.blue * 0.10)
+}
+
 fn spawn_single_slot(
     parent: &mut ChildSpawnerCommands,
     index: usize,
@@ -1143,15 +1155,20 @@ fn spawn_single_slot(
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 row_gap: Val::Px(3.0),
-                border: UiRect::all(Val::Px(2.0)),
+                border: UiRect::all(Val::Px(1.0)),
                 ..default()
-            }, BackgroundColor(color), BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.0))),
+            }, BackgroundColor(slot_ground(color)), BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.0))),
         ItemSlot { index },
         ItemSlotBg,
         Interaction::default(),
     ))
     .with_children(|slot| {
-        slot.spawn((Text::new(label), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::WHITE)));
+        // The category's colour as a hairline across the top, not a fill.
+        slot.spawn((
+            Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), right: Val::Px(0.0), height: Val::Px(2.0), ..default() },
+            BackgroundColor(color),
+        ));
+        slot.spawn((Text::new(label), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY)));
         if cost > 0 {
             // Build cost — the mockup's "◆ cost" tag on each module.
             slot.spawn((Text::new(format!("*{}", cost)), TextFont { font_size: FontSize::Px(9.0), ..default() }, TextColor(Color::srgb(0.95, 0.85, 0.4))));
@@ -1275,13 +1292,15 @@ pub fn update_build_panel(
 
     // Mode indicator
     if let Ok(entity) = mode_q.single() {
-        if let Ok((mut text, _)) = text_query.get_mut(entity) {
-            let (label, _color) = match current_build_state.get() {
-                BuildState::Placing => (" PLACING ", Color::srgb(0.0, 1.0, 0.0)),
-                BuildState::Deleting => (" DELETE ", Color::srgb(1.0, 0.0, 0.0)),
-                _ => (" BUILD ", Color::WHITE),
+        if let Ok((mut text, mut color)) = text_query.get_mut(entity) {
+            // Words, not a slab: gold while placing, red while deleting.
+            let (label, want) = match current_build_state.get() {
+                BuildState::Placing => ("PLACING", Sheet::PICKED),
+                BuildState::Deleting => ("DELETING", ThemeColors::STATUS_DANGER),
+                _ => ("BUILD", Sheet::TITLE),
             };
-            text.0 = label.to_string();
+            if text.0 != label { text.0 = label.to_string(); }
+            if color.0 != want { color.0 = want; }
         }
     }
 
@@ -1294,9 +1313,9 @@ pub fn update_build_panel(
         // to say "selected" -- an accent underline rather than a slab of
         // saturated colour per category.
         let (bg_col, fg, under) = if is_active {
-            (ThemeColors::BG_ELEVATED, ThemeColors::TEXT_PRIMARY, category_color(cat))
+            (Sheet::ROW_PICKED, ThemeColors::TEXT_PRIMARY, category_color(cat))
         } else {
-            (ThemeColors::BG_CARD, ThemeColors::TEXT_MUTED, Color::NONE)
+            (Color::NONE, Sheet::LABEL, Color::NONE)
         };
         *bg = bg_col.into();
         *border = BorderColor::all(under);
@@ -1328,7 +1347,7 @@ pub fn update_build_panel(
     // Item slot highlighting (white border on selected)
     for (slot, mut border) in slot_query.iter_mut() {
         if slot.index == sel_index {
-            *border = Color::WHITE.into();
+            *border = Sheet::PICKED.into();
         } else {
             *border = Color::srgba(0.0, 0.0, 0.0, 0.0).into();
         }

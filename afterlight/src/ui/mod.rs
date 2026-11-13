@@ -767,8 +767,10 @@ fn spawn_stack(
 /// lists down the right-hand side.
 fn hide_hud_while_building(
     build: Res<State<BuildState>>,
-    mut cargo: Query<&mut Visibility, (With<StationCargoPanel>, Without<FlightToolbar>)>,
-    mut toolbar: Query<&mut Visibility, (With<FlightToolbar>, Without<StationCargoPanel>)>,
+    mut cargo: Query<&mut Visibility, (With<StationCargoPanel>, Without<FlightToolbar>, Without<ShipSheet>)>,
+    mut toolbar: Query<&mut Visibility, (With<FlightToolbar>, Without<StationCargoPanel>, Without<ShipSheet>)>,
+    // The guns and the title block sat under the build panel's own readout.
+    mut ship_sheet: Query<&mut Visibility, (With<ShipSheet>, Without<FlightToolbar>, Without<StationCargoPanel>)>,
 ) {
     let want = if *build.get() == BuildState::Inactive {
         Visibility::Inherited
@@ -780,12 +782,16 @@ fn hide_hud_while_building(
             *v = want;
         }
     }
-    for mut v in toolbar.iter_mut() {
+    for mut v in toolbar.iter_mut().chain(ship_sheet.iter_mut()) {
         if *v != want {
             *v = want;
         }
     }
 }
+
+/// The bottom-right column: the guns sheet over the title block.
+#[derive(Component)]
+struct ShipSheet;
 
 /// Shut the station's own windows when the ship leaves.
 ///
@@ -932,7 +938,7 @@ fn setup_ui(mut commands: Commands) {
         ));
 
         // ===== SHIP SHEET (bottom-right): guns over the title block =====
-        parent.spawn(Node {
+        parent.spawn((Node {
             position_type: PositionType::Absolute,
             right: Val::Px(Sheet::MARGIN),
             bottom: Val::Px(Sheet::MARGIN),
@@ -940,7 +946,7 @@ fn setup_ui(mut commands: Commands) {
             flex_direction: FlexDirection::Column,
             row_gap: Val::Px(8.0),
             ..default()
-        }).with_children(|col| {
+        }, ShipSheet)).with_children(|col| {
             // Guns: what each weapon is doing, one ruled line each.
             col.spawn((
                 sheet_node(None),
@@ -1989,10 +1995,14 @@ fn spawn_station_cargo_panel(mut commands: Commands) {
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(ThemeSpacing::XS),
                 padding: UiRect::all(Val::Px(ThemeSpacing::MD)),
+                border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(ThemeColors::BG_PANEL),
-            ZIndex(40),
+            BackgroundColor(Sheet::BG),
+            BorderColor::all(Sheet::EDGE),
+            // Under every window: the crew roster opened over it used to be
+            // drawn beneath it.
+            ZIndex(5),
             StationCargoPanel,
         ))
         .with_children(|panel| {
@@ -2377,30 +2387,29 @@ fn toggle_crew_menu(
     let content = windows::framework::spawn_floating_window(
         &mut commands,
         WINDOW_ID,
-        "Crew Management",
-        Vec2::new(460.0, 340.0),
+        "Crew",
+        Vec2::new(440.0, 420.0),
         Vec2::new(10.0, 60.0),
     );
 
     commands.entity(content).with_children(|parent| {
         parent.spawn((
-            Text::new(format!("{}/{} berths - {}/{} stations staffed",
+            Text::new(format!("{} OF {} BERTHS  -  {} OF {} POSTS STAFFED",
                 staffing_state.total_crew, staffing_state.total_berths,
                 staffing_state.staffed_stations, staffing_state.total_stations)),
-            TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY), ..default() },
-            TextColor(theme::ThemeColors::TEXT_TITLE),
-            Node { margin: UiRect::bottom(Val::Px(theme::ThemeSpacing::SM)), ..default() },
+            TextFont { font_size: FontSize::Px(theme::ThemeFonts::TINY), ..default() },
+            TextColor(theme::Sheet::LABEL),
+            Node { margin: UiRect::bottom(Val::Px(theme::ThemeSpacing::XS)), ..default() },
         ));
     });
     theme::spawn_divider(&mut commands, content);
 
     commands.entity(content).with_children(|parent| {
-        parent.spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(theme::ThemeSpacing::SM),
-            ..default()
-        }).with_children(|list| {
-            for (entity, crew, duty) in crew_query.iter() {
+        // Grouped by what each hand is doing, like the mock-up: the posts
+        // first (by the kind of post), then the repair gang, then whoever is
+        // away from a post, then the lost.
+        let mut rows: Vec<(u8, String, Entity, CrewMember, CrewDuty, String, Color)> = Vec::new();
+        for (entity, crew, duty) in crew_query.iter() {
                 let duty = duty.copied().unwrap_or_default();
                 let (walking, to_medbay, burial, eva) = doing
                     .get(&entity)
@@ -2434,19 +2443,73 @@ fn toggle_crew_menu(
                     ("Off duty".to_string(), theme::ThemeColors::TEXT_MUTED)
                 };
 
+
+                let (rank, group) = if crew.health <= 0.0 {
+                    (9, "LOST".to_string())
+                } else if crew.state == CrewState::Repairing {
+                    (5, "DAMAGE CONTROL".to_string())
+                } else if let Some(post) = crew_assignments.get(&entity) {
+                    let cat = post.category();
+                    let rank = match cat {
+                        ModuleCategory::Control => 0,
+                        ModuleCategory::Guns | ModuleCategory::Lasers | ModuleCategory::Weapons => 1,
+                        ModuleCategory::Propulsion => 2,
+                        ModuleCategory::Power => 3,
+                        ModuleCategory::LifeSupport => 4,
+                        _ => 4,
+                    };
+                    let name = match cat {
+                        ModuleCategory::Guns | ModuleCategory::Lasers | ModuleCategory::Weapons => "GUNS".to_string(),
+                        other => other.name().to_uppercase(),
+                    };
+                    (rank, name)
+                } else if eva || burial || to_medbay || crew.state == CrewState::Panicking {
+                    (7, "AWAY FROM POSTS".to_string())
+                } else {
+                    (8, "OFF DUTY".to_string())
+                };
+                rows.push((rank, group, entity, crew.clone(), duty, status, dot_color));
+        }
+        rows.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.3.name.cmp(&b.3.name)));
+
+        parent.spawn((Node {
+            flex_direction: FlexDirection::Column,
+            ..default()
+        }, windows::framework::ScrollsOnWheel)).with_children(|list| {
+            let mut last_group = String::new();
+            for (_, group, entity, crew, duty, status, dot_color) in rows {
+                let crew = &crew;
+                if group != last_group {
+                    list.spawn((
+                        Node {
+                            padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(10.0), Val::Px(4.0)),
+                            border: UiRect::bottom(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderColor::all(theme::Sheet::EDGE),
+                    )).with_children(|h| {
+                        h.spawn((
+                            Text::new(group.clone()),
+                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::TINY), ..default() },
+                            TextColor(theme::Sheet::LABEL),
+                        ));
+                    });
+                    last_group = group.clone();
+                }
                 list.spawn((
                     Node {
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
                         column_gap: Val::Px(theme::ThemeSpacing::MD),
-                        padding: UiRect::all(Val::Px(theme::ThemeSpacing::SM)),
+                        padding: UiRect::axes(Val::Px(4.0), Val::Px(5.0)),
+                        border: UiRect::bottom(Val::Px(1.0)),
                         ..default()
                     },
-                    BackgroundColor(theme::ThemeColors::BG_CARD),
+                    BorderColor::all(theme::Sheet::RULE),
                 )).with_children(|row| {
                     // Status dot — one glance instead of parsing text
                     row.spawn((
-                        Node { width: Val::Px(8.0), height: Val::Px(8.0), ..default() },
+                        Node { width: Val::Px(6.0), height: Val::Px(6.0), ..default() },
                         BackgroundColor(dot_color),
                     ));
                     row.spawn(Node {
@@ -2456,14 +2519,18 @@ fn toggle_crew_menu(
                         ..default()
                     }).with_children(|info| {
                         info.spawn((
-                            Text::new(format!("{}  -  {}", crew.name, status)),
-                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY_SMALL), ..default() },
+                            Text::new(format!("{}   ", crew.name)),
+                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() },
                             TextColor(if crew.health <= 0.0 { theme::ThemeColors::TEXT_MUTED } else { theme::ThemeColors::TEXT_PRIMARY }),
+                        )).with_child((
+                            TextSpan::new(status.to_lowercase()),
+                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() },
+                            TextColor(theme::ThemeColors::TEXT_SECONDARY),
                         ));
                         info.spawn((
-                            Text::new(format!("HP {:.0}   Morale {:.0}", crew.health, crew.morale)),
-                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() },
-                            TextColor(theme::ThemeColors::TEXT_MUTED),
+                            Text::new(format!("health {:.0}   morale {:.0}", crew.health, crew.morale)),
+                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::TINY), ..default() },
+                            TextColor(theme::Sheet::LABEL),
                         ));
                     });
 
@@ -2487,8 +2554,8 @@ fn toggle_crew_menu(
                                 border: UiRect::all(Val::Px(1.0)),
                                 ..default()
                             },
-                            BackgroundColor(theme::ThemeColors::BG_ELEVATED),
-                            BorderColor::all(theme::ThemeColors::BORDER_DEFAULT),
+                            BackgroundColor(Color::NONE),
+                            BorderColor::all(theme::Sheet::RULE),
                             Button,
                             Interaction::default(),
                             CrewDutyButton { crew: entity },
@@ -3134,101 +3201,158 @@ fn spawn_pause_menu(
 
     info!("Spawning pause menu, modules found: {}", module_query.iter().count());
 
+    use menu_buttons::{MenuAction, MenuButton};
+    use theme::{spawn_hairline, spawn_sheet_title, Sheet, ThemeColors, ThemeFonts};
+
+    // A sheet row that is a button: words left, its key right.
+    fn row_button(parent: &mut ChildSpawnerCommands, words: &str, key: &str, first: bool, action: MenuAction) {
+        parent.spawn((
+            Node {
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
+                border: UiRect { left: Val::Px(2.0), bottom: Val::Px(1.0), ..default() },
+                ..default()
+            },
+            BackgroundColor(if first { Sheet::ROW_PICKED } else { Color::NONE }),
+            BorderColor { left: if first { Sheet::PICKED } else { Color::NONE }, bottom: Sheet::RULE, ..BorderColor::all(Color::NONE) },
+            Button,
+            Interaction::default(),
+            MenuButton { action },
+        )).with_children(|b| {
+            b.spawn((Text::new(words), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(if first { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_SECONDARY })));
+            if !key.is_empty() {
+                b.spawn((Text::new(key), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+            }
+        });
+    }
+    // A small slot button.
+    fn slot_button(parent: &mut ChildSpawnerCommands, label: &str, action: MenuAction) {
+        parent.spawn((
+            Node {
+                width: Val::Px(34.0),
+                height: Val::Px(24.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(ThemeColors::BG_INPUT),
+            BorderColor::all(Sheet::RULE),
+            Button,
+            Interaction::default(),
+            MenuButton { action },
+        )).with_children(|b| {
+            b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY)));
+        });
+    }
+
+    // The game stays in view behind, dimmed: everything holds still.
     commands.spawn((
         (Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(10.0),
                 ..default()
-            }, BackgroundColor(theme::ThemeColors::BG_VOID), ZIndex(100)),
+            }, BackgroundColor(Color::srgba(0.012, 0.02, 0.05, 0.8)), GlobalZIndex(150)),
         PauseMenuOverlay,
     )).with_children(|parent| {
-        // Header
-        parent.spawn((Text::new("PAUSED"), TextFont { font_size: FontSize::Px(theme::ThemeFonts::H1), ..default() }, TextColor(theme::ThemeColors::TEXT_TITLE)));
-
-        // Vitals line
         let hull_pct = (hull_state.hull_integrity * 100.0) as i32;
-        parent.spawn((Text::new(format!(
-                "Haven: {}  Hull: {}%  Power: {:.0}/{:.0}",
-                format_range_km(depth_state.current_depth), hull_pct,
-                // Used / available, like the HUD's PWR readout.
-                power_state.total_power_consumption, power_state.total_power_generation,
-            )), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::srgb(0.8, 0.8, 0.8))));
-
-        // Module counts by category
-        for cat in ModuleCategory::ALL {
-            let total = cat_total.get(cat).copied().unwrap_or(0);
-            if total == 0 { continue; }
-            let active = cat_active.get(cat).copied().unwrap_or(0);
-            let color = if active == total {
-                Color::srgb(0.0, 1.0, 0.0)
-            } else if active > 0 {
-                Color::srgb(1.0, 1.0, 0.0)
-            } else {
-                Color::srgb(1.0, 0.0, 0.0)
-            };
-            parent.spawn((Text::new(format!("  {}: {}/{} working", cat.name(), active, total)), TextFont { font_size: FontSize::Px(16.0), ..default() }, TextColor(color)));
-        }
-
-        use menu_buttons::{spawn_chip_button, spawn_menu_button, MenuAction};
-
-        // Spacer between the status readout and the buttons.
-        parent.spawn(Node { height: Val::Px(theme::ThemeSpacing::MD), ..default() });
-
-        // Button column (all keyboard shortcuts below still work too).
         parent.spawn(Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(theme::ThemeSpacing::MD),
-                ..default()
-            }).with_children(|actions| {
-            use theme::ThemeColors;
+            position_type: PositionType::Absolute,
+            left: Val::Px(60.0),
+            bottom: Val::Px(60.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(4.0),
+            ..default()
+        }).with_children(|t| {
+            t.spawn((Text::new("PAUSED"), TextFont { font_size: FontSize::Px(28.0), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY)));
+            t.spawn((Text::new(format!(
+                "{} from Haven - hull {}% - power {:.0}/{:.0} - everything holds still",
+                format_range_km(depth_state.current_depth), hull_pct,
+                power_state.total_power_consumption, power_state.total_power_generation,
+            )), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(Sheet::LABEL)));
+        });
 
-            spawn_menu_button(actions, "RESUME", Some("Esc"), ThemeColors::ACCENT_GREEN, MenuAction::Resume);
+        parent.spawn((
+            {
+                let (mut node, _bg, edge) = theme::sheet_node(Some(380.0));
+                node.position_type = PositionType::Absolute;
+                node.right = Val::Px(0.0);
+                node.top = Val::Px(0.0);
+                node.bottom = Val::Px(0.0);
+                node.border = UiRect::left(Val::Px(1.0));
+                (node, BackgroundColor(Sheet::BG.with_alpha(1.0)), edge)
+            },
+        )).with_children(|sheet| {
+            row_button(sheet, "Resume", "ESC", true, MenuAction::Resume);
 
             let slots = crate::meta::get_save_slots();
-
-            // Save row: one chip per slot (1/2/3).
-            actions.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::ThemeSpacing::MD),
-                    ..default()
-                }).with_children(|row| {
-                row.spawn((Text::new("SAVE"), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY)));
+            sheet.spawn((Node {
+                column_gap: Val::Px(6.0),
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            }, BorderColor::all(Sheet::RULE))).with_children(|row| {
+                row.spawn((Text::new("Save to"), TextFont { font_size: FontSize::Px(12.5), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), Node { width: Val::Px(70.0), ..default() }));
                 for slot in 0u32..3 {
-                    spawn_chip_button(row, &format!("{}", slot + 1), ThemeColors::ACCENT_YELLOW, MenuAction::SaveSlot(slot));
+                    slot_button(row, &format!("{}", slot + 1), MenuAction::SaveSlot(slot));
                 }
             });
-
-            // Load row: one chip per slot that actually has a save.
-            let has_saves = slots.iter().any(|(_, info)| info.is_some());
-            if has_saves {
-                actions.spawn(Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(theme::ThemeSpacing::MD),
-                        ..default()
-                    }).with_children(|row| {
-                    row.spawn((Text::new("LOAD"), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY)));
+            if slots.iter().any(|(_, info)| info.is_some()) {
+                sheet.spawn((Node {
+                    column_gap: Val::Px(6.0),
+                    align_items: AlignItems::Center,
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)),
+                    border: UiRect::bottom(Val::Px(1.0)),
+                    ..default()
+                }, BorderColor::all(Sheet::RULE))).with_children(|row| {
+                    row.spawn((Text::new("Load"), TextFont { font_size: FontSize::Px(12.5), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), Node { width: Val::Px(70.0), ..default() }));
                     for (slot, info) in &slots {
                         if info.is_some() {
                             let label = if *slot == 99 { "Auto".to_string() } else { format!("{}", slot + 1) };
-                            spawn_chip_button(row, &label, ThemeColors::ACCENT_BLUE, MenuAction::LoadSlot(*slot));
+                            slot_button(row, &label, MenuAction::LoadSlot(*slot));
                         }
                     }
                 });
             }
+            row_button(sheet, "Settings", "", false, MenuAction::OpenSettings);
+            row_button(sheet, "Main menu", "", false, MenuAction::QuitToMainMenu);
 
-            spawn_menu_button(actions, "SETTINGS", None, ThemeColors::ACCENT_PURPLE, MenuAction::OpenSettings);
-            spawn_menu_button(actions, "QUIT TO MAIN MENU", None, ThemeColors::ACCENT_RED, MenuAction::QuitToMainMenu);
+            // The ship, part by part.
+            let damaged: usize = ModuleCategory::ALL.iter().map(|c| cat_total.get(c).copied().unwrap_or(0) - cat_active.get(c).copied().unwrap_or(0)).sum();
+            sheet.spawn(Node { height: Val::Px(14.0), ..default() });
+            spawn_sheet_title(sheet, "THE SHIP", &if damaged == 0 { "all working".to_string() } else { format!("{damaged} not working") });
+            sheet.spawn(Node {
+                display: Display::Grid,
+                grid_template_columns: vec![GridTrack::flex(1.0), GridTrack::px(70.0), GridTrack::px(70.0)],
+                padding: UiRect::axes(Val::Px(0.0), Val::Px(4.0)),
+                ..default()
+            }).with_children(|grid| {
+                for cat in ModuleCategory::ALL {
+                    let total = cat_total.get(cat).copied().unwrap_or(0);
+                    if total == 0 { continue; }
+                    let active = cat_active.get(cat).copied().unwrap_or(0);
+                    let color = if active == total { ThemeColors::STATUS_OK } else if active > 0 { ThemeColors::STATUS_WARN } else { ThemeColors::STATUS_DANGER };
+                    grid.spawn((Text::new(cat.name()), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY), Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(3.0)), ..default() }));
+                    grid.spawn(Node { align_items: AlignItems::Center, padding: UiRect::horizontal(Val::Px(4.0)), ..default() }).with_children(|m| {
+                        m.spawn(Node { width: Val::Percent(100.0), ..default() }).with_children(|w| {
+                            spawn_hairline(w, color, ());
+                        });
+                    });
+                    grid.spawn((Text::new(format!("{active}/{total}")), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(if active == total { Sheet::LABEL } else { color }), Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(3.0)), justify_self: JustifySelf::End, ..default() }));
+                }
+            });
+
+            sheet.spawn(Node { flex_grow: 1.0, ..default() });
+            sheet.spawn((
+                Text::new("P  modules    F1-F3  quick save    L+1-3  quick load"),
+                TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                TextColor(Sheet::LABEL),
+                Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+                BorderColor::all(Sheet::RULE),
+            ));
         });
-
-        // Hint
-        parent.spawn((Text::new("Esc: Resume  *  P: Modules  *  F1-F3 / L+1-3: quick save & load"), TextFont { font_size: FontSize::Px(14.0), ..default() }, TextColor(Color::srgb(0.5, 0.5, 0.5)), Node { margin: UiRect::top(Val::Px(theme::ThemeSpacing::MD)), ..default() }));
     });
 }
 
@@ -3925,61 +4049,63 @@ fn spawn_docking_menu(
         (Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
+                // The station's services down the right, like the map's side
+                // panel: the ship and the station stay in view on the left.
+                justify_content: JustifyContent::FlexEnd,
+                align_items: AlignItems::Stretch,
                 ..default()
-            }, BackgroundColor(Color::srgba(0.0, 0.01, 0.03, 0.72)), ZIndex(100)),
+            }, BackgroundColor(Color::srgba(0.0, 0.01, 0.03, 0.35)), ZIndex(100)),
         DockingOverlay,
         DockingMenuSelection(0, 0),
         DockTabState { tab: DockTab::Market, tabs: owner.is_some(), contact: 0, item: 0 },
     )).with_children(|backdrop| {
         backdrop.spawn((
             Node {
-                width: Val::Px(1040.0),
-                // A fixed size: the window used to shrink and grow to each
+                // A fixed width: the sheet used to shrink and grow to each
                 // tab's contents and jump on screen as you switched.
-                height: Val::Px(620.0),
-                max_width: Val::Percent(94.0),
-                max_height: Val::Percent(88.0),
+                width: Val::Px(800.0),
+                max_width: Val::Percent(80.0),
+                height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                border: UiRect::all(Val::Px(theme::ThemeBorders::DEFAULT)),
+                border: UiRect::left(Val::Px(1.0)),
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(theme::ThemeColors::BG_PANEL),
-            BorderColor::all(theme::ThemeColors::BORDER_BRIGHT),
+            BackgroundColor(theme::ThemeColors::BG_PANEL.with_alpha(1.0)),
+            BorderColor::all(theme::Sheet::EDGE),
         )).with_children(|window| {
             // The owner's colour, across the top.
-            window.spawn((Node { height: Val::Px(3.0), width: Val::Percent(100.0), ..default() }, BackgroundColor(accent)));
+            window.spawn((Node { height: Val::Px(2.0), width: Val::Percent(100.0), ..default() }, BackgroundColor(accent.with_alpha(0.8))));
 
             // Header: name and owner; standing and credits.
             window.spawn(Node {
                 flex_direction: FlexDirection::Row,
                 justify_content: JustifyContent::SpaceBetween,
                 align_items: AlignItems::Center,
-                padding: UiRect::new(Val::Px(18.0), Val::Px(18.0), Val::Px(12.0), Val::Px(10.0)),
+                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(12.0), Val::Px(10.0)),
                 column_gap: Val::Px(16.0),
+                border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
-            }).with_children(|header| {
+            }).insert(BorderColor::all(theme::Sheet::EDGE)).with_children(|header| {
                 header.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), flex_shrink: 1.0, ..default() })
                     .with_children(|names| {
-                        names.spawn((Text::new(name.to_uppercase()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::H2), ..default() }, TextColor(theme::ThemeColors::TEXT_TITLE)));
-                        names.spawn((Text::new(subtitle), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY_SMALL), ..default() }, TextColor(theme::ThemeColors::TEXT_SECONDARY)));
+                        names.spawn((Text::new(name.to_uppercase()), TextFont { font_size: FontSize::Px(17.0), ..default() }, TextColor(theme::Sheet::TITLE)));
+                        names.spawn((Text::new(subtitle.to_lowercase()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() }, TextColor(theme::Sheet::LABEL)));
                     });
                 header.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(14.0), flex_shrink: 0.0, ..default() })
                     .with_children(|right| {
                         if let Some((label, color)) = &standing_chip {
                             right.spawn((
                                 Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border: UiRect::all(Val::Px(1.0)), ..default() },
-                                BackgroundColor(color.with_alpha(0.12)),
-                                BorderColor::all(color.with_alpha(0.7)),
+                                BackgroundColor(Color::NONE),
+                                BorderColor::all(color.with_alpha(0.6)),
                             )).with_children(|chip| {
                                 chip.spawn((Text::new(label.clone()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() }, TextColor(*color), crate::diplomacy::dock_tabs::DockStandingChip));
                             });
                         }
                         right.spawn((
                             Text::new(format!("Credits: {}", currency.credits)),
-                            TextFont { font_size: FontSize::Px(theme::ThemeFonts::H3), ..default() },
+                            TextFont { font_size: FontSize::Px(15.0), ..default() },
                             TextColor(theme::ThemeColors::ACCENT_YELLOW),
                             DockingCreditsText,
                         ));
@@ -3997,16 +4123,16 @@ fn spawn_docking_menu(
                         border: UiRect::bottom(Val::Px(1.0)),
                         ..default()
                     },
-                    BorderColor::all(theme::ThemeColors::BORDER_DEFAULT),
+                    BorderColor::all(theme::Sheet::RULE),
                 )).with_children(|bar| {
                     for tab in DockTab::ALL {
                         bar.spawn((
                             Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border: UiRect::bottom(Val::Px(2.0)), ..default() },
-                            BackgroundColor(theme::ThemeColors::BG_CARD),
+                            BackgroundColor(Color::NONE),
                             BorderColor::all(Color::NONE),
                             DockTabButton(tab),
                         )).with_children(|b| {
-                            b.spawn((Text::new(tab.label()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY), ..default() }, TextColor(theme::ThemeColors::TEXT_SECONDARY)));
+                            b.spawn((Text::new(tab.label().to_uppercase()), TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() }, TextColor(theme::ThemeColors::TEXT_SECONDARY)));
                         });
                     }
                     bar.spawn((Node { margin: UiRect::left(Val::Auto), padding: UiRect::bottom(Val::Px(8.0)), ..default() }, ))
@@ -4029,7 +4155,7 @@ fn spawn_docking_menu(
                 // numbering must stay exactly as-is -- docking_menu_input
                 // matches on these indices throughout.
                 body.spawn((
-                    Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, row_gap: Val::Px(5.0), ..default() },
+                    Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: Val::Px(0.0), row_gap: Val::Px(0.0), ..default() },
                     DockTabPanel(DockTab::Market),
                 )).with_children(|list| {
                     for (group_start, group_label) in [(0usize, "Services"), (5, "Trade & upkeep"), (8, "")] {
@@ -4037,8 +4163,8 @@ fn spawn_docking_menu(
                             list.spawn((
                                 Text::new(group_label.to_uppercase()),
                                 TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() },
-                                TextColor(theme::ThemeColors::TEXT_MUTED),
-                                Node { margin: UiRect::top(Val::Px(if group_start == 0 { 0.0 } else { 6.0 })), ..default() },
+                                TextColor(theme::Sheet::LABEL),
+                                Node { margin: UiRect::new(Val::Px(2.0), Val::Px(0.0), Val::Px(if group_start == 0 { 0.0 } else { 12.0 }), Val::Px(4.0)), ..default() },
                             ));
                         }
                         let group_end = match group_start { 0 => 5, 5 => 8, _ => services.len() };
@@ -4047,24 +4173,24 @@ fn spawn_docking_menu(
                             let color = if !service.available { theme::ThemeColors::TEXT_MUTED } else { theme::ThemeColors::TEXT_PRIMARY };
                             list.spawn((
                                 Node {
-                                    padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(6.0), Val::Px(6.0)),
-                                    border: UiRect::left(Val::Px(3.0)),
+                                    padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(6.0), Val::Px(6.0)),
+                                    border: UiRect { left: Val::Px(2.0), top: Val::Px(1.0), ..default() },
                                     ..default()
                                 },
-                                BackgroundColor(theme::ThemeColors::BG_CARD),
-                                BorderColor::all(Color::NONE),
+                                BackgroundColor(Color::NONE),
+                                BorderColor { left: Color::NONE, top: theme::Sheet::RULE, ..BorderColor::all(Color::NONE) },
                                 DockingRowCard(i),
                             )).with_children(|card| {
                                 card.spawn((
                                     Text::new(service_title(service.name, service.cost, service.available)),
-                                    TextFont { font_size: FontSize::Px(16.0), ..default() },
+                                    TextFont { font_size: FontSize::Px(13.0), ..default() },
                                     TextColor(color),
                                     DockingServiceItem(i),
                                 )).with_children(|section| {
                                     section.spawn((
                                         TextSpan::new(service_detail(&service.description)),
-                                        TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY_SMALL), ..default() },
-                                        TextColor(theme::ThemeColors::TEXT_SECONDARY),
+                                        TextFont { font_size: FontSize::Px(theme::ThemeFonts::CAPTION), ..default() },
+                                        TextColor(theme::Sheet::LABEL),
                                     ));
                                 });
                             });
@@ -4083,12 +4209,12 @@ fn spawn_docking_menu(
                 }
 
                 // Your ship, and what's in the hold.
-                body.spawn(Node { flex_direction: FlexDirection::Column, width: Val::Px(270.0), flex_shrink: 0.0, row_gap: Val::Px(10.0), ..default() })
+                body.spawn(Node { flex_direction: FlexDirection::Column, width: Val::Px(240.0), flex_shrink: 0.0, row_gap: Val::Px(6.0), ..default() })
                     .with_children(|side| {
                         let card = |side: &mut ChildSpawnerCommands, title: &str, lines: Vec<(String, Color)>| {
                             side.spawn((
-                                Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::all(Val::Px(10.0)), ..default() },
-                                BackgroundColor(theme::ThemeColors::BG_CARD),
+                                Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(2.0), Val::Px(8.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+                                BorderColor::all(theme::Sheet::RULE),
                             )).with_children(|c| {
                                 c.spawn(caption(title.to_uppercase()));
                                 for (line, color) in lines {
@@ -4106,8 +4232,8 @@ fn spawn_docking_menu(
                         // Filled by diplomacy::dock_tabs::refresh_dock_hold, so
                         // what you buy or are handed shows straight away.
                         side.spawn((
-                            Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::all(Val::Px(10.0)), ..default() },
-                            BackgroundColor(theme::ThemeColors::BG_CARD),
+                            Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(2.0), Val::Px(8.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+                            BorderColor::all(theme::Sheet::RULE),
                         )).with_children(|c| {
                             c.spawn(caption("CARGO HOLD".to_string()));
                             c.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, DockHoldList));
@@ -4121,17 +4247,17 @@ fn spawn_docking_menu(
             // Keys.
             window.spawn((
                 Node {
-                    padding: UiRect::axes(Val::Px(18.0), Val::Px(8.0)),
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
                     border: UiRect::top(Val::Px(1.0)),
                     ..default()
                 },
-                BackgroundColor(theme::ThemeColors::BG_CARD),
-                BorderColor::all(theme::ThemeColors::BORDER_SUBTLE),
+                BackgroundColor(Color::NONE),
+                BorderColor::all(theme::Sheet::RULE),
             )).with_children(|footer| {
                 footer.spawn((
                     Text::new(format!("Up/Down  select    Left/Right  cargo choice    Enter  buy    {escape_hint}")),
-                    TextFont { font_size: FontSize::Px(theme::ThemeFonts::BODY_SMALL), ..default() },
-                    TextColor(theme::ThemeColors::TEXT_SECONDARY),
+                    TextFont { font_size: FontSize::Px(theme::ThemeFonts::TINY), ..default() },
+                    TextColor(theme::Sheet::LABEL),
                     DockFooterHint,
                 ));
             });
@@ -4161,10 +4287,14 @@ fn highlight_dock_rows(
     let Ok(selection) = menu.single() else { return };
     for (card, mut bg, mut border) in cards.iter_mut() {
         let on = card.0 == selection.0;
-        let want_bg = if on { theme::ThemeColors::BG_ELEVATED } else { theme::ThemeColors::BG_CARD };
+        let want_bg = if on { theme::Sheet::ROW_PICKED } else { Color::NONE };
         if bg.0 != want_bg {
             bg.0 = want_bg;
-            *border = BorderColor::all(if on { theme::ThemeColors::ACCENT_CYAN } else { Color::NONE });
+            *border = BorderColor {
+                left: if on { theme::Sheet::PICKED } else { Color::NONE },
+                top: theme::Sheet::RULE,
+                ..BorderColor::all(Color::NONE)
+            };
         }
     }
 }

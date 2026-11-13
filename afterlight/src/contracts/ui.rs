@@ -115,23 +115,36 @@ pub fn toggle_mission_board(
 
     board_open.0 = true;
     commands.init_resource::<MissionBoardSelection>();
-    // Spawn board root
+    // Spawn board root: a sheet down the right-hand side, like the map's
+    // side panel, so the station stays in view.
+    use crate::ui::theme::{Sheet, ThemeColors, ThemeFonts};
     commands.spawn((
         (Node {
                 position_type: PositionType::Absolute,
-                left: Val::Percent(10.0),
-                top: Val::Percent(5.0),
-                width: Val::Percent(80.0),
-                height: Val::Percent(85.0),
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                width: Val::Px(580.0),
+                max_width: Val::Percent(70.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(16.0)),
+                border: UiRect::left(Val::Px(1.0)),
                 ..default()
-            }, BackgroundColor(Color::srgba(0.02, 0.05, 0.15, 0.95)), ZIndex(100)),
+            }, BackgroundColor(Sheet::BG.with_alpha(1.0)), BorderColor::all(Sheet::EDGE), ZIndex(100)),
         MissionBoardPanel,
     )).with_children(|parent| {
-        // Title
-        parent.spawn((Text::new(format!("EXPEDITION CONTRACTS - {}", station_name(station))), TextFont { font_size: FontSize::Px(28.0), ..default() }, TextColor(Color::WHITE), Node { margin: UiRect::bottom(Val::Px(12.0)),
-            ..default() }));
+        parent.spawn((
+            Node {
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(Sheet::EDGE),
+        )).with_children(|strip| {
+            strip.spawn((Text::new(format!("JOB BOARD - {}", station_name(station).to_uppercase())), TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() }, TextColor(Sheet::TITLE)));
+            strip.spawn((Text::new("J close"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
+        });
 
         // Scrollable content area
         parent.spawn((
@@ -145,8 +158,14 @@ pub fn toggle_mission_board(
         ));
 
         // Controls hint
-        parent.spawn((Text::new("Up/Down: Select | Enter: Accept | Tab: Abandon Active | J: Close"), TextFont { font_size: FontSize::Px(14.0), ..default() }, TextColor(Color::srgb(0.5, 0.5, 0.5)), Node { margin: UiRect::top(Val::Px(8.0)),
-            ..default() }));
+        parent.spawn((
+            Text::new("Up / Down  pick    Enter  take the job    Tab  give up an active one"),
+            TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+            TextColor(Sheet::LABEL),
+            Node { padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+            BorderColor::all(Sheet::RULE),
+        ));
+        let _ = ThemeColors::TEXT_PRIMARY;
     });
 }
 
@@ -283,14 +302,54 @@ pub fn update_mission_board_display(
         }
     }
 
+    use crate::ui::theme::{Sheet, ThemeColors, ThemeFonts};
+    // One ruled row: stars, the job, what it pays; the picked one in gold.
+    fn job_row(parent: &mut ChildSpawnerCommands, picked: bool, stars: String, title: String, pay: String, pay_color: Color) {
+        parent.spawn((
+            Node {
+                display: Display::Grid,
+                grid_template_columns: vec![GridTrack::px(44.0), GridTrack::flex(1.0), GridTrack::auto()],
+                column_gap: Val::Px(10.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                border: UiRect { left: Val::Px(2.0), bottom: Val::Px(1.0), ..default() },
+                ..default()
+            },
+            BackgroundColor(if picked { Sheet::ROW_PICKED } else { Color::NONE }),
+            BorderColor { left: if picked { Sheet::PICKED } else { Color::NONE }, bottom: Sheet::RULE, ..BorderColor::all(Color::NONE) },
+        )).with_children(|row| {
+            row.spawn((Text::new(stars), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(if picked { Sheet::PICKED } else { Sheet::LABEL })));
+            row.spawn((Text::new(title), TextFont { font_size: FontSize::Px(12.5), ..default() }, TextColor(if picked { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_SECONDARY })));
+            row.spawn((Text::new(pay), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(pay_color)));
+        });
+    }
+    fn section(parent: &mut ChildSpawnerCommands, words: String, aside: String, aside_color: Color) {
+        parent.spawn((
+            Node {
+                column_gap: Val::Px(10.0),
+                align_items: AlignItems::Baseline,
+                padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(10.0), Val::Px(4.0)),
+                ..default()
+            },
+        )).with_children(|h| {
+            h.spawn((Text::new(words), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_PRIMARY)));
+            h.spawn((Text::new(aside), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(aside_color)));
+        });
+    }
+
     commands.entity(content_entity).with_children(|parent| {
-        // Header: credits + active count (no cap — take as many bounties as you want)
-        parent.spawn((Text::new(format!(
-                "Credits: {}   Active: {}",
-                currency.credits,
-                state.active_contracts.len(),
-            )), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::srgb(1.0, 0.84314, 0.0)), Node { margin: UiRect::bottom(Val::Px(12.0)),
-            ..default() }));
+        // Credits and how many are taken (no cap: take as many as you like).
+        parent.spawn((
+            Node {
+                column_gap: Val::Px(18.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(Sheet::RULE),
+        )).with_children(|r| {
+            r.spawn((Text::new(format!("credits  {}", currency.credits)), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::ACCENT_YELLOW)));
+            r.spawn((Text::new(format!("taken  {}", state.active_contracts.len())), TextFont { font_size: FontSize::Px(ThemeFonts::CAPTION), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY)));
+        });
 
         let mut global_index: usize = 0;
 
@@ -304,69 +363,39 @@ pub fn update_mission_board_display(
                 continue;
             }
 
-            // Faction header
-            parent.spawn((Text::new(format!(
-                    "\n{} (Rep: {:.0}) {}",
-                    faction.name(),
-                    rep.get(faction),
-                    rep.star_string(faction),
-                )), TextFont { font_size: FontSize::Px(20.0), ..default() }, TextColor(Color::srgb(0.4, 0.7, 1.0)), Node { margin: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(8.0), Val::Px(4.0)),
-                ..default() }));
+            section(parent, faction.name().to_string(), format!("standing {:.0}  {}", rep.get(faction), rep.star_string(faction)), Sheet::LABEL);
 
-            // Available contracts for this faction
             for contract in &faction_contracts {
-                let is_selected = global_index == sel_idx;
-                let prefix = if is_selected { "> " } else { "  " };
-                let color = if is_selected { Color::WHITE } else { Color::srgb(0.7, 0.7, 0.7) };
-
-                let deposit_text = if contract.deposit > 0 {
-                    format!("  ({}c deposit)", contract.deposit)
-                } else {
-                    String::new()
-                };
-
-                parent.spawn((Text::new(format!(
-                        "{}{:<6} {:<35} [{}c]{}",
-                        prefix,
-                        contract.star_display(),
-                        contract.title,
-                        contract.reward,
-                        deposit_text,
-                    )), TextFont { font_size: FontSize::Px(16.0), ..default() }, TextColor(color)));
-
+                let deposit_text = if contract.deposit > 0 { format!("  ({} down)", contract.deposit) } else { String::new() };
+                job_row(
+                    parent,
+                    global_index == sel_idx,
+                    contract.star_display(),
+                    contract.title.clone(),
+                    format!("{}{}", contract.reward, deposit_text),
+                    ThemeColors::ACCENT_YELLOW,
+                );
                 global_index += 1;
             }
         }
 
         // Active contracts section
         if !state.active_contracts.is_empty() {
-            parent.spawn((Text::new("\nACTIVE CONTRACTS"), TextFont { font_size: FontSize::Px(20.0), ..default() }, TextColor(Color::srgb(0.3, 1.0, 0.3)), Node { margin: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(12.0), Val::Px(4.0)),
-                ..default() }));
-
+            section(parent, "TAKEN".to_string(), String::new(), Sheet::LABEL);
             for contract in &state.active_contracts {
-                let is_selected = global_index == sel_idx;
-                let prefix = if is_selected { "> " } else { "  " };
-
-                let status_color = match contract.status {
-                    ContractStatus::Completed => Color::srgb(0.0, 1.0, 0.0),
-                    ContractStatus::Active => Color::srgb(1.0, 1.0, 0.0),
-                    _ => Color::srgb(0.5, 0.5, 0.5),
+                let (status_text, status_color) = match contract.status {
+                    ContractStatus::Completed => ("done".to_string(), ThemeColors::STATUS_OK),
+                    ContractStatus::Active => (contract.progress_text(), ThemeColors::STATUS_WARN),
+                    _ => (contract.progress_text(), Sheet::LABEL),
                 };
-
-                let status_text = match contract.status {
-                    ContractStatus::Completed => " [COMPLETED]".to_string(),
-                    _ => format!(" [{}]", contract.progress_text()),
-                };
-
-                parent.spawn((Text::new(format!(
-                        "{}{:<6} {:<35} {}c{}",
-                        prefix,
-                        contract.star_display(),
-                        contract.title,
-                        contract.reward,
-                        status_text,
-                    )), TextFont { font_size: FontSize::Px(16.0), ..default() }, TextColor(status_color)));
-
+                job_row(
+                    parent,
+                    global_index == sel_idx,
+                    contract.star_display(),
+                    format!("{}  ({})", contract.title, contract.reward),
+                    status_text,
+                    status_color,
+                );
                 global_index += 1;
             }
         }

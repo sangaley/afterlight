@@ -19,17 +19,17 @@ impl ThemeColors {
     /// live battle behind it. On the menu it hid the starfield the game
     /// already draws, leaving text on a flat colour.
     pub const BG_MENU: Color = Color::srgba(0.01, 0.02, 0.05, 0.72);
-    pub const BG_PANEL: Color = Color::srgba(0.04, 0.05, 0.10, 0.95);      // Panel backgrounds
-    pub const BG_CARD: Color = Color::srgba(0.06, 0.08, 0.14, 0.92);       // Cards, group containers
+    pub const BG_PANEL: Color = Color::srgba(0.039, 0.051, 0.102, 0.97);   // Panel backgrounds (a sheet's ground)
+    pub const BG_CARD: Color = Color::srgba(0.055, 0.07, 0.125, 0.85);     // Cards: barely lifted off the sheet
     pub const BG_INPUT: Color = Color::srgba(0.08, 0.10, 0.18, 0.90);      // Input fields, slots
-    pub const BG_ELEVATED: Color = Color::srgba(0.10, 0.13, 0.22, 0.95);   // Buttons, interactive elements
+    pub const BG_ELEVATED: Color = Color::srgb(0.078, 0.102, 0.173);       // Buttons, the picked row (Sheet::ROW_PICKED)
     pub const BG_HOVER: Color = Color::srgba(0.14, 0.17, 0.28, 1.0);       // Hover state
     pub const BG_PRESSED: Color = Color::srgba(0.18, 0.22, 0.35, 1.0);     // Pressed state
 
     // --- Borders ---
     pub const BORDER_SUBTLE: Color = Color::srgb(0.173, 0.200, 0.278);     // Rules between rows (Sheet::RULE)
     pub const BORDER_DEFAULT: Color = Color::srgb(0.298, 0.333, 0.439);   // A sheet's edge (Sheet::EDGE)
-    pub const BORDER_BRIGHT: Color = Color::srgba(0.35, 0.40, 0.55, 0.8);  // Highlighted border
+    pub const BORDER_BRIGHT: Color = Color::srgb(0.298, 0.333, 0.439);     // Highlighted border (a sheet's edge)
     pub const BORDER_ACTIVE: Color = Color::srgba(0.4, 0.6, 1.0, 0.8);     // Selected/active border
 
     // --- Text ---

@@ -9,5 +9,9 @@
   "resolution_index": 0,
   "ui_scale": 1.0,
   "invert_aim_y": false,
-  "aim_deadzone": 0.35
+  "aim_deadzone": 0.35,
+  "callout_style": 0,
+  "callout_words": true,
+  "callout_heading": true,
+  "callout_max": 4
 }

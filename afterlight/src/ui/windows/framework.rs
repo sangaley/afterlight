@@ -52,19 +52,22 @@ pub struct WindowZCounter {
 pub struct WindowStyle;
 
 impl WindowStyle {
-    pub const TITLE_BAR_HEIGHT: f32 = 28.0;
+    pub const TITLE_BAR_HEIGHT: f32 = 26.0;
     pub const BORDER_WIDTH: f32 = 1.0;
     pub const PADDING: f32 = 8.0;
-    // Solid: at 0.95 the HUD under a window showed through its text.
-    pub const BG_COLOR: Color = Color::srgba(0.08, 0.10, 0.16, 1.0);
-    pub const TITLE_BG: Color = Color::srgba(0.12, 0.15, 0.22, 1.0);
-    pub const TITLE_BG_HOVER: Color = Color::srgba(0.16, 0.20, 0.28, 1.0);
-    pub const BORDER_COLOR: Color = Color::srgba(0.25, 0.30, 0.40, 0.8);
-    pub const CLOSE_COLOR: Color = Color::srgba(0.8, 0.3, 0.3, 1.0);
+    // The sheet look the map's side panel set: one dark ground, a cool
+    // hairline edge, grey caps labels; colour only where it means something.
+    // Solid, not the sheet's 0.93: see-through let the HUD under a window
+    // show through its text.
+    pub const BG_COLOR: Color = Color::srgb(0.039, 0.051, 0.102);
+    pub const TITLE_BG: Color = Color::srgb(0.039, 0.051, 0.102);
+    pub const TITLE_BG_HOVER: Color = crate::ui::theme::Sheet::ROW_PICKED;
+    pub const BORDER_COLOR: Color = crate::ui::theme::Sheet::EDGE;
+    pub const CLOSE_COLOR: Color = crate::ui::theme::Sheet::LABEL;
     pub const CLOSE_HOVER: Color = Color::srgba(1.0, 0.4, 0.4, 1.0);
-    pub const COLLAPSE_COLOR: Color = Color::srgba(0.6, 0.6, 0.3, 1.0);
+    pub const COLLAPSE_COLOR: Color = crate::ui::theme::Sheet::LABEL;
     pub const TEXT_COLOR: Color = Color::srgba(0.8, 0.85, 0.9, 1.0);
-    pub const TEXT_DIM: Color = Color::srgba(0.5, 0.55, 0.6, 1.0);
+    pub const TEXT_DIM: Color = crate::ui::theme::Sheet::LABEL;
 }
 
 /// Spawn a floating window. Returns the content entity where you add your UI children.
@@ -100,8 +103,9 @@ pub fn spawn_floating_window(
                 width: Val::Px(size.x),
                 min_width: Val::Px(150.0),
                 flex_direction: FlexDirection::Column,
+                border: UiRect::all(Val::Px(WindowStyle::BORDER_WIDTH)),
                 ..default()
-            }, BackgroundColor(WindowStyle::BG_COLOR), ZIndex(10)),
+            }, BackgroundColor(WindowStyle::BG_COLOR), BorderColor::all(WindowStyle::BORDER_COLOR), ZIndex(10)),
         FloatingWindow {
             id: id_str.clone(),
             title: title_str.clone(),
@@ -122,7 +126,7 @@ pub fn spawn_floating_window(
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::horizontal(Val::Px(6.0)),
+                padding: UiRect::new(Val::Px(12.0), Val::Px(6.0), Val::Px(0.0), Val::Px(0.0)),
                 ..default()
             }, BackgroundColor(WindowStyle::TITLE_BG)),
         WindowTitleBar { window_id: id_str.clone() },
@@ -131,7 +135,7 @@ pub fn spawn_floating_window(
 
     // Title text
     let title_text = commands.spawn(
-        (Text::new(title), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(WindowStyle::TEXT_COLOR)),
+        (Text::new(title.to_uppercase()), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(crate::ui::theme::Sheet::TITLE)),
     ).id();
 
     // Button container (collapse + close)
@@ -187,7 +191,7 @@ pub fn spawn_floating_window(
         (Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(WindowStyle::PADDING)),
+                padding: UiRect::all(Val::Px(WindowStyle::PADDING + 4.0)),
                 row_gap: Val::Px(4.0),
                 flex_grow: 1.0,
                 overflow: Overflow::clip_y(),

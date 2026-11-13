@@ -706,9 +706,10 @@ fn spawn_settings_overlay(commands: &mut Commands, tab: SettingsTab) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            // Modal scrim above the main/pause menu (those sit at ZIndex 100).
+            // Modal scrim above the main menu (ZIndex 100) and the pause
+            // screen (GlobalZIndex 150, over the HUD).
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
-            ZIndex(200),
+            GlobalZIndex(200),
             // Interaction (with no MenuButton) makes the scrim the topmost
             // pickable node, absorbing clicks so nothing behind the modal
             // reacts. The dispatch/visual systems ignore it (they require

@@ -201,8 +201,9 @@ pub fn refresh_dock_tabs(
     }
     for (button, mut bg, mut border, children) in buttons.iter_mut() {
         let on = button.0 == state.tab;
-        bg.0 = if on { ThemeColors::BG_ELEVATED } else { ThemeColors::BG_CARD };
-        *border = BorderColor::all(if on { ThemeColors::ACCENT_CYAN } else { Color::NONE });
+        // Sheet tabs: no fill; the open one underlined in gold.
+        bg.0 = Color::NONE;
+        *border = BorderColor::all(if on { crate::ui::theme::Sheet::PICKED } else { Color::NONE });
         for child in children.iter() {
             if let Ok(mut color) = button_text.get_mut(child) {
                 color.0 = if on { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_MUTED };
