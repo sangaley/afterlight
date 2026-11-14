@@ -197,6 +197,12 @@ fn spawn_tuning_window(
     module_type: ModuleType,
     position: Vec2,
 ) {
+    // A built gun gets the From-the-Depths window: parts, shell and what
+    // each change does, side by side.
+    if module_type == ModuleType::FiringPiece {
+        super::gun_window::spawn_gun_window(commands, module_entity);
+        return;
+    }
     let title = if module_type == ModuleType::LaserEmitter {
         "LASER EMITTER".to_string()
     } else if module_type == ModuleType::FiringPiece {
@@ -293,15 +299,18 @@ fn spawn_tuning_window(
         commands.entity(content).add_child(desc);
     }
 
-    // SHELL DESIGNER — built guns design their shell instead of picking one.
-    if module_type == ModuleType::FiringPiece {
-        super::shell_designer::spawn_shell_section(commands, content, &Default::default());
-    }
     // MISSILE DESIGNER — a launcher's missile is designed part by part.
     if crate::combat::missile_design::is_built_launcher(module_type) {
         super::missile_designer::spawn_missile_section(commands, content, &crate::combat::missile_design::MissileDesign::default_for(module_type));
     }
 
+    spawn_tuning_controls(commands, content, module_type);
+}
+
+/// The sliders, the power draw, the live stats and RESET: the lower half of
+/// every weapon's window, and the first column of a built gun's
+/// (super::gun_window).
+pub fn spawn_tuning_controls(commands: &mut Commands, content: Entity, module_type: ModuleType) {
     // SLIDERS
     spawn_window_section(commands, content, "TUNING");
 

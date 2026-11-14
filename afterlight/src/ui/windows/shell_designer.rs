@@ -16,9 +16,10 @@ use super::tuning::TuningWindow;
 // modules. combat::shell has the rules, combat::gun_math the numbers.
 // ============================================================================
 
-const ACCENT: Color = ThemeColors::ACCENT_ORANGE;
-const CHIP_BG: Color = ThemeColors::BG_INPUT;
-const SELECTED_BG: Color = ThemeColors::BG_PRESSED;
+// Sheet chips: no fill until picked; the picked one gold.
+const ACCENT: Color = crate::ui::theme::Sheet::PICKED;
+const CHIP_BG: Color = Color::NONE;
+const SELECTED_BG: Color = crate::ui::theme::Sheet::ROW_PICKED;
 
 /// Where a strip chip sits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,7 +99,7 @@ fn chip(commands: &mut Commands, label: &str, action: ShellAction, selected: boo
                 ..default()
             },
             BackgroundColor(if selected { SELECTED_BG } else { CHIP_BG }),
-            BorderColor::all(if selected { ACCENT } else { WindowStyle::BORDER_COLOR }),
+            BorderColor::all(if selected { ACCENT } else { crate::ui::theme::Sheet::RULE }),
             Interaction::None,
             Button,
             ShellButton(action),
@@ -398,7 +399,7 @@ pub fn shell_designer_refresh(
                 _ => continue,
             };
             *bg = BackgroundColor(if selected { SELECTED_BG } else { CHIP_BG });
-            *border = BorderColor::all(if selected { ACCENT } else { WindowStyle::BORDER_COLOR });
+            *border = BorderColor::all(if selected { ACCENT } else { crate::ui::theme::Sheet::RULE });
             for c in children.iter() {
                 if let Ok(mut tc) = text_colors.get_mut(c) {
                     tc.0 = if selected { ACCENT } else { WindowStyle::TEXT_COLOR };
@@ -435,8 +436,8 @@ pub fn shell_designer_refresh(
             s.shell_m, longest, s.burn_m, gun.parts.barrel_m
         ),
         format!(
-            "VEL {:.0} m/s   DMG {:.0}   PEN {:.0} mm   {:.1} rpm",
-            s.velocity_mps, s.damage, s.penetration_mm, s.rpm
+            "VEL {:.0} m/s   DMG {:.0}   PEN {:.1}   {:.1} rpm",
+            s.velocity_mps, s.damage, crate::combat::gun_assembly::penetration_for(s), s.rpm
         ),
         format!(
             "PAYLOAD {}   ON HIT: {}",

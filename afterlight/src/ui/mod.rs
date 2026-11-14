@@ -213,6 +213,7 @@ impl Plugin for UiPlugin {
                     windows::tuning::tuning_window_refresh,
                     windows::shell_designer::shell_designer_click,
                     windows::shell_designer::shell_designer_refresh,
+                    windows::gun_window::gun_window_refresh,
                     windows::shell_designer::save_gun_design_click,
                     windows::missile_designer::missile_designer_click,
                     windows::shell_designer::point_defence_click,
