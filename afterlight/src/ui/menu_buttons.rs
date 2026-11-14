@@ -101,6 +101,8 @@ pub struct GameSettings {
     pub callout_heading: bool,
     /// Most notes on screen at once, 1..=6.
     pub callout_max: u8,
+    /// How docking is shown (world::docking): 0 Full, 1 Short, 2 Instant.
+    pub docking: u8,
 }
 
 impl Default for GameSettings {
@@ -124,6 +126,7 @@ impl Default for GameSettings {
             callout_words: true,
             callout_heading: true,
             callout_max: 4,
+            docking: 0,
         }
     }
 }
@@ -187,6 +190,7 @@ pub enum SettingsValue {
     CalloutWords,
     CalloutHeading,
     CalloutMax,
+    Docking,
 }
 
 // ============================================================================
@@ -237,6 +241,7 @@ pub enum MenuAction {
     ToggleCalloutWords,
     ToggleCalloutHeading,
     AdjustCalloutMax { up: bool },
+    CycleDocking { up: bool },
 
     /// Restore every setting to its default.
     ResetSettings,
@@ -583,6 +588,9 @@ pub fn menu_button_dispatch(
             MenuAction::AdjustCalloutMax { up } => {
                 game_settings.callout_max = if up { (game_settings.callout_max + 1).min(6) } else { game_settings.callout_max.saturating_sub(1).max(1) };
             }
+            MenuAction::CycleDocking { up } => {
+                game_settings.docking = (game_settings.docking + if up { 1 } else { 2 }) % 3;
+            }
 
             MenuAction::ResetSettings => {
                 *game_settings = GameSettings::default();
@@ -730,6 +738,10 @@ pub fn update_settings_values(
             }
             SettingsValue::CalloutMax => {
                 text.0 = game_settings.callout_max.to_string();
+                color.0 = ThemeColors::ACCENT_BLUE;
+            }
+            SettingsValue::Docking => {
+                text.0 = ["FULL", "SHORT", "INSTANT"][(game_settings.docking % 3) as usize].to_string();
                 color.0 = ThemeColors::ACCENT_BLUE;
             }
             SettingsValue::Resolution => {
@@ -911,6 +923,15 @@ fn graphics_tab(content: &mut ChildSpawnerCommands) {
         MenuAction::AdjustCalloutMax { up: true },
     );
     caption(content, "Callout lines are the notes pinned to your ship. Small puts a number on the ship and the words in the title block.");
+    divider_thin(content);
+    generic_stepper_row(
+        content,
+        "DOCKING",
+        SettingsValue::Docking,
+        MenuAction::CycleDocking { up: false },
+        MenuAction::CycleDocking { up: true },
+    );
+    caption(content, "Full flies you in and out along the lane; F skips it. Instant puts you straight on the berth.");
 }
 
 fn controls_tab(content: &mut ChildSpawnerCommands) {

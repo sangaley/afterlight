@@ -9,6 +9,7 @@ mod chunks;
 mod biomes;
 pub mod home_base;
 pub mod raft;
+pub mod docking;
 pub mod raft_art;
 pub mod station_types;
 
@@ -32,6 +33,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<MarketEvents>()
             .init_resource::<home_base::SystemStations>()
             .init_resource::<raft_art::RaftBakes>()
+            .add_plugins(docking::DockingPlugin)
             .add_systems(Startup, raft_art::make_raft_art)
             // Stations follow whichever system is streamed in, and have to
             // exist while docked too — the game opens docked at Haven.

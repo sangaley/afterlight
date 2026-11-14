@@ -758,7 +758,12 @@ pub fn station_docking(
     mut notifications: MessageWriter<ShowNotification>,
     mut next_state: ResMut<NextState<GameState>>,
     mut prompted_for: Local<Option<usize>>,
+    (mut docking, settings): (ResMut<super::docking::Docking>, Res<crate::ui::menu_buttons::GameSettings>),
 ) {
+    // A docking sequence in progress has the ship (world::docking).
+    if docking.busy() {
+        return;
+    }
     let Ok((ship_entity, mut transform, mut velocity, mut physics, collider)) = ship_query.single_mut() else { return };
     let ship_pos = transform.translation.truncate();
 
@@ -792,12 +797,21 @@ pub fn station_docking(
     // Claims the shared interact press (see resources::InteractPress). A
     // salvage detail out on the hull, or a wreck closer than this station,
     // takes it first - docking would otherwise strand them.
-    if press.claim() {
+    // Brought in by the docking sequence: finish docking.
+    let arrived = docking.arrived.take() == Some(site.index);
+    if arrived || press.claim() {
         // Clear of the structure whatever the ship's size: the collider's
         // far edge from the root, or the starter's if it has none yet.
         let ship_radius = collider
             .map(|c| c.bound_center.length() + c.bound_radius)
             .unwrap_or(STARTER_BERTH_RADIUS);
+        // Fly it in, unless docking is set to Instant.
+        let extent = if site.index == 0 { HAVEN_EXTENT } else { site.radius() * 1.3 };
+        if !arrived
+            && super::docking::begin_docking(&mut docking, &settings, site.index, site.pos, site.radius(), extent, ship_pos, physics.rotation, ship_radius)
+        {
+            return;
+        }
         let berth = berth_position(site.pos, site.radius(), ship_radius);
         transform.translation.x = berth.x;
         transform.translation.y = berth.y;
