@@ -11,6 +11,7 @@ pub mod home_base;
 pub mod raft;
 pub mod docking;
 pub mod raft_art;
+pub mod raft_life;
 pub mod station_types;
 
 #[allow(unused_imports)]
@@ -45,6 +46,8 @@ impl Plugin for WorldPlugin {
                     home_base::sync_station_entities,
                     home_base::pulse_station_beacons,
                     raft_art::apply_raft_bakes,
+                    raft_life::raft_roster,
+                    raft_life::raft_motion,
                 )
                     .chain()
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),

@@ -358,8 +358,13 @@ pub struct RaftBakes {
 }
 
 impl RaftBakes {
+    /// A finished picture: (hull, lights, world size).
+    pub fn done_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
+        self.done.get(key)
+    }
+
     /// Paint these on a thread of their own, unless they're done or asked.
-    fn ask(&mut self, keys: impl IntoIterator<Item = BakeKey>) {
+    pub fn ask(&mut self, keys: impl IntoIterator<Item = BakeKey>) {
         let new: Vec<BakeKey> = keys.into_iter().filter(|k| !self.done.contains_key(k) && self.asked.insert(*k)).collect();
         if new.is_empty() {
             return;
@@ -385,6 +390,7 @@ pub struct RaftArt {
     pub glow: Handle<Image>,
     pub tube: Handle<Image>,
     pub girder: Handle<Image>,
+    pub shuttle: Handle<Image>,
 }
 
 pub fn make_raft_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -428,10 +434,26 @@ pub fn make_raft_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) 
         let y = if (x / 16) % 2 == 0 { 2 + t * (gh - 5) / 16 } else { gh - 3 - t * (gh - 5) / 16 };
         put(x, y, 100);
     }
+    // A shuttle: a small grey hull, its nose lit, its drive glowing.
+    let (sw, sh) = (20usize, 10usize);
+    let mut shuttle = vec![0u8; sw * sh * 4];
+    for y in 0..sh {
+        for x in 0..sw {
+            let dy = (y as f32 + 0.5 - sh as f32 / 2.0).abs() / (sh as f32 / 2.0);
+            let taper = 1.0 - (x as f32 / sw as f32).powi(3) * 0.8;
+            if dy < taper {
+                let i = (y * sw + x) * 4;
+                let shade = (1.0 - dy * 0.5) * 110.0;
+                let c = if x >= sw - 3 && dy < 0.4 { [255, 220, 150] } else if x < 2 { [120, 200, 255] } else { [shade as u8, (shade * 1.05) as u8, (shade * 1.2) as u8] };
+                shuttle[i..i + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+            }
+        }
+    }
     commands.insert_resource(RaftArt {
         glow: images.add(image(n, n, glow)),
         tube: images.add(image(tw, th, tube)),
         girder: images.add(image(gw, gh, girder)),
+        shuttle: images.add(image(sw, sh, shuttle)),
     });
 }
 
@@ -443,8 +465,9 @@ pub struct RaftHull {
 }
 
 /// Build the Raft's sprites under `root`.
-pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &mut RaftBakes) {
-    bakes.ask(plan.moorings.iter().map(|m| (m.design, m.quarter)));
+pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &mut RaftBakes, seed: u64) {
+    // The empty berths' ships too, and the tug: arrivals need their pictures.
+    bakes.ask(plan.moorings.iter().chain(&plan.spares).map(|m| (m.design, m.quarter)).chain((0..2).map(|q| ("free_haulers_compact/tug", q))));
     let mut kids = Vec::new();
     // Haze: the city's light in the space round it.
     kids.push(
@@ -485,29 +508,27 @@ pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &
         );
     }
     // Walkways.
-    for (a, b, width) in &plan.tubes {
-        let along = *b - *a;
-        kids.push(
-            commands
-                .spawn((Sprite { image: art.tube.clone(), custom_size: Some(Vec2::new(along.length(), *width)), ..default() }, Transform::from_translation(((*a + *b) * 0.5).extend(0.004)).with_rotation(Quat::from_rotation_z(along.to_angle()))))
-                .id(),
-        );
+    for tube in &plan.tubes {
+        kids.push(spawn_tube(commands, art, tube));
     }
     // The ships, higher ones over lower ones, lights over each.
     for m in &plan.moorings {
-        let key = (m.design, m.quarter);
-        let z = 0.01 + m.level * 0.03;
-        for lights in [false, true] {
-            let mut sprite = Sprite { color: Color::NONE, ..default() };
-            if let Some((body, glow, size)) = bakes.done.get(&key) {
-                sprite.image = if lights { glow.clone() } else { body.clone() };
-                sprite.custom_size = Some(*size);
-                sprite.color = Color::WHITE;
-            }
-            kids.push(commands.spawn((sprite, Transform::from_translation(m.at.extend(z + if lights { 0.001 } else { 0.0 })), RaftHull { key, lights })).id());
-        }
+        super::raft_life::spawn_ship(commands, root, m, bakes, seed);
     }
+    super::raft_life::spawn_traffic(commands, root, plan, art, seed);
     commands.entity(root).add_children(&kids);
+}
+
+/// A walkway between two points, owned by the berths it joins.
+pub fn spawn_tube(commands: &mut Commands, art: &RaftArt, tube: &super::raft::Tube) -> Entity {
+    let along = tube.b - tube.a;
+    commands
+        .spawn((
+            Sprite { image: art.tube.clone(), custom_size: Some(Vec2::new(along.length().max(1.0), tube.width)), ..default() },
+            Transform::from_translation(((tube.a + tube.b) * 0.5).extend(0.004)).with_rotation(Quat::from_rotation_z(along.to_angle())),
+            super::raft_life::TubeOf(tube.ends),
+        ))
+        .id()
 }
 
 /// Put finished pictures on the ships waiting for them.

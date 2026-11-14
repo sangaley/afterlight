@@ -475,9 +475,10 @@ fn spawn_haven_raft(
             HomeStation,
             StationCircles(plan.circles.clone()),
             RaftSeed(seed),
+            super::raft_life::RaftLive::new(plan.clone(), seed),
         ))
         .id();
-    super::raft_art::spawn_raft(commands, root, &plan, art, bakes);
+    super::raft_art::spawn_raft(commands, root, &plan, art, bakes, seed);
     let label = commands
         .spawn((
             Text2d::new(site.name.to_uppercase()),

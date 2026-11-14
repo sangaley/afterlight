@@ -174,15 +174,32 @@ pub struct Mooring {
     pub level: f32,
     /// Which street it's on (None: the anchor and the hulls lashed to it).
     pub street: Option<usize>,
+    /// Its berth number (None for the hulk and the hulls lashed to it):
+    /// ships come and go, berths stay put.
+    pub slot: Option<usize>,
+    /// Where its walkway meets the street, world units from the centre.
+    pub dock: Vec2,
+}
+
+/// A walkway: its ends, its width, and the berths it joins (None: the hulk
+/// or a lashed hull, which never leave).
+#[derive(Clone, Debug)]
+pub struct Tube {
+    pub a: Vec2,
+    pub b: Vec2,
+    pub width: f32,
+    pub ends: [Option<usize>; 2],
 }
 
 #[derive(Clone, Debug)]
 pub struct RaftPlan {
     pub moorings: Vec<Mooring>,
+    /// Empty berths: where arriving ships tie up. They touch nothing moored.
+    pub spares: Vec<Mooring>,
     /// Gantry streets, end to end.
     pub streets: Vec<(Vec2, Vec2)>,
-    /// Walkways: from, to, width.
-    pub tubes: Vec<(Vec2, Vec2, f32)>,
+    /// Walkways.
+    pub tubes: Vec<Tube>,
     /// The solid parts as circles.
     pub circles: Vec<(Vec2, f32)>,
     /// Where the player's walkway meets the Raft: the east street's end.
@@ -210,7 +227,7 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     let mut moorings = Vec::new();
     let place = |key: &'static str, centre_cells: Vec2, quarter: u8, level: f32, street: Option<usize>| -> Option<Mooring> {
         lib.get(key)?;
-        Some(Mooring { design: key, at: centre_cells * CELL, quarter, level, street })
+        Some(Mooring { design: key, at: centre_cells * CELL, quarter, level, street, slot: None, dock: Vec2::ZERO })
     };
     if let Some(m) = place(ANCHOR, Vec2::ZERO, 0, 0.8, None) {
         moorings.push(m);
@@ -289,14 +306,15 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
                     let t = cursor + length * 0.5;
                     let centre = *a + along * t + across * side * off;
                     // Still under the hulk: move along rather than lose the slot.
-                    let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None };
+                    let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None, slot: None, dock: Vec2::ZERO };
                     if outline(&probe, 0.0).is_some_and(|r| core.iter().any(|c| !c.intersect(r).is_empty())) {
                         cursor += 4.0;
                         continue;
                     }
                     let level = rng.gen_range(0.3..0.5) - rank as f32 * 0.06;
                     let key_dist = centre.length() + rank as f32 * 25.0 + rng.gen_range(0.0..30.0);
-                    slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si) }, *a + along * t));
+                    let dock = (*a + along * t) * CELL;
+                    slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si), slot: None, dock }, *a + along * t));
                     this_rank.push((t0, t1, off + breadth * 0.5));
                     cursor += length + rng.gen_range(0.5..1.5);
                 }
@@ -313,22 +331,27 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     let mut tubes = Vec::new();
     // The lashed hulls, walked to from the hulk.
     for m in moorings.iter().skip(1) {
-        tubes.push((Vec2::ZERO, m.at, CELL * 2.6));
+        tubes.push(Tube { a: Vec2::ZERO, b: m.at, width: CELL * 2.6, ends: [None, None] });
     }
-    let mut accepted = 0;
-    for (_, m, street_point) in slots {
-        if accepted >= ships {
-            break;
-        }
+    // Every berth that fits, numbered in order; the first `ships` are taken,
+    // the rest wait empty for arrivals.
+    let mut spares = Vec::new();
+    let mut slot = 0;
+    for (_, mut m, _) in slots {
         let Some(r) = outline(&m, CELL * 0.3) else { continue };
         if taken.iter().any(|o| !o.intersect(r).is_empty()) {
             continue;
         }
         taken.push(r);
-        // Every ship has its walkway to the street.
-        tubes.push((m.at, street_point * CELL, CELL * 1.8));
-        moorings.push(m);
-        accepted += 1;
+        m.slot = Some(slot);
+        slot += 1;
+        if slot <= ships {
+            // Every ship has its walkway to the street.
+            tubes.push(Tube { a: m.at, b: m.dock, width: CELL * 1.8, ends: [m.slot, None] });
+            moorings.push(m);
+        } else {
+            spares.push(m);
+        }
     }
     // And to its neighbours on the same side of the street, end to end.
     let moored: Vec<&Mooring> = moorings.iter().filter(|m| m.street.is_some()).collect();
@@ -342,15 +365,18 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
             // Same side: their outlines overlap across the street's line.
             let gap = mine.union(theirs).size() - mine.size() - theirs.size();
             if gap.x.max(gap.y) < CELL * 8.0 && gap.x.min(gap.y) < 0.0 {
-                tubes.push((m.at, o.at, CELL * 1.4));
+                tubes.push(Tube { a: m.at, b: o.at, width: CELL * 1.4, ends: [m.slot, o.slot] });
             }
         }
     }
 
     let streets: Vec<(Vec2, Vec2)> = streets_cells.iter().map(|(a, b)| (*a * CELL, *b * CELL)).collect();
-    let mut plan = RaftPlan { moorings, streets, tubes, circles: Vec::new(), berth_tip: Vec2::new(tip * CELL, 0.0), extent: 0.0 };
+    let mut plan = RaftPlan { moorings, spares, streets, tubes, circles: Vec::new(), berth_tip: Vec2::new(tip * CELL, 0.0), extent: 0.0 };
     plan.circles = collision_circles(&plan);
-    plan.extent = plan.circles.iter().map(|(c, r)| c.length() + r).fold(0.0, f32::max);
+    // The extent counts the empty berths too: ships will moor there.
+    let mut all = plan.clone();
+    all.moorings.extend(plan.spares.iter().cloned());
+    plan.extent = collision_circles(&all).iter().map(|(c, r)| c.length() + r).fold(0.0, f32::max);
     plan
 }
 
@@ -450,10 +476,22 @@ mod tests {
     }
 
     #[test]
+    fn empty_berths_touch_nothing_moored() {
+        let plan = plan_raft(4, 40);
+        assert!(!plan.spares.is_empty(), "no room for arrivals");
+        let all: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, 0.0)).collect();
+        for i in 0..all.len() {
+            for j in i + 1..all.len() {
+                assert!(all[i].intersect(all[j]).is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn every_ship_has_a_walkway() {
         let plan = plan_raft(2, 100);
         for m in plan.moorings.iter().skip(1) {
-            assert!(plan.tubes.iter().any(|(a, b, _)| *a == m.at || *b == m.at), "{} has no walkway", m.design);
+            assert!(plan.tubes.iter().any(|t| t.a == m.at || t.b == m.at), "{} has no walkway", m.design);
         }
     }
 
