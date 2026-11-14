@@ -191,6 +191,9 @@ pub struct RaftPlan {
     pub extent: f32,
 }
 
+/// Half the width of the lane in to the berth, kept clear of everything.
+pub const LANE_HALF_WIDTH: f32 = 2_800.0;
+
 /// The east street: fixed, so the berth is too.
 const EAST_FROM: f32 = 40.0;
 /// Its end, in cells: `HAVEN_RADIUS` east of the centre.
@@ -222,16 +225,20 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     // Each starts under the anchor, so it is fixed to it, not floating off it.
     let tip = east_tip_cells();
     let mut streets_cells: Vec<(Vec2, Vec2)> = vec![(Vec2::new(EAST_FROM, 0.0), Vec2::new(tip, 0.0))];
+    // A city grid: avenues north and south off both ends of the hulk and
+    // off the lashed hulls, and one west past the seed ark. Square to the
+    // ships, so they pack into blocks.
     let others = [
-        (Vec2::new(0.0, 1.0), Vec2::new(30.0, 0.0)),
-        (Vec2::new(0.0, -1.0), Vec2::new(-30.0, 0.0)),
-        (Vec2::new(1.0, 1.0).normalize(), Vec2::new(20.0, 20.0)),
-        (Vec2::new(-1.0, -1.0).normalize(), Vec2::new(-20.0, -20.0)),
-        (Vec2::new(1.0, -1.0).normalize(), Vec2::new(20.0, -20.0)),
-        (Vec2::new(-1.0, 1.0).normalize(), Vec2::new(-20.0, 20.0)),
+        (Vec2::Y, Vec2::new(30.0, 0.0)),
+        (Vec2::NEG_Y, Vec2::new(-30.0, 0.0)),
+        (Vec2::Y, Vec2::new(160.0, 40.0)),
+        (Vec2::NEG_Y, Vec2::new(160.0, -40.0)),
+        (Vec2::Y, Vec2::new(-130.0, 50.0)),
+        (Vec2::NEG_Y, Vec2::new(-130.0, -50.0)),
+        (Vec2::NEG_X, Vec2::new(-60.0, 0.0)),
     ];
     for (dir, from) in others {
-        let len: f32 = rng.gen_range(290.0..360.0);
+        let len: f32 = rng.gen_range(200.0..260.0);
         streets_cells.push((from, from + dir * len));
     }
 
@@ -247,38 +254,62 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
         // Keep the last stretch of the east street open for the berth.
         let end = if si == 0 { len - 25.0 } else { len - 8.0 };
         let core: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 2.0)).collect();
-        // Two ranks a side: the second moored behind the first, glued on.
-        for (side, rank) in [(-1.0f32, 0usize), (1.0, 0), (-1.0, 1), (1.0, 1)] {
-            let mut cursor = 6.0 + rng.gen_range(0.0..8.0);
-            loop {
-                let key = MOORED[rng.gen_range(0..MOORED.len())];
-                let Some(d) = lib.get(key) else { break };
-                let quarter = lie[rng.gen_range(0..2)];
-                let span = d.span().as_vec2();
-                let (length, breadth) = if quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
-                if cursor + length > end {
-                    break;
+        // Four ranks a side, each moored right behind the one in front of it
+        // and glued to it: packed tight, they read as districts, not a queue.
+        for side in [-1.0f32, 1.0] {
+            // The outer edge of the rank in front, along the street: (from, to, edge).
+            let mut front: Vec<(f32, f32, f32)> = Vec::new();
+            for rank in 0..4usize {
+                let mut this_rank: Vec<(f32, f32, f32)> = Vec::new();
+                let mut cursor = 6.0 + rng.gen_range(0.0..8.0);
+                loop {
+                    let key = MOORED[rng.gen_range(0..MOORED.len())];
+                    let Some(d) = lib.get(key) else { break };
+                    let quarter = lie[rng.gen_range(0..2)];
+                    let span = d.span().as_vec2();
+                    let (length, breadth) = if quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
+                    if cursor + length > end {
+                        break;
+                    }
+                    let (t0, t1) = (cursor, cursor + length);
+                    // Moored right behind what's in front of it; where the rank in
+                    // front has a gap, behind its nearest ship either side.
+                    let behind = if rank == 0 {
+                        Some(4.0)
+                    } else {
+                        let over = front.iter().filter(|(f0, f1, _)| *f0 < t1 && *f1 > t0).map(|(_, _, e)| *e).fold(None, |a: Option<f32>, e| Some(a.map_or(e, |a: f32| a.max(e))));
+                        over.or_else(|| front.iter().filter(|(f0, f1, _)| *f0 < t1 + 30.0 && *f1 > t0 - 30.0).map(|(_, _, e)| *e).fold(None, |a: Option<f32>, e| Some(a.map_or(e, |a: f32| a.max(e)))))
+                    };
+                    // Nothing in front to moor to: no ship here in this rank.
+                    let Some(behind) = behind else {
+                        cursor += 6.0;
+                        continue;
+                    };
+                    let off = behind + 1.0 + breadth * 0.5;
+                    let t = cursor + length * 0.5;
+                    let centre = *a + along * t + across * side * off;
+                    // Still under the hulk: move along rather than lose the slot.
+                    let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None };
+                    if outline(&probe, 0.0).is_some_and(|r| core.iter().any(|c| !c.intersect(r).is_empty())) {
+                        cursor += 4.0;
+                        continue;
+                    }
+                    let level = rng.gen_range(0.3..0.5) - rank as f32 * 0.06;
+                    let key_dist = centre.length() + rank as f32 * 25.0 + rng.gen_range(0.0..30.0);
+                    slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si) }, *a + along * t));
+                    this_rank.push((t0, t1, off + breadth * 0.5));
+                    cursor += length + rng.gen_range(0.5..1.5);
                 }
-                let t = cursor + length * 0.5;
-                let off = [5.0, 52.0][rank] + breadth * 0.5 + rng.gen_range(0.0..1.5);
-                let centre = *a + along * t + across * side * off;
-                // Still under the hulk: move along rather than lose the slot.
-                let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None };
-                if outline(&probe, 0.0).is_some_and(|r| core.iter().any(|c| !c.intersect(r).is_empty())) {
-                    cursor += 4.0;
-                    continue;
-                }
-                let level = rng.gen_range(0.3..0.5) - rank as f32 * 0.08;
-                let key_dist = centre.length() + rank as f32 * 60.0 + rng.gen_range(0.0..40.0);
-                slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si) }, *a + along * t));
-                cursor += length + rng.gen_range(3.0..7.0);
+                front = this_rank;
             }
         }
     }
     // Nearest first; a ship whose outline would touch one already moored
     // (or the hulk, or the hulls lashed to it) is passed over.
     slots.sort_by(|x, y| x.0.total_cmp(&y.0));
-    let mut taken: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 1.5)).collect();
+    let mut taken: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 0.3)).collect();
+    // The lane in to the berth is never moored in.
+    taken.push(Rect::new(tip * CELL + CELL, -LANE_HALF_WIDTH, tip * CELL + 80_000.0, LANE_HALF_WIDTH));
     let mut tubes = Vec::new();
     // The lashed hulls, walked to from the hulk.
     for m in moorings.iter().skip(1) {
@@ -289,7 +320,7 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
         if accepted >= ships {
             break;
         }
-        let Some(r) = outline(&m, CELL * 1.5) else { continue };
+        let Some(r) = outline(&m, CELL * 0.3) else { continue };
         if taken.iter().any(|o| !o.intersect(r).is_empty()) {
             continue;
         }
@@ -310,7 +341,7 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
             let Some(theirs) = outline(o, 0.0) else { continue };
             // Same side: their outlines overlap across the street's line.
             let gap = mine.union(theirs).size() - mine.size() - theirs.size();
-            if gap.x.max(gap.y) < CELL * 14.0 && gap.x.min(gap.y) < 0.0 {
+            if gap.x.max(gap.y) < CELL * 8.0 && gap.x.min(gap.y) < 0.0 {
                 tubes.push((m.at, o.at, CELL * 1.4));
             }
         }
@@ -334,18 +365,16 @@ pub fn outline(m: &Mooring, margin: f32) -> Option<Rect> {
 /// Each ship as a row of circles down its length, and each street as a
 /// thin row of its own.
 pub fn collision_circles(plan: &RaftPlan) -> Vec<(Vec2, f32)> {
-    let lib = library();
     let mut out = Vec::new();
     for m in &plan.moorings {
-        let Some(d) = lib.get(m.design) else { continue };
-        let span = d.span().as_vec2();
-        let (length, breadth) = if m.quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
-        let along = if m.quarter % 2 == 0 { Vec2::X } else { Vec2::Y };
-        let r = breadth * 0.5 * CELL;
-        let n = ((length / breadth.max(1.0)).ceil() as usize).max(1);
+        let Some(r) = outline(m, 0.0) else { continue };
+        // A row of circles down the long side, each as wide as the short one.
+        let size = r.size();
+        let (long, short, along) = if size.x >= size.y { (size.x, size.y, Vec2::X) } else { (size.y, size.x, Vec2::Y) };
+        let n = ((long / short.max(1.0)).ceil() as usize).max(1);
         for i in 0..n {
             let t = if n == 1 { 0.0 } else { i as f32 / (n - 1) as f32 - 0.5 };
-            out.push((m.at + along * t * (length - breadth).max(0.0) * CELL, r));
+            out.push((m.at + along * t * (long - short), short * 0.5));
         }
     }
     for (a, b) in &plan.streets {
@@ -378,8 +407,8 @@ mod tests {
 
     #[test]
     fn a_bigger_raft_is_the_same_raft_filled_further_out() {
-        let small = plan_raft(9, 20);
-        let big = plan_raft(9, 40);
+        let small = plan_raft(9, 40);
+        let big = plan_raft(9, 80);
         for m in &small.moorings {
             assert!(big.moorings.contains(m), "{m:?} gone from the bigger raft");
         }
@@ -435,3 +464,4 @@ mod tests {
         assert!(plan.extent > 15_000.0, "{} is not a city", plan.extent);
     }
 }
+

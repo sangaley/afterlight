@@ -58,9 +58,9 @@ pub const TOTAL_STATION_SLOTS: usize = MAX_SYSTEMS * STATIONS_PER_SYSTEM;
 /// Raft reaches out to `HAVEN_EXTENT` the other ways.
 pub const HAVEN_RADIUS: f32 = 19_000.0;
 /// The furthest any part of the Raft reaches from Haven's centre.
-pub const HAVEN_EXTENT: f32 = 32_000.0;
+pub const HAVEN_EXTENT: f32 = 36_000.0;
 /// Ships moored round Haven's anchor at the start of a run.
-pub const HAVEN_SHIPS: usize = 40;
+pub const HAVEN_SHIPS: usize = 64;
 /// Every other station is still the old ring, at the old size.
 const OTHER_STATION_RADIUS: f32 = 2_600.0 * 0.8;
 
