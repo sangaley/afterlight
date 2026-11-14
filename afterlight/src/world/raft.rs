@@ -192,7 +192,7 @@ pub struct RaftPlan {
 }
 
 /// The east street: fixed, so the berth is too.
-const EAST_FROM: f32 = 90.0;
+const EAST_FROM: f32 = 40.0;
 /// Its end, in cells: `HAVEN_RADIUS` east of the centre.
 pub fn east_tip_cells() -> f32 {
     super::home_base::HAVEN_RADIUS / CELL
@@ -219,23 +219,24 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     }
 
     // Streets: the fixed one east, the rest off the anchor's other sides.
+    // Each starts under the anchor, so it is fixed to it, not floating off it.
     let tip = east_tip_cells();
     let mut streets_cells: Vec<(Vec2, Vec2)> = vec![(Vec2::new(EAST_FROM, 0.0), Vec2::new(tip, 0.0))];
     let others = [
         (Vec2::new(0.0, 1.0), Vec2::new(30.0, 0.0)),
         (Vec2::new(0.0, -1.0), Vec2::new(-30.0, 0.0)),
-        (Vec2::new(1.0, 1.0).normalize(), Vec2::new(60.0, 60.0)),
-        (Vec2::new(-1.0, -1.0).normalize(), Vec2::new(-70.0, -60.0)),
-        (Vec2::new(1.0, -1.0).normalize(), Vec2::new(70.0, -70.0)),
-        (Vec2::new(-1.0, 1.0).normalize(), Vec2::new(-80.0, 60.0)),
+        (Vec2::new(1.0, 1.0).normalize(), Vec2::new(20.0, 20.0)),
+        (Vec2::new(-1.0, -1.0).normalize(), Vec2::new(-20.0, -20.0)),
+        (Vec2::new(1.0, -1.0).normalize(), Vec2::new(20.0, -20.0)),
+        (Vec2::new(-1.0, 1.0).normalize(), Vec2::new(-20.0, 20.0)),
     ];
     for (dir, from) in others {
-        let start = from + dir * 90.0;
-        let len: f32 = rng.gen_range(150.0..230.0);
-        streets_cells.push((start, start + dir * len));
+        let len: f32 = rng.gen_range(290.0..360.0);
+        streets_cells.push((from, from + dir * len));
     }
 
-    // Every slot along every street, nearest first.
+    // Every slot along every street. Each side of a street has its own run
+    // of ships, end to end with a gap, so none sits on another.
     let mut slots: Vec<(f32, Mooring, Vec2)> = Vec::new();
     for (si, (a, b)) in streets_cells.iter().enumerate() {
         let along = (*b - *a).normalize();
@@ -243,48 +244,74 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
         let len = a.distance(*b);
         // Ships lie along the street, square to the grid.
         let lie = if along.x.abs() >= along.y.abs() { [0u8, 2] } else { [1u8, 3] };
-        let mut t = 10.0;
         // Keep the last stretch of the east street open for the berth.
-        let end = if si == 0 { len - 30.0 } else { len - 12.0 };
-        while t < end {
-            let key = MOORED[rng.gen_range(0..MOORED.len())];
-            let Some(d) = lib.get(key) else { t += 10.0; continue };
-            let quarter = lie[rng.gen_range(0..2)];
-            let span = d.span().as_vec2();
-            let (length, breadth) = if quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
-            // On the east street no hull may reach past the open stretch.
-            if si == 0 && t + length * 0.5 > len - 25.0 {
-                break;
-            }
-            for side in [-1.0f32, 1.0] {
-                let off = 2.0 + breadth * 0.5 + rng.gen_range(0.0..2.0);
+        let end = if si == 0 { len - 25.0 } else { len - 8.0 };
+        let core: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 2.0)).collect();
+        // Two ranks a side: the second moored behind the first, glued on.
+        for (side, rank) in [(-1.0f32, 0usize), (1.0, 0), (-1.0, 1), (1.0, 1)] {
+            let mut cursor = 6.0 + rng.gen_range(0.0..8.0);
+            loop {
+                let key = MOORED[rng.gen_range(0..MOORED.len())];
+                let Some(d) = lib.get(key) else { break };
+                let quarter = lie[rng.gen_range(0..2)];
+                let span = d.span().as_vec2();
+                let (length, breadth) = if quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
+                if cursor + length > end {
+                    break;
+                }
+                let t = cursor + length * 0.5;
+                let off = [5.0, 52.0][rank] + breadth * 0.5 + rng.gen_range(0.0..1.5);
                 let centre = *a + along * t + across * side * off;
-                let level = rng.gen_range(0.3..0.5);
-                let key_dist = centre.length() + rng.gen_range(0.0..40.0);
+                // Still under the hulk: move along rather than lose the slot.
+                let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None };
+                if outline(&probe, 0.0).is_some_and(|r| core.iter().any(|c| !c.intersect(r).is_empty())) {
+                    cursor += 4.0;
+                    continue;
+                }
+                let level = rng.gen_range(0.3..0.5) - rank as f32 * 0.08;
+                let key_dist = centre.length() + rank as f32 * 60.0 + rng.gen_range(0.0..40.0);
                 slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si) }, *a + along * t));
+                cursor += length + rng.gen_range(3.0..7.0);
             }
-            t += length * 0.45 + rng.gen_range(2.0..6.0);
         }
     }
+    // Nearest first; a ship whose outline would touch one already moored
+    // (or the hulk, or the hulls lashed to it) is passed over.
     slots.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut taken: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 1.5)).collect();
     let mut tubes = Vec::new();
-    for (_, m, street_point) in slots.into_iter().take(ships) {
-        tubes.push((m.at, street_point * CELL, CELL * 1.6));
-        moorings.push(m);
+    // The lashed hulls, walked to from the hulk.
+    for m in moorings.iter().skip(1) {
+        tubes.push((Vec2::ZERO, m.at, CELL * 2.6));
     }
-    // Neighbours glued to each other: a walkway to the nearest one on the
-    // same street, if it's close.
+    let mut accepted = 0;
+    for (_, m, street_point) in slots {
+        if accepted >= ships {
+            break;
+        }
+        let Some(r) = outline(&m, CELL * 1.5) else { continue };
+        if taken.iter().any(|o| !o.intersect(r).is_empty()) {
+            continue;
+        }
+        taken.push(r);
+        // Every ship has its walkway to the street.
+        tubes.push((m.at, street_point * CELL, CELL * 1.8));
+        moorings.push(m);
+        accepted += 1;
+    }
+    // And to its neighbours on the same side of the street, end to end.
     let moored: Vec<&Mooring> = moorings.iter().filter(|m| m.street.is_some()).collect();
     for (i, m) in moored.iter().enumerate() {
-        let near = moored
-            .iter()
-            .enumerate()
-            .filter(|(j, o)| *j != i && o.street == m.street)
-            .map(|(_, o)| (o.at.distance(m.at), o.at))
-            .min_by(|x, y| x.0.total_cmp(&y.0));
-        if let Some((dist, at)) = near {
-            if dist < 60.0 * CELL && i % 2 == 0 {
-                tubes.push((m.at, at, CELL * 1.3));
+        let Some(mine) = outline(m, 0.0) else { continue };
+        for o in moored.iter().skip(i + 1) {
+            if o.street != m.street {
+                continue;
+            }
+            let Some(theirs) = outline(o, 0.0) else { continue };
+            // Same side: their outlines overlap across the street's line.
+            let gap = mine.union(theirs).size() - mine.size() - theirs.size();
+            if gap.x.max(gap.y) < CELL * 14.0 && gap.x.min(gap.y) < 0.0 {
+                tubes.push((m.at, o.at, CELL * 1.4));
             }
         }
     }
@@ -294,6 +321,14 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     plan.circles = collision_circles(&plan);
     plan.extent = plan.circles.iter().map(|(c, r)| c.length() + r).fold(0.0, f32::max);
     plan
+}
+
+/// A moored ship's outline in world units, grown by `margin` all round.
+pub fn outline(m: &Mooring, margin: f32) -> Option<Rect> {
+    let d = library().get(m.design)?;
+    let span = d.span().as_vec2() * CELL;
+    let half = if m.quarter % 2 == 0 { span * 0.5 } else { Vec2::new(span.y, span.x) * 0.5 };
+    Some(Rect::from_center_half_size(m.at, half + Vec2::splat(margin)))
 }
 
 /// Each ship as a row of circles down its length, and each street as a
@@ -343,8 +378,8 @@ mod tests {
 
     #[test]
     fn a_bigger_raft_is_the_same_raft_filled_further_out() {
-        let small = plan_raft(9, 40);
-        let big = plan_raft(9, 120);
+        let small = plan_raft(9, 20);
+        let big = plan_raft(9, 40);
         for m in &small.moorings {
             assert!(big.moorings.contains(m), "{m:?} gone from the bigger raft");
         }
@@ -369,6 +404,27 @@ mod tests {
                 let in_lane_y = c.y.abs() - r < 2_500.0;
                 assert!(!(in_lane_x && in_lane_y), "seed {seed}: something at {c} r {r} in the lane");
             }
+        }
+    }
+
+    #[test]
+    fn no_ship_sits_on_another() {
+        for seed in 0..8 {
+            let plan = plan_raft(seed, 150);
+            let boxes: Vec<Rect> = plan.moorings.iter().filter_map(|m| outline(m, 0.0)).collect();
+            for i in 0..boxes.len() {
+                for j in i + 1..boxes.len() {
+                    assert!(boxes[i].intersect(boxes[j]).is_empty(), "seed {seed}: {:?} on {:?}", plan.moorings[i], plan.moorings[j]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_ship_has_a_walkway() {
+        let plan = plan_raft(2, 100);
+        for m in plan.moorings.iter().skip(1) {
+            assert!(plan.tubes.iter().any(|(a, b, _)| *a == m.at || *b == m.at), "{} has no walkway", m.design);
         }
     }
 
