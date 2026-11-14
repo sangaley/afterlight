@@ -261,10 +261,48 @@ pub struct Style {
     /// Where the berth arm ends, in blocks east of the centre: the station's
     /// docking radius. The other arms are sized from it.
     pub tip: f32,
+    /// A hub that is already there (a faction's starport): the arms root on
+    /// it and nothing of the station's own is built where it is.
+    pub given: Option<GivenHub>,
+}
+
+/// Someone else's hull at the middle, in blocks: how far it reaches along
+/// each way an arm goes out (east, north, west, south), and its half-size.
+#[derive(Clone, Copy, Debug)]
+pub struct GivenHub {
+    pub reach: [f32; 4],
+    pub half: Vec2,
+}
+
+impl GivenHub {
+    /// From a hull's cells (centred on the middle): an arm roots a couple
+    /// of blocks inside the furthest cell near each axis, so it runs in under
+    /// the hull wherever the hull's edge is.
+    pub fn from_cells(cells: &[IVec2]) -> Self {
+        let mut half = Vec2::ZERO;
+        for c in cells {
+            half = half.max(c.as_vec2().abs());
+        }
+        let reach_along = |dir: IVec2| {
+            let perp = IVec2::new(-dir.y, dir.x);
+            cells
+                .iter()
+                .filter(|c| c.dot(perp).abs() <= 4)
+                .map(|c| c.dot(dir) as f32)
+                .fold(f32::NEG_INFINITY, f32::max)
+        };
+        let fallback = [half.x, half.y, half.x, half.y];
+        let mut reach = [0.0; 4];
+        for (i, dir) in [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
+            let r = reach_along(dir);
+            reach[i] = if r.is_finite() && r > 2.0 { r - 2.0 } else { fallback[i] * 0.6 };
+        }
+        Self { reach, half: half + Vec2::splat(1.0) }
+    }
 }
 
 /// Haven: a refuge, kept up but not grand.
-pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, hub_kind: super::sections::HubKind::Octagon, arms: 11, tip: 19_000.0 / CELL };
+pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, hub_kind: super::sections::HubKind::Octagon, arms: 11, tip: 19_000.0 / CELL, given: None };
 
 /// Blocks of gantry between an arm and a moored ship.
 const GANTRY: i32 = 3;
@@ -322,21 +360,27 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
         dock: Vec2::ZERO,
     };
 
-    // The hub.
-    let hub = sections::hub(style.hub_kind, style.hub, &mut rng);
-    let hub_m = static_piece(hub, Vec2::ZERO, 0, 0.85, None);
-    if let Some(r) = outline(&hub_m, 0.0) {
-        taken.push((r, Owner::Thing));
-    }
-    moorings.push(hub_m);
-    let (cx, cy) = sections::hub_reach(style.hub_kind, style.hub);
-    let (cx, cy) = (cx as f32 - 2.0, cy as f32 - 2.0);
+    // The hub: the station's own, or the hull already there.
+    let roots = if let Some(given) = style.given {
+        taken.push((Rect::from_center_half_size(Vec2::ZERO, given.half * CELL), Owner::Thing));
+        given.reach
+    } else {
+        let hub = sections::hub(style.hub_kind, style.hub, &mut rng);
+        let hub_m = static_piece(hub, Vec2::ZERO, 0, 0.85, None);
+        if let Some(r) = outline(&hub_m, 0.0) {
+            taken.push((r, Owner::Thing));
+        }
+        moorings.push(hub_m);
+        let (cx, cy) = sections::hub_reach(style.hub_kind, style.hub);
+        let (cx, cy) = (cx as f32 - 2.0, cy as f32 - 2.0);
+        [cx, cy, cx, cy]
+    };
+    let cx = roots[0];
 
     // The arms: (start, direction, length, must be straight).
     let mut arms: Vec<(Vec2, IVec2, f32, bool)> = vec![(Vec2::new(cx, 0.0), IVec2::X, (tip - cx).max(30.0), true)];
-    for dir in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y] {
-        let from = if dir.x != 0 { cx } else { cy };
-        arms.push((dir.as_vec2() * from, dir, tip * rng.gen_range(1.1..1.45), false));
+    for (i, dir) in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
+        arms.push((dir.as_vec2() * roots[i + 1], dir, tip * rng.gen_range(1.1..1.45), false));
     }
 
     // Each arm in straight runs; crooked ones jog between runs. Branches
@@ -548,9 +592,19 @@ thread_local! {
 
 /// Lay out a station for an owner's look.
 pub fn plan_for(seed: u64, ships: usize, look: &super::station_style::Look, hub: i32, tip: f32, pool: &[&'static str]) -> RaftPlan {
-    let style = Style { order: look.order, hub, hub_kind: look.hub, arms: look.arms, tip };
+    plan_styled(seed, ships, &Style { order: look.order, hub, hub_kind: look.hub, arms: look.arms, tip, given: None }, look, pool)
+}
+
+/// Lay out an owner's arms round a hull already there (its starport).
+/// `tip` is where the berth arm ends, in blocks east of the middle.
+pub fn plan_round(seed: u64, ships: usize, look: &super::station_style::Look, hull: GivenHub, tip: f32, pool: &[&'static str]) -> RaftPlan {
+    let style = Style { order: look.order, hub: hull.half.max_element() as i32, hub_kind: look.hub, arms: look.arms, tip, given: Some(hull) };
+    plan_styled(seed, ships, &style, look, pool)
+}
+
+fn plan_styled(seed: u64, ships: usize, style: &Style, look: &super::station_style::Look, pool: &[&'static str]) -> RaftPlan {
     PARTS.with(|p| *p.borrow_mut() = Some(look.parts));
-    let plan = plan_station(seed, ships, &style, pool);
+    let plan = plan_station(seed, ships, style, pool);
     PARTS.with(|p| *p.borrow_mut() = None);
     plan
 }

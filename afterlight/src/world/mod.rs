@@ -14,6 +14,7 @@ pub mod raft_art;
 pub mod raft_life;
 pub mod sections;
 pub mod station_style;
+pub mod starport_raft;
 pub mod station_types;
 
 #[allow(unused_imports)]

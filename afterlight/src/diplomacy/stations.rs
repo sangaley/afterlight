@@ -184,7 +184,10 @@ fn sync_faction_stations(
     alive: Query<&AiShipState>,
     registry: Res<ModuleRegistry>,
     asset_server: Res<AssetServer>,
+    // The city round the starport (world::starport_raft).
+    raft: (Option<Res<crate::world::raft_art::RaftArt>>, Option<ResMut<crate::world::raft_art::RaftBakes>>),
 ) {
+    let (raft_art, mut raft_bakes) = raft;
     let Ok(player) = player.single() else { return };
     let player_pos = player.translation.truncate();
     let system = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id));
@@ -230,7 +233,10 @@ fn sync_faction_stations(
         return;
     };
     let planet_pos = planet_tf.translation.truncate();
-    let extent = design_extent(faction, plan.key);
+    // The city's reach, not just the starport's hull: you dock anywhere
+    // alongside it, and its guards and convoys stand off outside it.
+    let city = crate::world::starport_raft::plan(system.id, faction, plan.key);
+    let extent = design_extent(faction, plan.key).max(city.extent);
     let core_anchor = StationAnchor {
         planet,
         star: system.local_center,
@@ -284,6 +290,11 @@ fn sync_faction_stations(
             ));
             parts.push(e);
         }
+    }
+    if let (Some(art), Some(bakes)) = (raft_art.as_deref(), raft_bakes.as_deref_mut()) {
+        let city = crate::world::starport_raft::spawn(&mut commands, system.id, faction, &city, at, core_anchor, art, bakes);
+        commands.entity(city).insert(StarSystemMember { system_id: system.id });
+        parts.push(city);
     }
     info!("Faction station: {} {} at the capital of system {}", faction_display_name(faction), plan.name, system.id);
     stations.live = Some(LiveStation { system_id: system.id, core, parts });
@@ -471,6 +482,7 @@ pub struct StationBerths<'w, 's> {
     parts: Query<'w, 's, (Entity, &'static Transform, Option<&'static Collider>), (With<super::FactionStation>, Without<Ship>)>,
     bodies: Query<'w, 's, (&'static Transform, Option<&'static OrbitalPath>), (Without<Ship>, Without<StationAnchor>)>,
     others: Query<'w, 's, (&'static Transform, &'static Collider), (Without<Ship>, Without<StationAnchor>)>,
+    cities: Query<'w, 's, (&'static Transform, &'static Collider), (With<crate::world::starport_raft::StarportRaft>, Without<Ship>)>,
     stations: Res<'w, FactionStations>,
 }
 
@@ -497,6 +509,12 @@ impl StationBerths<'_, '_> {
             let Ok((_, tf, collider)) = self.parts.get(id) else { continue };
             let collider = collider?;
             parts.push((crate::ship::collision::world_point(tf, collider.bound_center), collider.bound_radius));
+        }
+        // The city round it, piece by piece: it leaves with the station, so
+        // the berth has to be clear of all of it as it goes.
+        for id in live.parts.iter().copied() {
+            let Ok((tf, collider)) = self.cities.get(id) else { continue };
+            parts.extend(collider.circles.iter().map(|&(c, r)| (crate::ship::collision::world_point(tf, c), r)));
         }
         // Docking is measured between the two transforms, and the berth
         // places the ship's collider centre, so both offsets come off.
@@ -675,7 +693,9 @@ fn spawn_test_station(
     mut player: Query<&mut Transform, With<Ship>>,
     registry: Res<ModuleRegistry>,
     asset_server: Res<AssetServer>,
+    raft: (Option<Res<crate::world::raft_art::RaftArt>>, Option<ResMut<crate::world::raft_art::RaftBakes>>),
 ) {
+    let (raft_art, mut raft_bakes) = raft;
     if *done {
         return;
     }
@@ -696,9 +716,13 @@ fn spawn_test_station(
         warn!("AFTERLIGHT_STATION_TEST: {wanted} has no station yet");
         return;
     };
-    let extent = design_extent(faction, plan.key);
+    let city = crate::world::starport_raft::plan(0, faction, plan.key);
+    let extent = design_extent(faction, plan.key).max(city.extent);
     let at = player.translation.truncate() + Vec2::X * (extent + 2_500.0);
     let fixed = StationAnchor { planet: Entity::PLACEHOLDER, star: at, out: 0.0, around: Vec2::ZERO, extent };
+    if let (Some(art), Some(bakes)) = (raft_art.as_deref(), raft_bakes.as_deref_mut()) {
+        crate::world::starport_raft::spawn(&mut commands, 0, faction, &city, at, fixed, art, bakes);
+    }
     let core = crate::ai_ship::spawner::spawn_ai_ship_class(faction, Some(plan.key), at, &mut commands, &registry, &asset_server);
     commands.entity(core).insert((super::FactionStation, StationCore, fixed));
     if let Some(platform) = plan.platform {
