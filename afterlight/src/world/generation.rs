@@ -54,7 +54,7 @@ pub fn generate_chunk(
     }
     // Nor inside or against Haven itself, now that it's kilometres across.
     let haven = crate::world::home_base::STATION_POS;
-    if chunk_center.distance(haven) < crate::world::home_base::HAVEN_RADIUS + SPAWN_KEEP_CLEAR {
+    if chunk_center.distance(haven) < crate::world::home_base::HAVEN_EXTENT + SPAWN_KEEP_CLEAR {
         return chunk;
     }
 

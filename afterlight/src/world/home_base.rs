@@ -52,12 +52,21 @@ pub const TOTAL_STATION_SLOTS: usize = MAX_SYSTEMS * STATIONS_PER_SYSTEM;
 /// Was about 200. Next to the starter pincer (~1,800 long) a station read as
 /// a drone parked beside the ship rather than a place you dock at; at this
 /// size the station is about three times the length of the ship.
-pub const HAVEN_RADIUS: f32 = 2_600.0;
-const OTHER_STATION_SCALE: f32 = 0.8;
+///
+/// Haven itself is now the Raft (world::raft): this is how far east of its
+/// centre the berth street ends, where your walkway meets it. The rest of the
+/// Raft reaches out to `HAVEN_EXTENT` the other ways.
+pub const HAVEN_RADIUS: f32 = 19_000.0;
+/// The furthest any part of the Raft reaches from Haven's centre.
+pub const HAVEN_EXTENT: f32 = 32_000.0;
+/// Ships moored round Haven's anchor at the start of a run.
+pub const HAVEN_SHIPS: usize = 60;
+/// Every other station is still the old ring, at the old size.
+const OTHER_STATION_RADIUS: f32 = 2_600.0 * 0.8;
 
 /// Structure radius of the station with this global index.
 pub fn station_radius(index: usize) -> f32 {
-    if index == 0 { HAVEN_RADIUS } else { HAVEN_RADIUS * OTHER_STATION_SCALE }
+    if index == 0 { HAVEN_RADIUS } else { OTHER_STATION_RADIUS }
 }
 
 /// How far past a station's structure the ship's ROOT can be and still dock.
@@ -308,12 +317,18 @@ pub fn refresh_system_stations(
 pub fn sync_station_entities(
     mut commands: Commands,
     stations: Res<SystemStations>,
-    existing: Query<(Entity, &Station)>,
+    existing: Query<(Entity, &Station, Option<&RaftSeed>)>,
+    galaxy: Res<crate::celestial::resources::GalaxyMap>,
+    art: Option<Res<super::raft_art::RaftArt>>,
+    mut bakes: ResMut<super::raft_art::RaftBakes>,
 ) {
+    let Some(art) = art else { return };
+    let seed = galaxy.galaxy_seed;
     let mut present: Vec<usize> = Vec::new();
-    for (entity, station) in existing.iter() {
+    for (entity, station, raft) in existing.iter() {
         let still_here = stations.system_id == Some(station.system_id)
-            && stations.sites.iter().any(|s| s.index == station.index);
+            && stations.sites.iter().any(|s| s.index == station.index)
+            && raft.is_none_or(|r| r.0 == seed);
         if still_here {
             present.push(station.index);
         } else {
@@ -323,7 +338,11 @@ pub fn sync_station_entities(
 
     for site in stations.sites.iter() {
         if !present.contains(&site.index) {
-            spawn_station(&mut commands, site);
+            if site.index == 0 {
+                spawn_haven_raft(&mut commands, site, seed, &art, &mut bakes);
+            } else {
+                spawn_station(&mut commands, site);
+            }
         }
     }
 }
@@ -414,6 +433,22 @@ pub struct StationBeacon {
     color: Color,
 }
 
+impl StationBeacon {
+    pub(crate) fn new(phase: f32, color: Color) -> Self {
+        Self { phase, color }
+    }
+}
+
+/// A station's solid shape as circles about its centre, where it isn't the
+/// old ring's (the Raft's, from its plan). ship::collision builds from this.
+#[derive(Component, Clone)]
+pub struct StationCircles(pub Vec<(Vec2, f32)>);
+
+/// The seed Haven's Raft was laid out from: a run whose galaxy seed arrives
+/// after Haven first spawned gets its own Raft, not seed 0's.
+#[derive(Component)]
+pub struct RaftSeed(pub u64);
+
 pub fn pulse_station_beacons(time: Res<Time>, mut beacons: Query<(&StationBeacon, &mut Sprite)>) {
     let t = time.elapsed_secs();
     for (beacon, mut sprite) in &mut beacons {
@@ -421,6 +456,38 @@ pub fn pulse_station_beacons(time: Res<Time>, mut beacons: Query<(&StationBeacon
         let swell = 0.5 + 0.5 * (t * 2.6 + beacon.phase).sin();
         sprite.color = beacon.color.with_alpha(0.25 + 0.75 * swell * swell);
     }
+}
+
+/// Haven as the Raft: a hulk and the ships moored round it (world::raft).
+fn spawn_haven_raft(
+    commands: &mut Commands,
+    site: &StationSite,
+    seed: u64,
+    art: &super::raft_art::RaftArt,
+    bakes: &mut super::raft_art::RaftBakes,
+) {
+    let plan = super::raft::plan_raft(seed, HAVEN_SHIPS);
+    let root = commands
+        .spawn((
+            Transform::from_xyz(site.pos.x, site.pos.y, 0.05),
+            Visibility::default(),
+            Station { index: site.index, system_id: site.system_id },
+            HomeStation,
+            StationCircles(plan.circles.clone()),
+            RaftSeed(seed),
+        ))
+        .id();
+    super::raft_art::spawn_raft(commands, root, &plan, art, bakes);
+    let label = commands
+        .spawn((
+            Text2d::new(site.name.to_uppercase()),
+            TextFont { font_size: FontSize::Px(28.0), ..default() },
+            TextColor(Color::srgba(0.7, 0.8, 1.0, 0.8)),
+            Transform::from_xyz(0.0, plan.extent + 1_500.0, 0.03),
+            crate::camera::ZoomInvariantText,
+        ))
+        .id();
+    commands.entity(root).add_child(label);
 }
 
 /// Builds one station structure: a hub, a habitat ring on four spokes, four
@@ -811,9 +878,16 @@ mod dock_prompt_tests {
 mod station_size_tests {
     use super::*;
 
-    /// Gap between a ship disc and the nearest part of a station's collision.
+    /// Gap between a ship disc and the nearest part of a station's collision:
+    /// the old ring's, or for Haven (radius `HAVEN_RADIUS`) the Raft's, over
+    /// several runs' layouts.
     fn clearance(station_pos: Vec2, radius: f32, ship_pos: Vec2, ship_radius: f32) -> f32 {
-        station_collider_circles(radius)
+        let circles: Vec<(Vec2, f32)> = if radius == HAVEN_RADIUS {
+            (0..6).flat_map(|seed| super::super::raft::plan_raft(seed, HAVEN_SHIPS).circles).collect()
+        } else {
+            station_collider_circles(radius)
+        };
+        circles
             .into_iter()
             .map(|(c, r)| (station_pos + c).distance(ship_pos) - r - ship_radius)
             .fold(f32::INFINITY, f32::min)

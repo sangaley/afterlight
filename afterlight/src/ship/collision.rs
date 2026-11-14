@@ -290,7 +290,7 @@ pub fn shots_hit_terrain(
 pub fn attach_static_colliders(
     mut commands: Commands,
     celestial: Query<(Entity, &CelestialBody), Added<CelestialBody>>,
-    stations: Query<(Entity, &Station), Added<Station>>,
+    stations: Query<(Entity, &Station, Option<&crate::world::home_base::StationCircles>), Added<Station>>,
     pois: Query<(Entity, &SpacePoi), (Added<SpacePoi>, Without<CelestialBody>)>,
 ) {
     for (entity, body) in celestial.iter() {
@@ -317,9 +317,10 @@ pub fn attach_static_colliders(
     }
     // Stations: the hub-and-ring disc plus each docking arm, built from the
     // same layout the station is drawn from (home_base::station_collider_circles).
-    for (entity, station) in stations.iter() {
+    for (entity, station, own) in stations.iter() {
         let radius = crate::world::home_base::station_radius(station.index);
-        let circles = crate::world::home_base::station_collider_circles(radius);
+        // The Raft's own shape when it has one (world::raft).
+        let circles = own.map(|c| c.0.clone()).unwrap_or_else(|| crate::world::home_base::station_collider_circles(radius));
         commands.entity(entity).try_insert(Collider::circles(circles, f32::INFINITY));
     }
     for (entity, poi) in pois.iter() {

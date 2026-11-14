@@ -8,6 +8,8 @@ mod generation;
 mod chunks;
 mod biomes;
 pub mod home_base;
+pub mod raft;
+pub mod raft_art;
 pub mod station_types;
 
 #[allow(unused_imports)]
@@ -29,6 +31,8 @@ impl Plugin for WorldPlugin {
             .init_resource::<DiscoveredLocations>()
             .init_resource::<MarketEvents>()
             .init_resource::<home_base::SystemStations>()
+            .init_resource::<raft_art::RaftBakes>()
+            .add_systems(Startup, raft_art::make_raft_art)
             // Stations follow whichever system is streamed in, and have to
             // exist while docked too — the game opens docked at Haven.
             .add_systems(OnEnter(GameState::StationDocked), home_base::spawn_base_arrow)
@@ -38,6 +42,7 @@ impl Plugin for WorldPlugin {
                     home_base::refresh_system_stations,
                     home_base::sync_station_entities,
                     home_base::pulse_station_beacons,
+                    raft_art::apply_raft_bakes,
                 )
                     .chain()
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),
