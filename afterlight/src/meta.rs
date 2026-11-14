@@ -239,7 +239,29 @@ pub fn read_slot_info(slot: u32) -> Option<SaveSlotInfo> {
     let path = save_path(slot);
     let data = std::fs::read_to_string(&path).ok()?;
     let save: SaveData = serde_json::from_str(&data).ok()?;
-    Some(save.slot_info)
+    let mut info = save.slot_info;
+    if info.seed == 0 {
+        info.seed = save.galaxy_seed;
+    }
+    info.total_systems = save.galaxy_systems.len() as u32;
+    info.dark_systems = save.galaxy_systems.iter().filter(|s| s.dark >= 0.5).count() as u32;
+    Some(info)
+}
+
+/// The save written last, by the file's time: what Continue on the title
+/// screen loads, and whose nebula it paints.
+pub fn latest_save() -> Option<SaveSlotInfo> {
+    let mut best: Option<(std::time::SystemTime, SaveSlotInfo)> = None;
+    for slot in (0..MAX_SLOTS).chain(std::iter::once(AUTO_SAVE_SLOT)) {
+        let Some(info) = read_slot_info(slot) else { continue };
+        let when = std::fs::metadata(save_path(slot))
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        if best.as_ref().is_none_or(|(t, _)| when > *t) {
+            best = Some((when, SaveSlotInfo { slot, ..info }));
+        }
+    }
+    best.map(|(_, info)| info)
 }
 
 /// Check which slots have saves
@@ -306,6 +328,10 @@ fn collect_save_data(
             depth: depth_state.current_depth,
             play_time: statistics.play_time_seconds,
             hull_integrity: hull_state.hull_integrity,
+            seed: galaxy_map.galaxy_seed,
+            cascade: 0.0, // filled in by handle_save_request
+            dark_systems: 0,
+            total_systems: 0,
         },
         ship: ShipBlueprint {
             hull_segments: Vec::new(), // Legacy field
@@ -409,6 +435,7 @@ fn handle_save_request(
     current_state: Res<State<GameState>>,
     pre_pause: Res<PrePauseState>,
     player_ship: PlayerShipParts,
+    cascade: Option<Res<crate::narrative::CascadeState>>,
 ) {
     let (world_state, galaxy_map, streaming, drifting_dead, looted, fuel, contracts, reputation, standing, sim, faction_stations, war, people, work, spawned) = &world_galaxy;
     for event in save_events.read() {
@@ -422,7 +449,7 @@ fn handle_save_request(
             });
             continue;
         };
-        let save_data = collect_save_data(
+        let mut save_data = collect_save_data(
             event.slot,
             &depth_state,
             &hull_state,
@@ -449,6 +476,8 @@ fn handle_save_request(
             work,
             spawned.galaxy_time,
         );
+
+        save_data.slot_info.cascade = cascade.as_ref().map_or(0.0, |c| c.level);
 
         // Tier 3 customization is saved via customization_params field
         // (populated when ModuleCustomization query is added in a future refactor)

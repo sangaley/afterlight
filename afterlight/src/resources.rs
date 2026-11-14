@@ -1718,6 +1718,20 @@ pub struct SaveSlotInfo {
     pub depth: f32,
     pub play_time: f32,
     pub hull_integrity: f32,
+    /// The galaxy's seed: the title screen paints this run's nebula from it.
+    /// 0 on older saves.
+    #[serde(default)]
+    pub seed: u64,
+    /// How far the Cascade had got (narrative::CascadeState::level), for the
+    /// title screen's drained nebula. 0 on older saves.
+    #[serde(default)]
+    pub cascade: f32,
+    /// Systems gone dark, of all of them: worked out when the save is read
+    /// (meta::read_slot_info), not trusted from the file.
+    #[serde(default)]
+    pub dark_systems: u32,
+    #[serde(default)]
+    pub total_systems: u32,
 }
 
 /// Per-system galaxy state that a save must carry. Everything else about a
@@ -1838,6 +1852,10 @@ impl Default for SaveData {
                 depth: 0.0,
                 play_time: 0.0,
                 hull_integrity: 1.0,
+                seed: 0,
+                cascade: 0.0,
+                dark_systems: 0,
+                total_systems: 0,
             },
             ship: ShipBlueprint::default(),
             hull_segments: Vec::new(),

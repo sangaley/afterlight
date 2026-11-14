@@ -248,6 +248,83 @@ pub struct MenuButton {
     pub action: MenuAction,
 }
 
+/// A menu row on a sheet (title screen, pause): words left, key right, a
+/// rule under it. Lit (gold left edge, a lifted ground) while hovered, or
+/// always when `lit` -- the row Enter or Esc would choose.
+#[derive(Component, Clone, Copy)]
+pub struct SheetRow {
+    pub lit: bool,
+}
+
+/// Spawn a [`SheetRow`] button. `size` is the words' font size.
+pub fn spawn_row_button(
+    parent: &mut ChildSpawnerCommands,
+    words: &str,
+    key: &str,
+    lit: bool,
+    size: f32,
+    action: MenuAction,
+) {
+    use theme::Sheet;
+    parent
+        .spawn((
+            Node {
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Baseline,
+                column_gap: Val::Px(12.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                border: UiRect { left: Val::Px(2.0), bottom: Val::Px(1.0), ..default() },
+                ..default()
+            },
+            BackgroundColor(if lit { Sheet::ROW_PICKED } else { Color::NONE }),
+            row_border(lit),
+            Button,
+            Interaction::default(),
+            MenuButton { action },
+            SheetRow { lit },
+        ))
+        .with_children(|b| {
+            b.spawn((
+                Text::new(words),
+                TextFont { font_size: FontSize::Px(size), ..default() },
+                TextColor(if lit { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_SECONDARY }),
+            ));
+            if !key.is_empty() {
+                b.spawn((
+                    Text::new(key),
+                    TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
+                    TextColor(Sheet::LABEL),
+                ));
+            }
+        });
+}
+
+fn row_border(lit: bool) -> BorderColor {
+    BorderColor {
+        left: if lit { theme::Sheet::PICKED } else { Color::NONE },
+        bottom: theme::Sheet::RULE,
+        ..BorderColor::all(Color::NONE)
+    }
+}
+
+/// Light a sheet row while the pointer is on it.
+pub fn sheet_row_visuals(
+    mut rows: Query<(&Interaction, &SheetRow, &mut BackgroundColor, &mut BorderColor, &Children), Changed<Interaction>>,
+    mut texts: Query<&mut TextColor>,
+) {
+    for (interaction, row, mut bg, mut border, children) in rows.iter_mut() {
+        let on = row.lit || *interaction != Interaction::None;
+        bg.0 = if on { theme::Sheet::ROW_PICKED } else { Color::NONE };
+        *border = row_border(on);
+        // The words (first child) brighten; the key stays grey.
+        if let Some(first) = children.first() {
+            if let Ok(mut c) = texts.get_mut(*first) {
+                c.0 = if on { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_SECONDARY };
+            }
+        }
+    }
+}
+
 // ============================================================================
 // BUTTON CONSTRUCTION HELPERS
 // ============================================================================
@@ -384,7 +461,7 @@ fn spawn_toggle_button(
 pub fn menu_button_visuals(
     mut query: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (With<MenuButton>, Without<ActiveTabButton>, Changed<Interaction>),
+        (With<MenuButton>, Without<ActiveTabButton>, Without<SheetRow>, Changed<Interaction>),
     >,
 ) {
     for (interaction, mut bg, mut border) in query.iter_mut() {

@@ -8,6 +8,7 @@ pub mod menu_buttons;
 pub mod offscreen_markers;
 pub mod map;
 pub mod callouts;
+pub mod nebula;
 
 use std::collections::{HashMap, HashSet};
 
@@ -50,6 +51,8 @@ impl Plugin for UiPlugin {
                 Update,
                 (
                     menu_buttons::menu_button_visuals,
+                    menu_buttons::sheet_row_visuals,
+                    nebula::show_menu_nebula,
                     menu_buttons::menu_button_dispatch,
                     menu_buttons::apply_audio_settings,
                     menu_buttons::apply_display_settings,
@@ -2944,74 +2947,134 @@ fn execute_warp_dash(
 // MAIN MENU SCREEN
 // ============================================================================
 
+/// Which part of the story the title screen tells: the stage from the
+/// Cascade level, with its tagline and how many of the title's letters have
+/// gone dim.
+fn menu_stage(level: f32) -> (&'static str, usize) {
+    if level < 0.34 {
+        ("A galaxy stopped. You kept counting.", 0)
+    } else if level < 0.67 {
+        ("Half of it has stopped. You are still counting.", 1)
+    } else {
+        ("Almost everything has stopped. Something else is counting too.", 5)
+    }
+}
+
 fn spawn_main_menu(mut commands: Commands) {
     use theme::*;
+    use menu_buttons::{spawn_row_button, MenuAction};
+
+    // The run to continue, if there is one: its nebula, drained as far as the
+    // Cascade had got. No save: a fresh nebula every launch, untouched.
+    let latest = crate::meta::latest_save();
+    let level_override = std::env::var("AFTERLIGHT_CASCADE").ok().and_then(|v| v.parse::<f32>().ok());
+    let level = level_override.or(latest.as_ref().map(|s| s.cascade)).unwrap_or(0.0).clamp(0.0, 1.0);
+    let seed = latest.as_ref().map(|s| s.seed).filter(|s| *s != 0).unwrap_or_else(rand::random);
+    let (tagline, dim_letters) = menu_stage(level);
 
     commands.spawn((
         (Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(ThemeSpacing::SECTION),
                 ..default()
-            }, BackgroundColor(ThemeColors::BG_MENU), ZIndex(100)),
+            }, BackgroundColor(Color::BLACK), ZIndex(100)),
         MainMenuOverlay,
     )).with_children(|parent| {
-        // Title container
-        parent.spawn((Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                padding: UiRect::new(Val::Px(80.0), Val::Px(80.0), Val::Px(ThemeSpacing::XXL), Val::Px(ThemeSpacing::XXL)),
-                row_gap: Val::Px(ThemeSpacing::MD),
-                ..default()
-            })).with_children(|title_box| {
-            // Top accent line
-            title_box.spawn((Node { width: Val::Px(240.0), height: Val::Px(1.0), margin: UiRect::bottom(Val::Px(ThemeSpacing::LG)), ..default() }, BackgroundColor(ThemeColors::BORDER_BRIGHT)));
+        // The picture, filling the screen; black until it's painted.
+        parent.spawn((
+            Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            ImageNode { color: Color::NONE, ..default() },
+            nebula::MenuNebula::paint(seed, level),
+            Pickable::IGNORE,
+        ));
 
-            title_box.spawn((Text::new("AFTERLIGHT"), TextFont { font_size: FontSize::Px(ThemeFonts::DISPLAY), ..default() }, TextColor(ThemeColors::ACCENT_BLUE)));
+        // You: where the colour holds out longest.
+        if latest.is_some() {
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(nebula::YOU.0 * 100.0),
+                    top: Val::Percent(nebula::YOU.1 * 100.0),
+                    column_gap: Val::Px(7.0),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                Pickable::IGNORE,
+            )).with_children(|you| {
+                you.spawn((Node { width: Val::Px(5.0), height: Val::Px(5.0), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(ThemeColors::ACCENT_CYAN)));
+                you.spawn((Text::new("you"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(ThemeColors::ACCENT_CYAN.with_alpha(0.67))));
+            });
+        }
 
-            title_box.spawn((Text::new("Into the Void"), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(ThemeColors::TEXT_SECONDARY)));
-
-            // Bottom accent line
-            title_box.spawn((Node { width: Val::Px(240.0), height: Val::Px(1.0), margin: UiRect::top(Val::Px(ThemeSpacing::LG)), ..default() }, BackgroundColor(ThemeColors::BORDER_BRIGHT)));
-        });
-
-        // Actions container — clickable buttons (keyboard shortcuts still work:
-        // Enter = New Expedition, L+1/2/3/0 = Load).
-        parent.spawn((Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(ThemeSpacing::MD),
-                ..default()
-            })).with_children(|actions| {
-            use menu_buttons::{spawn_menu_button, MenuAction};
-
-            spawn_menu_button(actions, "NEW EXPEDITION", Some("Enter"), ThemeColors::ACCENT_BLUE, MenuAction::NewGame);
-
-            // One Load button per existing save slot.
-            let slots = crate::meta::get_save_slots();
-            for (slot, info) in &slots {
-                if let Some(info) = info {
-                    let name = if *slot == 99 { "Auto".to_string() } else { format!("Slot {}", slot + 1) };
-                    let key = if *slot == 99 { "L+0" } else { match slot { 0 => "L+1", 1 => "L+2", 2 => "L+3", _ => "L+?" } };
-                    let time_min = (info.play_time / 60.0) as i32;
-                    let time_sec = (info.play_time % 60.0) as i32;
-                    let label = format!("LOAD - {} ({} - {}:{:02})", name, format_range_km(info.depth), time_min, time_sec);
-                    spawn_menu_button(actions, &label, Some(key), ThemeColors::ACCENT_GREEN, MenuAction::LoadSlot(*slot));
+        // Title, its letters going out from the right as the Cascade comes.
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(120.0),
+            top: Val::Percent(26.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            ..default()
+        }).with_children(|title| {
+            title.spawn(Node { column_gap: Val::Px(15.0), ..default() }).with_children(|word| {
+                let letters: Vec<char> = "AFTERLIGHT".chars().collect();
+                let n = letters.len();
+                for (i, ch) in letters.into_iter().enumerate() {
+                    let dim = i >= n - dim_letters;
+                    word.spawn((
+                        Text::new(ch.to_string()),
+                        TextFont { font_size: FontSize::Px(54.0), ..default() },
+                        TextColor(if dim { Color::srgb(0.604, 0.631, 0.706).with_alpha(0.55) } else { ThemeColors::TEXT_PRIMARY }),
+                    ));
                 }
-            }
-
-            spawn_menu_button(actions, "SETTINGS", None, ThemeColors::ACCENT_PURPLE, MenuAction::OpenSettings);
-            spawn_menu_button(actions, "QUIT", None, ThemeColors::ACCENT_RED, MenuAction::QuitToDesktop);
+            });
+            title.spawn((Text::new(tagline), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(Color::srgb(0.541, 0.576, 0.651))));
         });
 
-        // Tagline
-        parent.spawn((Text::new("An expedition went out before you. Find out how far it got."), TextFont { font_size: FontSize::Px(ThemeFonts::BODY), ..default() }, TextColor(ThemeColors::TEXT_MUTED)));
+        // What you can do. Enter still starts a new expedition (and the
+        // L+n keys load), as before.
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(108.0),
+            top: Val::Percent(46.0),
+            width: Val::Px(320.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        }).with_children(|actions| {
+            let key_for = |slot: u32| match slot { 99 => "L+0".to_string(), n => format!("L+{}", n + 1) };
+            if let Some(info) = &latest {
+                spawn_row_button(actions, "Continue", &key_for(info.slot), true, 15.0, MenuAction::LoadSlot(info.slot));
+            }
+            spawn_row_button(actions, "New expedition", "ENTER", latest.is_none(), 15.0, MenuAction::NewGame);
+            // The other saves, quieter.
+            for (slot, info) in crate::meta::get_save_slots() {
+                let Some(info) = info else { continue };
+                if latest.as_ref().is_some_and(|l| l.slot == slot) {
+                    continue;
+                }
+                let name = if slot == 99 { "Auto save".to_string() } else { format!("Slot {}", slot + 1) };
+                let t = info.play_time as i32;
+                let words = format!("{name}  -  {}  -  {}:{:02}", format_range_km(info.depth), t / 60, t % 60);
+                spawn_row_button(actions, &words, &key_for(slot), false, 12.0, MenuAction::LoadSlot(slot));
+            }
+            spawn_row_button(actions, "Settings", "", false, 15.0, MenuAction::OpenSettings);
+            spawn_row_button(actions, "Quit", "", false, 15.0, MenuAction::QuitToDesktop);
+        });
 
-        // Version / flavor
-        parent.spawn((Text::new("They left records the whole way. Follow them."), TextFont { font_size: FontSize::Px(ThemeFonts::BODY_SMALL), ..default() }, TextColor(Color::srgba(0.25, 0.28, 0.35, 0.6))));
+        // How far the dark has got, from the save.
+        if let Some(info) = latest.as_ref().filter(|i| i.total_systems > 0) {
+            parent.spawn(Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(40.0),
+                bottom: Val::Px(40.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::FlexEnd,
+                row_gap: Val::Px(3.0),
+                ..default()
+            }).with_children(|dark| {
+                dark.spawn((Text::new("THE DARK"), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::EDGE)));
+                dark.spawn((Text::new(format!("{} of {} systems", info.dark_systems, info.total_systems)), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Sheet::LABEL)));
+            });
+        }
 
         // Required attribution. assets/audio/CREDITS.md puts most of the sound
         // under CC-BY 3.0, which obliges a visible credit, and the game had
@@ -3021,8 +3084,8 @@ fn spawn_main_menu(mut commands: Commands) {
         parent.spawn((
             Text::new("Sound effects by Little Robot Sound Factory (littlerobotsoundfactory.com), CC-BY 3.0"),
             TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
-            TextColor(Color::srgba(0.22, 0.25, 0.31, 0.55)),
-            Node { margin: UiRect::top(Val::Px(ThemeSpacing::MD)), ..default() },
+            TextColor(Sheet::EDGE),
+            Node { position_type: PositionType::Absolute, left: Val::Px(120.0), bottom: Val::Px(40.0), ..default() },
         ));
     });
 }
@@ -3206,25 +3269,7 @@ fn spawn_pause_menu(
 
     // A sheet row that is a button: words left, its key right.
     fn row_button(parent: &mut ChildSpawnerCommands, words: &str, key: &str, first: bool, action: MenuAction) {
-        parent.spawn((
-            Node {
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
-                border: UiRect { left: Val::Px(2.0), bottom: Val::Px(1.0), ..default() },
-                ..default()
-            },
-            BackgroundColor(if first { Sheet::ROW_PICKED } else { Color::NONE }),
-            BorderColor { left: if first { Sheet::PICKED } else { Color::NONE }, bottom: Sheet::RULE, ..BorderColor::all(Color::NONE) },
-            Button,
-            Interaction::default(),
-            MenuButton { action },
-        )).with_children(|b| {
-            b.spawn((Text::new(words), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(if first { ThemeColors::TEXT_PRIMARY } else { ThemeColors::TEXT_SECONDARY })));
-            if !key.is_empty() {
-                b.spawn((Text::new(key), TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() }, TextColor(Sheet::LABEL)));
-            }
-        });
+        menu_buttons::spawn_row_button(parent, words, key, first, 13.0, action);
     }
     // A small slot button.
     fn slot_button(parent: &mut ChildSpawnerCommands, label: &str, action: MenuAction) {
