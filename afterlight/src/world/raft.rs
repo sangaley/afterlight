@@ -253,6 +253,12 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
         (Vec2::Y, Vec2::new(-130.0, 50.0)),
         (Vec2::NEG_Y, Vec2::new(-130.0, -50.0)),
         (Vec2::NEG_X, Vec2::new(-60.0, 0.0)),
+        // Outer avenues: empty at the start, where the refugees moor as the
+        // Raft grows.
+        (Vec2::Y, Vec2::new(-280.0, 40.0)),
+        (Vec2::NEG_Y, Vec2::new(-280.0, -40.0)),
+        (Vec2::Y, Vec2::new(300.0, 90.0)),
+        (Vec2::NEG_Y, Vec2::new(300.0, -90.0)),
     ];
     for (dir, from) in others {
         let len: f32 = rng.gen_range(200.0..260.0);
@@ -380,6 +386,24 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
     plan
 }
 
+/// The faction a design belongs to: its folder under designs/factions.
+pub fn faction_of(design: &str) -> &str {
+    design.split('/').next().unwrap_or(design)
+}
+
+/// `berth` with `design` in it instead, if it fits inside the berth's own
+/// outline (so it can't touch a neighbour). Same middle, same turn.
+pub fn refit(berth: &Mooring, design: &'static str) -> Option<Mooring> {
+    let lib = library();
+    let (old, new) = (lib.get(berth.design)?, lib.get(design)?);
+    let turned = |d: &Design| {
+        let s = d.span();
+        if berth.quarter % 2 == 0 { s } else { IVec2::new(s.y, s.x) }
+    };
+    let (o, n) = (turned(old), turned(new));
+    (n.x <= o.x && n.y <= o.y).then(|| Mooring { design, ..berth.clone() })
+}
+
 /// A moored ship's outline in world units, grown by `margin` all round.
 pub fn outline(m: &Mooring, margin: f32) -> Option<Rect> {
     let d = library().get(m.design)?;
@@ -483,6 +507,24 @@ mod tests {
         for i in 0..all.len() {
             for j in i + 1..all.len() {
                 assert!(all[i].intersect(all[j]).is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn there_is_room_to_nearly_double() {
+        let plan = plan_raft(6, 64);
+        assert!(plan.moorings.len() - 4 + plan.spares.len() >= 110, "{} berths", plan.moorings.len() - 4 + plan.spares.len());
+    }
+
+    #[test]
+    fn a_refit_never_grows_past_its_berth() {
+        let plan = plan_raft(3, 64);
+        let berth = plan.spares.iter().find(|m| m.design == "merchant_princes/tanker").or(plan.spares.first()).unwrap();
+        for d in MOORED {
+            if let Some(m) = refit(berth, d) {
+                let (a, b) = (outline(&m, 0.0).unwrap(), outline(berth, 0.0).unwrap());
+                assert!(b.contains(a.min - Vec2::splat(0.01)) || (a.width() <= b.width() + 0.1 && a.height() <= b.height() + 0.1));
             }
         }
     }

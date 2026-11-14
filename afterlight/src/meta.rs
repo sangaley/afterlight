@@ -33,7 +33,7 @@ impl Plugin for MetaPlugin {
             .add_systems(Update, reset_for_new_game)
             .add_systems(Update, handle_save_request)
             .add_systems(Update, handle_load_request)
-            .add_systems(Update, apply_pending_load)
+            .add_systems(Update, (restore_haven_roster, apply_pending_load).chain())
             .add_systems(Update, rebuild_entities_from_save)
             .add_systems(Update, apply_module_health_overrides)
             .add_systems(Last, despawn_at_frame_end)
@@ -322,6 +322,7 @@ fn collect_save_data(
 
     SaveData {
         version: 1,
+        haven_berths: Vec::new(), // filled in by handle_save_request
         slot_info: SaveSlotInfo {
             slot,
             timestamp,
@@ -435,8 +436,9 @@ fn handle_save_request(
     current_state: Res<State<GameState>>,
     pre_pause: Res<PrePauseState>,
     player_ship: PlayerShipParts,
-    cascade: Option<Res<crate::narrative::CascadeState>>,
+    story: (Option<Res<crate::narrative::CascadeState>>, Option<Res<crate::world::raft_life::HavenRoster>>),
 ) {
+    let (cascade, haven) = story;
     let (world_state, galaxy_map, streaming, drifting_dead, looted, fuel, contracts, reputation, standing, sim, faction_stations, war, people, work, spawned) = &world_galaxy;
     for event in save_events.read() {
         let Some(ship_parts) = player_ship.collect() else {
@@ -478,6 +480,7 @@ fn handle_save_request(
         );
 
         save_data.slot_info.cascade = cascade.as_ref().map_or(0.0, |c| c.level);
+        save_data.haven_berths = haven.as_ref().and_then(|h| h.berths.clone()).unwrap_or_default();
 
         // Tier 3 customization is saved via customization_params field
         // (populated when ModuleCustomization query is added in a future refactor)
@@ -554,6 +557,13 @@ fn handle_load_request(
 }
 
 /// Phase 2: Apply pending load data to game state
+/// A save being loaded: Haven's Raft is rebuilt as it was (world::raft_life).
+fn restore_haven_roster(pending: Res<PendingLoad>, roster: Option<ResMut<crate::world::raft_life::HavenRoster>>) {
+    let (Some((_, save)), Some(mut roster)) = (&pending.0, roster) else { return };
+    roster.berths = (!save.haven_berths.is_empty()).then(|| save.haven_berths.clone());
+    roster.reload = true;
+}
+
 fn apply_pending_load(
     mut pending: ResMut<PendingLoad>,
     mut depth_state: ResMut<DepthState>,

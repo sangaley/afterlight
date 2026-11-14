@@ -58,7 +58,7 @@ pub const TOTAL_STATION_SLOTS: usize = MAX_SYSTEMS * STATIONS_PER_SYSTEM;
 /// Raft reaches out to `HAVEN_EXTENT` the other ways.
 pub const HAVEN_RADIUS: f32 = 19_000.0;
 /// The furthest any part of the Raft reaches from Haven's centre.
-pub const HAVEN_EXTENT: f32 = 36_000.0;
+pub const HAVEN_EXTENT: f32 = 50_000.0;
 /// Ships moored round Haven's anchor at the start of a run.
 pub const HAVEN_SHIPS: usize = 64;
 /// Every other station is still the old ring, at the old size.
@@ -321,14 +321,17 @@ pub fn sync_station_entities(
     galaxy: Res<crate::celestial::resources::GalaxyMap>,
     art: Option<Res<super::raft_art::RaftArt>>,
     mut bakes: ResMut<super::raft_art::RaftBakes>,
+    mut roster: ResMut<super::raft_life::HavenRoster>,
 ) {
     let Some(art) = art else { return };
+    // A load or a new run: Haven is rebuilt as the roster says.
+    let reload = std::mem::replace(&mut roster.reload, false);
     let seed = galaxy.galaxy_seed;
     let mut present: Vec<usize> = Vec::new();
     for (entity, station, raft) in existing.iter() {
         let still_here = stations.system_id == Some(station.system_id)
             && stations.sites.iter().any(|s| s.index == station.index)
-            && raft.is_none_or(|r| r.0 == seed);
+            && raft.is_none_or(|r| r.0 == seed && !reload);
         if still_here {
             present.push(station.index);
         } else {
@@ -339,7 +342,7 @@ pub fn sync_station_entities(
     for site in stations.sites.iter() {
         if !present.contains(&site.index) {
             if site.index == 0 {
-                spawn_haven_raft(&mut commands, site, seed, &art, &mut bakes);
+                spawn_haven_raft(&mut commands, site, seed, &art, &mut bakes, roster.berths.as_deref());
             } else {
                 spawn_station(&mut commands, site);
             }
@@ -465,8 +468,10 @@ fn spawn_haven_raft(
     seed: u64,
     art: &super::raft_art::RaftArt,
     bakes: &mut super::raft_art::RaftBakes,
+    roster: Option<&[(usize, String)]>,
 ) {
-    let plan = super::raft::plan_raft(seed, HAVEN_SHIPS);
+    let live = super::raft_life::RaftLive::new(super::raft::plan_raft(seed, HAVEN_SHIPS), seed, roster);
+    let plan = live.plan.clone();
     let root = commands
         .spawn((
             Transform::from_xyz(site.pos.x, site.pos.y, 0.05),
@@ -475,7 +480,7 @@ fn spawn_haven_raft(
             HomeStation,
             StationCircles(plan.circles.clone()),
             RaftSeed(seed),
-            super::raft_life::RaftLive::new(plan.clone(), seed),
+            live,
         ))
         .id();
     super::raft_art::spawn_raft(commands, root, &plan, art, bakes, seed);

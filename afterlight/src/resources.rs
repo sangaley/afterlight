@@ -1772,6 +1772,10 @@ pub struct HeldBy {
 #[derive(Resource, Serialize, Deserialize)]
 pub struct SaveData {
     pub version: u32,
+    /// Haven's Raft: (berth, design) for every ship moored there
+    /// (world::raft_life). Empty on older saves: Haven as a new run lays it.
+    #[serde(default)]
+    pub haven_berths: Vec<(usize, String)>,
     pub slot_info: SaveSlotInfo,
     pub ship: ShipBlueprint,
     pub hull_segments: Vec<HullSaveData>,
@@ -1846,6 +1850,7 @@ impl Default for SaveData {
     fn default() -> Self {
         Self {
             version: 1,
+            haven_berths: Vec::new(),
             slot_info: SaveSlotInfo {
                 slot: 0,
                 timestamp: String::new(),

@@ -34,6 +34,8 @@ impl Plugin for WorldPlugin {
             .init_resource::<MarketEvents>()
             .init_resource::<home_base::SystemStations>()
             .init_resource::<raft_art::RaftBakes>()
+            .init_resource::<raft_life::HavenRoster>()
+            .add_systems(Update, raft_life::forget_roster_on_new_run)
             .add_plugins(docking::DockingPlugin)
             .add_systems(Startup, raft_art::make_raft_art)
             // Stations follow whichever system is streamed in, and have to
@@ -48,6 +50,7 @@ impl Plugin for WorldPlugin {
                     raft_art::apply_raft_bakes,
                     raft_life::raft_roster,
                     raft_life::raft_motion,
+                    raft_life::raft_districts,
                 )
                     .chain()
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),

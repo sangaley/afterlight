@@ -70,6 +70,7 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //                          "MouseLeft" / "MouseRight" click the mouse, at
 //                          wherever the game thinks it points (see
 //                          AFTERLIGHT_BUILD_CELL for build mode).
+//   AFTERLIGHT_RAFT_DARK=<0..1> — pin the dark round Haven's Raft (its streets go out).
 //   AFTERLIGHT_RAFT_BUSY=1 — Haven's ships come and go ten times as often (filming).
 //   AFTERLIGHT_CASCADE=0.85 — pin the story's progress level, so a late beat can
 //                          be looked at without an hour of flying first.
