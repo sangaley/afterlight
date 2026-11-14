@@ -139,6 +139,14 @@ fn blur(a: &[f32], r: f32) -> Vec<f32> {
 /// The picture, as sRGB bytes (RGBA, W x H). `drain` is the Cascade level,
 /// 0..1.
 pub fn render(seed: u64, drain: f32) -> Vec<u8> {
+    render_sky(seed, drain, true).0
+}
+
+/// The picture, and where its cloud sits (as fractions of the picture).
+/// `menu`: dark on the left for the title, and stars of its own. The sky
+/// behind the game has neither -- the starfield is drawn over it, and it's
+/// shown zoomed in, where baked stars would be blurred blobs.
+pub fn render_sky(seed: u64, drain: f32, menu: bool) -> (Vec<u8>, Vec2) {
     let mut rng = StdRng::seed_from_u64(seed);
     let pal = &PALETTES[(seed % PALETTES.len() as u64) as usize];
     let (wf, hf) = (W as f32, H as f32);
@@ -219,7 +227,7 @@ pub fn render(seed: u64, drain: f32) -> Vec<u8> {
         }
         // More colour, then darken the left so the title reads.
         let grey = (c[0] + c[1] + c[2]) / 3.0;
-        let left = ((x / wf - 0.18) * 1.9).clamp(0.08, 1.0);
+        let left = if menu { ((x / wf - 0.18) * 1.9).clamp(0.08, 1.0) } else { 1.0 };
         for ch in 0..3 {
             c[ch] = (grey + (c[ch] - grey) * 1.55).clamp(0.0, 1.0) * left;
         }
@@ -227,6 +235,7 @@ pub fn render(seed: u64, drain: f32) -> Vec<u8> {
     }
 
     // Stars: most faint, a few bright, the brightest with spikes.
+    if menu {
     let mut stars = vec![0.0f32; W * H];
     let count = (4200.0 * (W * H) as f32 / (1280.0 * 720.0)) as usize;
     let mut placed: Vec<(usize, usize, f32)> = Vec::with_capacity(count);
@@ -262,6 +271,7 @@ pub fn render(seed: u64, drain: f32) -> Vec<u8> {
         for ch in 0..3 {
             rgb[i][ch] = 1.0 - (1.0 - rgb[i][ch]) * (1.0 - s * tint[ch]);
         }
+    }
     }
 
     if drain > 0.0 {
@@ -304,7 +314,7 @@ pub fn render(seed: u64, drain: f32) -> Vec<u8> {
         }
         bytes.push(255);
     }
-    bytes
+    (bytes, Vec2::new(cx / wf, cy / hf))
 }
 
 /// Marks the title screen's picture. Holds the picture while it is being
@@ -360,9 +370,146 @@ pub fn show_menu_nebula(
     }
 }
 
+/// The nebula behind the game: the title screen's own, seen from inside it.
+/// The same seed paints it, and the same Cascade drains it; it shows a part
+/// of the picture a few times enlarged, and which part depends on where in
+/// the galaxy you are, so every system has its own patch of sky.
+#[derive(Component, Default)]
+pub struct SkyNebula {
+    pending: Option<Arc<Mutex<Option<(Vec<u8>, Vec2)>>>>,
+    /// The seed and drain step on screen.
+    painted: Option<(u64, i32)>,
+    cloud: Vec2,
+    shown_for: f32,
+}
+
+/// How much of the picture one screen shows: a third of its width.
+const SKY_ZOOM: f32 = 3.0;
+/// The Cascade repaints the sky in steps this big.
+const SKY_STEP: f32 = 0.05;
+/// How bright the sky is behind the game. Under the title it can be loud;
+/// behind ships and gunfire it should sit back.
+const SKY_LEVEL: f32 = 0.6;
+
+pub fn spawn_sky(mut commands: Commands, existing: Query<(), With<SkyNebula>>) {
+    if !existing.is_empty() {
+        return;
+    }
+    commands.spawn((
+        Sprite { color: Color::NONE, ..default() },
+        // Behind the starfield (-500) and its planets (-600).
+        Transform::from_xyz(0.0, 0.0, -900.0),
+        SkyNebula::default(),
+    ));
+}
+
+/// Where the window into the picture sits, in picture pixels, for a system at
+/// `galaxy_pos` and a screen of this aspect (height / width).
+pub fn sky_window(cloud: Vec2, galaxy_pos: Vec2, camera: Vec2, aspect: f32) -> Rect {
+    let (wf, hf) = (W as f32, H as f32);
+    let size = Vec2::new(wf / SKY_ZOOM, wf / SKY_ZOOM * aspect).min(Vec2::new(wf, hf));
+    let galaxy = galaxy_pos / crate::celestial::galaxy::GALAXY_RADIUS;
+    // Flying across a system drifts the sky a little; jumping across the
+    // galaxy moves it a lot. Image y runs down.
+    let drift = camera / 2_000_000.0;
+    let centre = Vec2::new(cloud.x * wf, cloud.y * hf)
+        + Vec2::new(galaxy.x + drift.x, -(galaxy.y + drift.y)) * Vec2::new(wf * 0.32, hf * 0.32);
+    let half = size * 0.5;
+    let centre = centre.clamp(half, Vec2::new(wf, hf) - half);
+    Rect::from_center_size(centre, size)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_sky(
+    mut images: ResMut<Assets<Image>>,
+    time: Res<Time<Real>>,
+    galaxy: Res<crate::celestial::resources::GalaxyMap>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    cascade: Option<Res<crate::narrative::CascadeState>>,
+    dark: Option<Res<crate::narrative::dark_scene::DarkView>>,
+    camera: Query<(&Transform, &Projection), (With<crate::camera::MainCamera>, Without<SkyNebula>)>,
+    mut sky: Query<(&mut SkyNebula, &mut Sprite, &mut Transform)>,
+) {
+    let Ok((mut neb, mut sprite, mut tf)) = sky.single_mut() else { return };
+    let Ok((cam, projection)) = camera.single() else { return };
+    let Projection::Orthographic(ortho) = projection else { return };
+    let seed = galaxy.galaxy_seed;
+    let level = cascade.as_ref().map_or(0.0, |c| c.level);
+    let step = (level / SKY_STEP).round() as i32;
+
+    // Paint (again) when the run or the Cascade's step changes; keep the old
+    // picture up meanwhile.
+    if neb.painted != Some((seed, step)) && neb.pending.is_none() {
+        let slot = Arc::new(Mutex::new(None));
+        let out = slot.clone();
+        let drain = step as f32 * SKY_STEP;
+        std::thread::spawn(move || {
+            let painted = render_sky(seed, drain, false);
+            if let Ok(mut s) = out.lock() {
+                *s = Some(painted);
+            }
+        });
+        neb.pending = Some(slot);
+        neb.painted = Some((seed, step));
+    }
+    let ready = neb.pending.as_ref().and_then(|p| p.lock().ok().and_then(|mut s| s.take()));
+    if let Some((bytes, cloud)) = ready {
+        let first = sprite.image == Handle::default();
+        sprite.image = images.add(Image::new(
+            Extent3d { width: W as u32, height: H as u32, depth_or_array_layers: 1 },
+            TextureDimension::D2,
+            bytes,
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::RENDER_WORLD,
+        ));
+        neb.cloud = cloud;
+        neb.pending = None;
+        if first {
+            neb.shown_for = 0.0;
+        }
+    }
+    if sprite.image == Handle::default() {
+        return;
+    }
+
+    // Fill the view, wherever the camera is and however far out.
+    let view = ortho.area.size() * 1.02;
+    tf.translation.x = cam.translation.x;
+    tf.translation.y = cam.translation.y;
+    sprite.custom_size = Some(view);
+    let here = streaming
+        .loaded_system
+        .and_then(|id| galaxy.systems.iter().find(|s| s.id == id))
+        .map_or(Vec2::ZERO, |s| s.galaxy_pos);
+    sprite.rect = Some(sky_window(neb.cloud, here, cam.translation.truncate(), view.y / view.x.max(1.0)));
+
+    neb.shown_for += time.delta_secs();
+    let fade = (neb.shown_for / 2.0).clamp(0.0, 1.0);
+    // A system the dark has taken has no sky left to speak of.
+    let lit = 1.0 - dark.as_ref().map_or(0.0, |d| d.level) * 0.9;
+    let k = SKY_LEVEL * lit;
+    sprite.color = Color::srgba(k, k, k, fade);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sky_window_stays_on_the_picture() {
+        for gp in [Vec2::ZERO, Vec2::splat(5_000_000.0), Vec2::new(-5_000_000.0, 4_000_000.0)] {
+            let r = sky_window(Vec2::new(0.7, 0.5), gp, Vec2::new(300_000.0, -90_000.0), 9.0 / 16.0);
+            assert!(r.min.x >= 0.0 && r.min.y >= 0.0 && r.max.x <= W as f32 && r.max.y <= H as f32, "{r:?}");
+            assert!((r.width() - W as f32 / SKY_ZOOM).abs() < 1.0);
+        }
+    }
+
+    #[test]
+    fn different_systems_see_different_sky() {
+        let a = sky_window(Vec2::new(0.7, 0.5), Vec2::ZERO, Vec2::ZERO, 0.5625);
+        let b = sky_window(Vec2::new(0.7, 0.5), Vec2::new(-2_000_000.0, 1_000_000.0), Vec2::ZERO, 0.5625);
+        assert!(a.center().distance(b.center()) > 40.0);
+    }
 
     #[test]
     fn the_same_seed_paints_the_same_picture() {

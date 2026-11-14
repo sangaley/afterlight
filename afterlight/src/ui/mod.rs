@@ -44,6 +44,12 @@ impl Plugin for UiPlugin {
             .init_resource::<bevy::ui::UiScale>()
             // Load persisted settings before the apply systems' first run.
             .add_systems(Startup, (setup_ui, cursor::setup_custom_cursor, menu_buttons::load_settings))
+            // The title screen's nebula, behind the game too (ui::nebula).
+            .add_systems(Startup, nebula::spawn_sky)
+            .add_systems(
+                Update,
+                nebula::update_sky.run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked)).or_else(in_state(GameState::Paused))),
+            )
             // Clickable menu buttons + Settings overlay (main/pause/game-over).
             // These run in every state — the queries are empty unless a menu
             // is on screen, so there's no per-frame cost during play.
