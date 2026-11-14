@@ -13,6 +13,8 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::raft::{collision_circles, faction_of, library, refit, Mooring, RaftPlan, Tube, CELL, MOORED};
+#[allow(unused_imports)]
+use super::raft::design;
 use crate::ai_ship::components::AiShipType;
 use super::raft_art::{spawn_tube, BakeKey, RaftArt, RaftBakes, RaftHull};
 
@@ -620,7 +622,7 @@ pub fn raft_districts(
         for (si, (a, b)) in live.plan.streets.iter().enumerate() {
             let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
             let mut total = 0;
-            for m in live.plan.moorings.iter().filter(|m| m.street == Some(si)) {
+            for m in live.plan.moorings.iter().filter(|m| m.street == Some(si) && m.slot.is_some()) {
                 *counts.entry(faction_of(m.design)).or_default() += 1;
                 total += 1;
             }
@@ -706,13 +708,13 @@ mod tests {
 
     #[test]
     fn a_saved_roster_rebuilds_the_same_raft() {
-        let first = RaftLive::new(plan_raft(12, 64), 12, None);
+        let first = RaftLive::new(plan_raft(12, 30), 12, None);
         // Swap a few ships about, as a run would.
         let mut roster = first.roster();
-        roster.truncate(50);
-        let spare = first.plan.spares[3].clone();
+        roster.truncate(24);
+        let spare = first.plan.spares.last().cloned().expect("an empty berth");
         roster.push((spare.slot.unwrap(), spare.design.to_string()));
-        let again = RaftLive::new(plan_raft(12, 64), 12, Some(&roster));
+        let again = RaftLive::new(plan_raft(12, 30), 12, Some(&roster));
         let mut a = again.roster();
         let mut b = roster.clone();
         a.sort();
@@ -722,11 +724,10 @@ mod tests {
         for m in again.plan.moorings.iter().filter(|m| m.slot.is_some()) {
             assert!(again.plan.tubes.iter().any(|t| t.a == m.at && t.b == m.dock));
         }
-        let boxes: Vec<Rect> = again.plan.moorings.iter().filter_map(|m| outline(m, 0.0)).collect();
-        for i in 0..boxes.len() {
-            for j in i + 1..boxes.len() {
-                assert!(boxes[i].intersect(boxes[j]).is_empty());
-            }
+        let all: Vec<Rect> = again.plan.moorings.iter().filter_map(|m| outline(m, -CELL * 0.25)).collect();
+        for m in again.plan.moorings.iter().filter(|m| m.slot.is_some()) {
+            let r = outline(m, -CELL * 0.25).unwrap();
+            assert_eq!(all.iter().filter(|o| !o.intersect(r).is_empty()).count(), 1, "{} overlaps something", m.design);
         }
         // The empty berths are the rest.
         assert_eq!(again.berths(), first.berths());

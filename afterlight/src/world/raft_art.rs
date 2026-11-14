@@ -20,7 +20,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use super::raft::{library, turn, Design, RaftPlan, CELL};
+use super::raft::{design, turn, Design, RaftPlan, CELL};
 
 /// Picture pixels a block: about 11 m a pixel, sharp at docking zoom.
 pub const PX: usize = 6;
@@ -184,6 +184,8 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
     let mut rgb = vec![[0.0f32; 3]; w * h];
     let mut mask = Plane::new(w, h);
     let mut module = Plane::new(w, h);
+    let mut lift = Plane::new(w, h);
+    let mut tinted = vec![false; w * h];
     let mut lit_cells: Vec<(usize, usize)> = Vec::new();
     let steel = [0.42f32, 0.45, 0.52];
     for (p, c) in &turned {
@@ -205,12 +207,17 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
                 if c.outer {
                     col = col.map(|v| v * 0.82);
                 }
+                if let Some(t) = c.tint {
+                    col = t;
+                }
                 let i = idx(x0 + dx, y0 + dy);
                 rgb[i] = col;
                 mask.v[i] = 1.0;
                 if c.module {
                     module.v[i] = 1.0;
                 }
+                lift.v[i] = c.lift;
+                tinted[i] = c.tint.is_some();
             }
         }
         if c.lit {
@@ -221,6 +228,9 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
     // One material: the detail kept, the colour pulled to gunmetal.
     let gunmetal = [0.21f32, 0.23, 0.29];
     for i in 0..w * h {
+        if tinted[i] {
+            continue; // glass, panels, cargo keep their own colour
+        }
         let c = rgb[i];
         let lum = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
         for k in 0..3 {
@@ -234,9 +244,10 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
     let d1 = mask.blur(5.0);
     let d2 = mask.blur(12.0);
     let mb = module.blur(2.0);
+    let lb = lift.blur(2.0);
     let mut height = Plane::new(w, h);
     for i in 0..w * h {
-        height.v[i] = (d1.v[i] * 0.3 + d2.v[i] * 0.3 + mb.v[i] * 0.05) * m[i];
+        height.v[i] = (d1.v[i] * 0.3 + d2.v[i] * 0.3 + mb.v[i] * 0.05 + lb.v[i] * 0.35) * m[i];
     }
     let hb = height.blur(1.2);
     let ao = height.blur(7.0);
@@ -371,9 +382,8 @@ impl RaftBakes {
         }
         let out = self.pending.clone();
         std::thread::spawn(move || {
-            let lib = library();
             for key in new {
-                let Some(d) = lib.get(key.0) else { continue };
+                let Some(d) = design(key.0) else { continue };
                 let seed = key.0.bytes().fold(7u64, |a, b| a.wrapping_mul(31).wrapping_add(b as u64));
                 let baked = bake(d, key.1, seed);
                 if let Ok(mut p) = out.lock() {
@@ -480,23 +490,18 @@ pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &
         let along = *b - *a;
         let len = along.length();
         let angle = along.to_angle();
-        let seg = CELL * 6.0;
+        // The arm itself is built (world::sections); lights down it.
+        let seg = CELL * 9.0;
         let n = (len / seg).ceil() as usize;
         for i in 0..n {
             let at = *a + along * ((i as f32 + 0.5) / n as f32);
             kids.push(
                 commands
-                    .spawn((Sprite { image: art.girder.clone(), custom_size: Some(Vec2::new(len / n as f32 + 2.0, CELL * 2.6)), ..default() }, Transform::from_translation(at.extend(0.002)).with_rotation(Quat::from_rotation_z(angle))))
+                    .spawn((Sprite { image: art.glow.clone(), color: Color::srgba(1.0, 0.8, 0.5, 0.6), custom_size: Some(Vec2::splat(CELL * 3.0)), ..default() }, Transform::from_translation(at.extend(0.03))))
                     .id(),
             );
-            if i % 2 == 0 {
-                kids.push(
-                    commands
-                        .spawn((Sprite { image: art.glow.clone(), color: Color::srgba(1.0, 0.8, 0.5, 0.8), custom_size: Some(Vec2::splat(CELL * 3.0)), ..default() }, Transform::from_translation(at.extend(0.003))))
-                        .id(),
-                );
-            }
         }
+        let _ = angle;
         kids.push(
             commands
                 .spawn((
@@ -560,8 +565,7 @@ mod tests {
 
     #[test]
     fn a_design_bakes_to_a_picture_its_own_size() {
-        let lib = library();
-        let d = lib.get("free_haulers_compact/tug").expect("tug design");
+        let d = design("free_haulers_compact/tug").expect("tug design");
         let b = bake(d, 0, 1);
         let span = d.span();
         let (w, h) = (b.body.width() as usize, b.body.height() as usize);

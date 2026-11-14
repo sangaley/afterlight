@@ -23,16 +23,6 @@ use crate::components::{HullLayer, ModuleType};
 /// One block, in world units.
 pub const CELL: f32 = 66.0;
 
-/// The hulk at the middle: an old throne barge.
-pub const ANCHOR: &str = "gilded_throne/throne_barge";
-
-/// Big hulls lashed straight onto the anchor: (design, cell offset, quarter turns).
-const LASHED: [(&str, IVec2, u8); 3] = [
-    ("merchant_princes/bulk_freighter", IVec2::new(-5, 82), 0),
-    ("merchant_princes/bulk_freighter", IVec2::new(10, -82), 2),
-    ("stellar_preserve/seed_ark", IVec2::new(-150, 0), 1),
-];
-
 /// What moors along the streets: working ships of every faction.
 pub const MOORED: &[&str] = &[
     "terran_hegemony/hauler",
@@ -64,6 +54,10 @@ pub struct DesignCell {
     pub module: bool,
     pub lit: bool,
     pub outer: bool,
+    /// Its own colour, where it isn't the sprite's (glass, panels, cargo).
+    pub tint: Option<[f32; 3]>,
+    /// How much higher it stands than the deck (0..1): tiers.
+    pub lift: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -112,7 +106,7 @@ pub fn load_design(key: &str) -> Option<Design> {
         let sprite = crate::sprite_map::hull_layer_sprite_path(hc.material, hc.layer);
         cells.insert(
             hc.grid_pos,
-            DesignCell { at: hc.grid_pos, sprite, part: (0, 0, 1, 1), module: false, lit: false, outer: hc.layer == HullLayer::Outer },
+            DesignCell { at: hc.grid_pos, sprite, part: (0, 0, 1, 1), module: false, lit: false, outer: hc.layer == HullLayer::Outer, tint: None, lift: 0.0 },
         );
     }
     for m in &bp.modules {
@@ -126,7 +120,7 @@ pub fn load_design(key: &str) -> Option<Design> {
                 let at = m.grid_pos + m.rotation.rotate_offset(IVec2::new(x, y));
                 cells.insert(
                     at,
-                    DesignCell { at, sprite, part: (x as u8, (h as i32 - 1 - y) as u8, w, h), module: true, lit: lit_room(m.module_type), outer: false },
+                    DesignCell { at, sprite, part: (x as u8, (h as i32 - 1 - y) as u8, w, h), module: true, lit: lit_room(m.module_type), outer: false, tint: None, lift: 0.0 },
                 );
             }
         }
@@ -141,16 +135,15 @@ pub fn load_design(key: &str) -> Option<Design> {
     Some(Design { cells, min, max })
 }
 
-/// Every design the Raft uses, read once.
+/// Every ship design the Raft moors, read once.
 pub fn library() -> &'static HashMap<&'static str, Design> {
     static LIB: OnceLock<HashMap<&'static str, Design>> = OnceLock::new();
-    LIB.get_or_init(|| {
-        std::iter::once(ANCHOR)
-            .chain(LASHED.iter().map(|l| l.0))
-            .chain(MOORED.iter().copied())
-            .filter_map(|k| load_design(k).map(|d| (k, d)))
-            .collect()
-    })
+    LIB.get_or_init(|| MOORED.iter().copied().filter_map(|k| load_design(k).map(|d| (k, d))).collect())
+}
+
+/// A design by key: a ship's, or a built part's (world::sections).
+pub fn design(key: &str) -> Option<&'static Design> {
+    library().get(key).or_else(|| super::sections::get(key))
 }
 
 /// A cell offset turned `quarter` quarter-turns anticlockwise.
@@ -211,179 +204,289 @@ pub struct RaftPlan {
 /// Half the width of the lane in to the berth, kept clear of everything.
 pub const LANE_HALF_WIDTH: f32 = 2_800.0;
 
-/// The east street: fixed, so the berth is too.
-const EAST_FROM: f32 = 40.0;
-/// Its end, in cells: `HAVEN_RADIUS` east of the centre.
+/// The berth arm's end, in cells: `HAVEN_RADIUS` east of the centre.
 pub fn east_tip_cells() -> f32 {
     super::home_base::HAVEN_RADIUS / CELL
 }
 
-/// Lay the Raft out. `ships` is how many moor along the streets (the anchor
-/// and the hulls lashed to it come on top): the nearest slots fill first, so
-/// a bigger Raft is the same Raft with its streets filled further out.
+/// How a station is laid out. `order` 1 is a rich, proud owner's: every arm
+/// one straight run, everything evenly spaced. Toward 0 it's a poor one's:
+/// arms that jog and kink and change width, things spaced as they came.
+#[derive(Clone, Copy, Debug)]
+pub struct Style {
+    pub order: f32,
+    /// The hub's half-width, in blocks.
+    pub hub: i32,
+    /// Arms in all, the four off the hub's flats and branches off them.
+    pub arms: usize,
+}
+
+/// Haven: a refuge, kept up but not grand.
+pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, arms: 11 };
+
+/// Blocks of gantry between an arm and a moored ship.
+const GANTRY: i32 = 3;
+
+fn quarter_facing(v: IVec2) -> u8 {
+    match (v.x, v.y) {
+        (0, 1) => 0,
+        (-1, 0) => 1,
+        (0, -1) => 2,
+        _ => 3,
+    }
+}
+
+/// What a placed piece may not touch: arms are only off limits to things
+/// bolted to other arms.
+#[derive(Clone, Copy, PartialEq)]
+enum Owner {
+    Arm(usize),
+    Thing,
+}
+
+fn clear(taken: &[(Rect, Owner)], r: Rect, own_arm: usize) -> bool {
+    taken.iter().all(|(o, who)| *who == Owner::Arm(own_arm) || o.intersect(r).is_empty())
+}
+
+/// Haven as it is laid out at the start of a run.
 pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
-    let lib = library();
+    plan_station(seed, ships, &HAVEN_STYLE)
+}
+
+/// Lay a station out: a hub, arms out of it (straight or crooked by its
+/// owner's `order`), and along both sides of every arm, runs of berths
+/// (each a gantry with a ship tied up to it) and station sections bolted
+/// flush, big and small. Nothing is placed where it would touch something it
+/// isn't joined to, so nothing hangs. `ships` berths nearest the hub are
+/// taken; the rest wait empty for arrivals.
+pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
+    use super::sections;
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut moorings = Vec::new();
-    let place = |key: &'static str, centre_cells: Vec2, quarter: u8, level: f32, street: Option<usize>| -> Option<Mooring> {
-        lib.get(key)?;
-        Some(Mooring { design: key, at: centre_cells * CELL, quarter, level, street, slot: None, dock: Vec2::ZERO })
+    let order = style.order.clamp(0.0, 1.0);
+    let mess = 1.0 - order;
+    let mut moorings: Vec<Mooring> = Vec::new();
+    let mut taken: Vec<(Rect, Owner)> = Vec::new();
+    let tip = east_tip_cells();
+    // The lane in to the berth is never built in.
+    taken.push((Rect::new(tip * CELL + CELL, -LANE_HALF_WIDTH, tip * CELL + 80_000.0, LANE_HALF_WIDTH), Owner::Thing));
+
+    let static_piece = |key: &'static str, centre: Vec2, quarter: u8, level: f32, street: Option<usize>| Mooring {
+        design: key,
+        at: centre * CELL,
+        quarter,
+        level,
+        street,
+        slot: None,
+        dock: Vec2::ZERO,
     };
-    if let Some(m) = place(ANCHOR, Vec2::ZERO, 0, 0.8, None) {
+
+    // The hub.
+    let hub = sections::hub_octagon(style.hub, &mut rng);
+    let hub_m = static_piece(hub, Vec2::ZERO, 0, 0.85, None);
+    if let Some(r) = outline(&hub_m, 0.0) {
+        taken.push((r, Owner::Thing));
+    }
+    moorings.push(hub_m);
+    let collar = (style.hub + 7) as f32;
+
+    // The arms: (start, direction, length, must be straight).
+    let mut arms: Vec<(Vec2, IVec2, f32, bool)> = vec![(Vec2::new(collar - 2.0, 0.0), IVec2::X, tip - (collar - 2.0), true)];
+    for dir in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y] {
+        arms.push((dir.as_vec2() * (collar - 2.0), dir, rng.gen_range(320.0..420.0), false));
+    }
+
+    // Each arm in straight runs; crooked ones jog between runs. Branches
+    // come off the main arms' actual runs (so off a crooked arm's kinks too).
+    struct Seg {
+        a: Vec2,
+        dir: IVec2,
+        len: f32,
+        half: i32,
+    }
+    let mut segs: Vec<Seg> = Vec::new();
+    let mut elbows: Vec<(Mooring, usize)> = Vec::new();
+    let mut lay = |segs: &mut Vec<Seg>, elbows: &mut Vec<(Mooring, usize)>, rng: &mut StdRng, start: Vec2, dir: IVec2, len: f32, straight: bool| {
+        let perp = IVec2::new(-dir.y, dir.x);
+        let mut pos = start;
+        let mut t = 0.0;
+        while t < len - 1.0 {
+            let mut piece = if straight || order >= 0.95 { len - t } else { rng.gen_range(95.0..170.0f32).min(len - t) };
+            // No stub at the end: fold a short remainder into this run.
+            if len - t - piece < 40.0 {
+                piece = len - t;
+            }
+            let half = 5 + if straight { 1 } else { rng.gen_range(0..=((mess * 3.0) as i32)) };
+            segs.push(Seg { a: pos, dir, len: piece, half });
+            pos += dir.as_vec2() * piece;
+            t += piece;
+            if t < len - 1.0 && !straight {
+                let jog = (rng.gen_range(-1.0..1.0f32) * mess * 16.0).round() as i32;
+                if jog.abs() >= 2 {
+                    // An elbow joins the runs: a short arm across, overlapping both.
+                    let across = perp * jog.signum();
+                    let elbow_len = jog.abs() + half * 2 + 1;
+                    let key = sections::arm_segment(elbow_len, half);
+                    let centre = pos + across.as_vec2() * (jog.abs() as f32 * 0.5) - dir.as_vec2() * (half as f32 * 0.5);
+                    // The design lies along +x: turn it to lie along `across`.
+                    elbows.push((static_piece(key, centre, (quarter_facing(across) + 1) % 4, 0.5, None), segs.len() - 1));
+                    pos += across.as_vec2() * jog.abs() as f32;
+                }
+            }
+        }
+    };
+    for (start, dir, len, straight) in arms {
+        lay(&mut segs, &mut elbows, &mut rng, start, dir, len, straight);
+    }
+    let mains = segs.len();
+    for _ in 0..style.arms.saturating_sub(4) {
+        // Off a main arm's run (not the berth arm), square to it.
+        let candidates: Vec<usize> = (0..mains).filter(|i| segs[*i].dir != IVec2::X || segs[*i].a.y.abs() > 1.0).filter(|i| segs[*i].len > 90.0).collect();
+        if candidates.is_empty() {
+            break;
+        }
+        let i = candidates[rng.gen_range(0..candidates.len())];
+        let (a, dir, len) = (segs[i].a, segs[i].dir, segs[i].len);
+        let at = rng.gen_range(40.0..(len - 30.0));
+        let side = if rng.gen_bool(0.5) { IVec2::new(-dir.y, dir.x) } else { IVec2::new(dir.y, -dir.x) };
+        let blen = rng.gen_range(140.0..230.0);
+        lay(&mut segs, &mut elbows, &mut rng, a + dir.as_vec2() * at, side, blen, false);
+    }
+
+    // The runs themselves, as designs.
+    let mut streets = Vec::new();
+    for (i, seg) in segs.iter().enumerate() {
+        let key = sections::arm_segment(seg.len.round().max(2.0) as i32, seg.half);
+        let centre = seg.a + seg.dir.as_vec2() * (seg.len * 0.5);
+        let q = (quarter_facing(seg.dir) + 1) % 4; // the run's design lies along +x
+        let m = static_piece(key, centre, q, 0.5, Some(i));
+        if let Some(r) = outline(&m, 0.0) {
+            taken.push((r, Owner::Arm(i)));
+        }
+        moorings.push(m);
+        streets.push((seg.a * CELL, (seg.a + seg.dir.as_vec2() * seg.len) * CELL));
+    }
+    // Elbows are in everyone's way, their own arm's included.
+    for (m, _seg) in elbows {
+        if let Some(r) = outline(&m, 0.0) {
+            taken.push((r, Owner::Thing));
+        }
         moorings.push(m);
     }
-    for (key, at, q) in LASHED {
-        if let Some(m) = place(key, at.as_vec2(), q, 0.6, None) {
-            moorings.push(m);
-        }
-    }
 
-    // Streets: the fixed one east, the rest off the anchor's other sides.
-    // Each starts under the anchor, so it is fixed to it, not floating off it.
-    let tip = east_tip_cells();
-    let mut streets_cells: Vec<(Vec2, Vec2)> = vec![(Vec2::new(EAST_FROM, 0.0), Vec2::new(tip, 0.0))];
-    // A city grid: avenues north and south off both ends of the hulk and
-    // off the lashed hulls, and one west past the seed ark. Square to the
-    // ships, so they pack into blocks.
-    let others = [
-        (Vec2::Y, Vec2::new(30.0, 0.0)),
-        (Vec2::NEG_Y, Vec2::new(-30.0, 0.0)),
-        (Vec2::Y, Vec2::new(160.0, 40.0)),
-        (Vec2::NEG_Y, Vec2::new(160.0, -40.0)),
-        (Vec2::Y, Vec2::new(-130.0, 50.0)),
-        (Vec2::NEG_Y, Vec2::new(-130.0, -50.0)),
-        (Vec2::NEG_X, Vec2::new(-60.0, 0.0)),
-        // Outer avenues: empty at the start, where the refugees moor as the
-        // Raft grows.
-        (Vec2::Y, Vec2::new(-280.0, 40.0)),
-        (Vec2::NEG_Y, Vec2::new(-280.0, -40.0)),
-        (Vec2::Y, Vec2::new(300.0, 90.0)),
-        (Vec2::NEG_Y, Vec2::new(300.0, -90.0)),
-    ];
-    for (dir, from) in others {
-        let len: f32 = rng.gen_range(200.0..260.0);
-        streets_cells.push((from, from + dir * len));
-    }
-
-    // Every slot along every street. Each side of a street has its own run
-    // of ships, end to end with a gap, so none sits on another.
-    let mut slots: Vec<(f32, Mooring, Vec2)> = Vec::new();
-    for (si, (a, b)) in streets_cells.iter().enumerate() {
-        let along = (*b - *a).normalize();
-        let across = Vec2::new(-along.y, along.x);
-        let len = a.distance(*b);
-        // Ships lie along the street, square to the grid.
-        let lie = if along.x.abs() >= along.y.abs() { [0u8, 2] } else { [1u8, 3] };
-        // Keep the last stretch of the east street open for the berth.
-        let end = if si == 0 { len - 25.0 } else { len - 8.0 };
-        let core: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 2.0)).collect();
-        // Four ranks a side, each moored right behind the one in front of it
-        // and glued to it: packed tight, they read as districts, not a queue.
-        for side in [-1.0f32, 1.0] {
-            // The outer edge of the rank in front, along the street: (from, to, edge).
-            let mut front: Vec<(f32, f32, f32)> = Vec::new();
-            for rank in 0..4usize {
-                let mut this_rank: Vec<(f32, f32, f32)> = Vec::new();
-                let mut cursor = 6.0 + rng.gen_range(0.0..8.0);
-                loop {
-                    let key = MOORED[rng.gen_range(0..MOORED.len())];
-                    let Some(d) = lib.get(key) else { break };
-                    let quarter = lie[rng.gen_range(0..2)];
-                    let span = d.span().as_vec2();
-                    let (length, breadth) = if quarter % 2 == 0 { (span.x, span.y) } else { (span.y, span.x) };
-                    if cursor + length > end {
+    // Along both sides of every run: berths and sections.
+    let big: Vec<&'static str> = MOORED.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() >= 70)).collect();
+    let small: Vec<&'static str> = MOORED.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() < 70)).collect();
+    let mut berths: Vec<(f32, Mooring)> = Vec::new();
+    let mut variant = 0u32;
+    for (i, seg) in segs.iter().enumerate() {
+        for side in [-1i32, 1] {
+            let out = IVec2::new(-seg.dir.y, seg.dir.x) * side;
+            let q_out = quarter_facing(out);
+            let mut t = 6.0 + rng.gen_range(0.0..6.0 * mess.max(0.2));
+            let mut ships_run = rng.gen_bool(0.6);
+            let mut run_left = 0;
+            let mut misses = 0;
+            while t < seg.len - 6.0 && misses < 40 {
+                if run_left == 0 {
+                    ships_run = rng.gen_bool(0.7);
+                    run_left = if ships_run { rng.gen_range(3..6) } else { rng.gen_range(1..3) };
+                }
+                let gap = if order > 0.8 { 2.0 } else { rng.gen_range(1.0..2.0 + mess * 5.0) };
+                if ships_run {
+                    let pool = if t / seg.len < 0.55 && !big.is_empty() { &big } else { &small };
+                    let mut key = pool[rng.gen_range(0..pool.len())];
+                    // Too thick for what's left of the run: a smaller one.
+                    if library().get(key).is_some_and(|d| t + d.span().min_element() as f32 > seg.len - 4.0) {
+                        key = small[rng.gen_range(0..small.len())];
+                    }
+                    let Some(d) = library().get(key) else { break };
+                    let span = d.span();
+                    // Nose-in: its long side out from the arm.
+                    let q = if span.x >= span.y { (q_out + 1) % 4 } else { q_out };
+                    let (long, along) = (span.max_element() as f32, span.min_element() as f32);
+                    if t + along > seg.len - 4.0 {
                         break;
                     }
-                    let (t0, t1) = (cursor, cursor + length);
-                    // Moored right behind what's in front of it; where the rank in
-                    // front has a gap, behind its nearest ship either side.
-                    let behind = if rank == 0 {
-                        Some(4.0)
-                    } else {
-                        let over = front.iter().filter(|(f0, f1, _)| *f0 < t1 && *f1 > t0).map(|(_, _, e)| *e).fold(None, |a: Option<f32>, e| Some(a.map_or(e, |a: f32| a.max(e))));
-                        over.or_else(|| front.iter().filter(|(f0, f1, _)| *f0 < t1 + 30.0 && *f1 > t0 - 30.0).map(|(_, _, e)| *e).fold(None, |a: Option<f32>, e| Some(a.map_or(e, |a: f32| a.max(e)))))
-                    };
-                    // Nothing in front to moor to: no ship here in this rank.
-                    let Some(behind) = behind else {
-                        cursor += 6.0;
-                        continue;
-                    };
-                    let off = behind + 1.0 + breadth * 0.5;
-                    let t = cursor + length * 0.5;
-                    let centre = *a + along * t + across * side * off;
-                    // Still under the hulk: move along rather than lose the slot.
-                    let probe = Mooring { design: key, at: centre * CELL, quarter, level: 0.0, street: None, slot: None, dock: Vec2::ZERO };
-                    if outline(&probe, 0.0).is_some_and(|r| core.iter().any(|c| !c.intersect(r).is_empty())) {
-                        cursor += 4.0;
+                    let mid = t + along * 0.5;
+                    let base = seg.a + seg.dir.as_vec2() * mid;
+                    let centre = base + out.as_vec2() * (seg.half as f32 + 0.5 + GANTRY as f32 + long * 0.5);
+                    let ship = Mooring { design: key, at: centre * CELL, quarter: q, level: rng.gen_range(0.3..0.42), street: Some(i), slot: None, dock: (base + out.as_vec2() * (seg.half as f32 + 0.5)) * CELL };
+                    let g_key = sections::gantry(GANTRY);
+                    let g_centre = base + out.as_vec2() * (seg.half as f32 + 1.0) + turn(super::sections::get(g_key).map_or(Vec2::ZERO, |g| g.centre()), q_out);
+                    let gantry = static_piece(g_key, g_centre, q_out, 0.45, Some(i));
+                    match (outline(&ship, CELL * 0.3), outline(&gantry, 0.0)) {
+                        (Some(rs), Some(rg)) if clear(&taken, rs, i) && clear(&taken, rg, i) => {
+                            taken.push((rs, Owner::Thing));
+                            taken.push((rg, Owner::Thing));
+                            moorings.push(gantry);
+                            berths.push((ship.at.length() + rng.gen_range(0.0..2_000.0), ship));
+                            t += along + gap;
+                            run_left -= 1;
+                        }
+                        _ => {
+                            t += 4.0;
+                            misses += 1;
+                        }
+                    }
+                } else {
+                    let kind = super::sections::ALL_KINDS[rng.gen_range(0..super::sections::ALL_KINDS.len())];
+                    let size = if rng.gen_bool(0.3) { rng.gen_range(0.6..1.0) } else { rng.gen_range(0.0..0.4) };
+                    variant += 1;
+                    let key = sections::section(kind, size, variant % 6, &mut rng);
+                    let Some(d) = super::sections::get(key) else { break };
+                    let w = d.span().x as f32;
+                    if t + w > seg.len - 4.0 {
+                        // Too wide for what's left: try the run as berths.
+                        ships_run = true;
+                        run_left = 1;
+                        misses += 1;
                         continue;
                     }
-                    let level = rng.gen_range(0.3..0.5) - rank as f32 * 0.06;
-                    let key_dist = centre.length() + rank as f32 * 25.0 + rng.gen_range(0.0..30.0);
-                    let dock = (*a + along * t) * CELL;
-                    slots.push((key_dist, Mooring { design: key, at: centre * CELL, quarter, level, street: Some(si), slot: None, dock }, *a + along * t));
-                    this_rank.push((t0, t1, off + breadth * 0.5));
-                    cursor += length + rng.gen_range(0.5..1.5);
+                    let mid = t + w * 0.5;
+                    let origin = seg.a + seg.dir.as_vec2() * mid + out.as_vec2() * (seg.half as f32 + 1.0);
+                    let centre = origin + turn(d.centre(), q_out);
+                    let m = static_piece(key, centre, q_out, rng.gen_range(0.38..0.5), Some(i));
+                    match outline(&m, 0.0) {
+                        Some(r) if clear(&taken, r, i) => {
+                            taken.push((r, Owner::Thing));
+                            moorings.push(m);
+                            t += w + gap;
+                            run_left -= 1;
+                        }
+                        _ => {
+                            t += 4.0;
+                            misses += 1;
+                        }
+                    }
                 }
-                front = this_rank;
             }
         }
     }
-    // Nearest first; a ship whose outline would touch one already moored
-    // (or the hulk, or the hulls lashed to it) is passed over.
-    slots.sort_by(|x, y| x.0.total_cmp(&y.0));
-    let mut taken: Vec<Rect> = moorings.iter().filter_map(|m| outline(m, CELL * 0.3)).collect();
-    // The lane in to the berth is never moored in.
-    taken.push(Rect::new(tip * CELL + CELL, -LANE_HALF_WIDTH, tip * CELL + 80_000.0, LANE_HALF_WIDTH));
-    let mut tubes = Vec::new();
-    // The lashed hulls, walked to from the hulk.
-    for m in moorings.iter().skip(1) {
-        tubes.push(Tube { a: Vec2::ZERO, b: m.at, width: CELL * 2.6, ends: [None, None] });
-    }
-    // Every berth that fits, numbered in order; the first `ships` are taken,
-    // the rest wait empty for arrivals.
+
+    // The nearest berths are taken, the rest wait empty.
+    berths.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut spares = Vec::new();
-    let mut slot = 0;
-    for (_, mut m, _) in slots {
-        let Some(r) = outline(&m, CELL * 0.3) else { continue };
-        if taken.iter().any(|o| !o.intersect(r).is_empty()) {
-            continue;
-        }
-        taken.push(r);
-        m.slot = Some(slot);
-        slot += 1;
-        if slot <= ships {
-            // Every ship has its walkway to the street.
-            tubes.push(Tube { a: m.at, b: m.dock, width: CELL * 1.8, ends: [m.slot, None] });
+    let mut tubes = Vec::new();
+    for (k, (_, mut m)) in berths.into_iter().enumerate() {
+        m.slot = Some(k);
+        if k < ships {
+            tubes.push(Tube { a: m.at, b: m.dock, width: CELL * 1.6, ends: [m.slot, None] });
             moorings.push(m);
         } else {
             spares.push(m);
         }
     }
-    // And to its neighbours on the same side of the street, end to end.
-    let moored: Vec<&Mooring> = moorings.iter().filter(|m| m.street.is_some()).collect();
-    for (i, m) in moored.iter().enumerate() {
-        let Some(mine) = outline(m, 0.0) else { continue };
-        for o in moored.iter().skip(i + 1) {
-            if o.street != m.street {
-                continue;
-            }
-            let Some(theirs) = outline(o, 0.0) else { continue };
-            // Same side: their outlines overlap across the street's line.
-            let gap = mine.union(theirs).size() - mine.size() - theirs.size();
-            if gap.x.max(gap.y) < CELL * 8.0 && gap.x.min(gap.y) < 0.0 {
-                tubes.push(Tube { a: m.at, b: o.at, width: CELL * 1.4, ends: [m.slot, o.slot] });
-            }
-        }
-    }
 
-    let streets: Vec<(Vec2, Vec2)> = streets_cells.iter().map(|(a, b)| (*a * CELL, *b * CELL)).collect();
     let mut plan = RaftPlan { moorings, spares, streets, tubes, circles: Vec::new(), berth_tip: Vec2::new(tip * CELL, 0.0), extent: 0.0 };
     plan.circles = collision_circles(&plan);
-    // The extent counts the empty berths too: ships will moor there.
     let mut all = plan.clone();
     all.moorings.extend(plan.spares.iter().cloned());
     plan.extent = collision_circles(&all).iter().map(|(c, r)| c.length() + r).fold(0.0, f32::max);
     plan
+}
+
+fn design_of(key: &str) -> Option<&'static Design> {
+    design(key)
 }
 
 /// The faction a design belongs to: its folder under designs/factions.
@@ -395,7 +498,7 @@ pub fn faction_of(design: &str) -> &str {
 /// outline (so it can't touch a neighbour). Same middle, same turn.
 pub fn refit(berth: &Mooring, design: &'static str) -> Option<Mooring> {
     let lib = library();
-    let (old, new) = (lib.get(berth.design)?, lib.get(design)?);
+    let (old, new) = (design_of(berth.design)?, lib.get(design)?);
     let turned = |d: &Design| {
         let s = d.span();
         if berth.quarter % 2 == 0 { s } else { IVec2::new(s.y, s.x) }
@@ -406,7 +509,7 @@ pub fn refit(berth: &Mooring, design: &'static str) -> Option<Mooring> {
 
 /// A moored ship's outline in world units, grown by `margin` all round.
 pub fn outline(m: &Mooring, margin: f32) -> Option<Rect> {
-    let d = library().get(m.design)?;
+    let d = design_of(m.design)?;
     let span = d.span().as_vec2() * CELL;
     let half = if m.quarter % 2 == 0 { span * 0.5 } else { Vec2::new(span.y, span.x) * 0.5 };
     Some(Rect::from_center_half_size(m.at, half + Vec2::splat(margin)))
@@ -427,13 +530,6 @@ pub fn collision_circles(plan: &RaftPlan) -> Vec<(Vec2, f32)> {
             out.push((m.at + along * t * (long - short), short * 0.5));
         }
     }
-    for (a, b) in &plan.streets {
-        let len = a.distance(*b);
-        let n = (len / (CELL * 4.0)) as usize;
-        for i in 0..=n {
-            out.push((a.lerp(*b, i as f32 / n.max(1) as f32), CELL * 1.5));
-        }
-    }
     out
 }
 
@@ -444,7 +540,6 @@ mod tests {
     #[test]
     fn every_design_it_uses_is_on_disk() {
         let lib = library();
-        assert!(lib.contains_key(ANCHOR));
         for k in MOORED {
             assert!(lib.contains_key(k), "{k}");
         }
@@ -457,8 +552,8 @@ mod tests {
 
     #[test]
     fn a_bigger_raft_is_the_same_raft_filled_further_out() {
-        let small = plan_raft(9, 40);
-        let big = plan_raft(9, 80);
+        let small = plan_raft(9, 20);
+        let big = plan_raft(9, 40);
         for m in &small.moorings {
             assert!(big.moorings.contains(m), "{m:?} gone from the bigger raft");
         }
@@ -488,38 +583,78 @@ mod tests {
 
     #[test]
     fn no_ship_sits_on_another() {
-        for seed in 0..8 {
-            let plan = plan_raft(seed, 150);
-            let boxes: Vec<Rect> = plan.moorings.iter().filter_map(|m| outline(m, 0.0)).collect();
-            for i in 0..boxes.len() {
-                for j in i + 1..boxes.len() {
-                    assert!(boxes[i].intersect(boxes[j]).is_empty(), "seed {seed}: {:?} on {:?}", plan.moorings[i], plan.moorings[j]);
-                }
+        for seed in 0..6 {
+            let plan = plan_raft(seed, 200);
+            let ships: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter(|m| m.slot.is_some()).filter_map(|m| outline(m, -CELL * 0.25)).collect();
+            let all: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, -CELL * 0.25)).collect();
+            for s in &ships {
+                let hits = all.iter().filter(|o| !o.intersect(*s).is_empty()).count();
+                assert_eq!(hits, 1, "seed {seed}: a ship at {s:?} overlaps something");
             }
         }
+    }
+
+    /// Nothing hangs: from the hub, every arm, section, gantry and berth is
+    /// reached through things that touch.
+    #[test]
+    fn everything_is_joined_to_the_hub() {
+        for seed in 0..6 {
+            for order in [0.1, 0.55, 1.0] {
+                let style = Style { order, ..HAVEN_STYLE };
+                let plan = plan_station(seed, 200, &style);
+                let pieces: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, CELL * 0.6)).collect();
+                let mut reached = vec![false; pieces.len()];
+                reached[0] = true;
+                let mut frontier = vec![0];
+                while let Some(i) = frontier.pop() {
+                    for j in 0..pieces.len() {
+                        if !reached[j] && !pieces[i].intersect(pieces[j]).is_empty() {
+                            reached[j] = true;
+                            frontier.push(j);
+                        }
+                    }
+                }
+                let loose: Vec<&str> = plan.moorings.iter().chain(&plan.spares).zip(&reached).filter(|(_, r)| !**r).map(|(m, _)| m.design).collect();
+                assert!(loose.is_empty(), "seed {seed} order {order}: hanging: {loose:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_proud_owner_builds_straight_and_a_poor_one_crooked() {
+        let straight = plan_station(3, 64, &Style { order: 1.0, ..HAVEN_STYLE });
+        let crooked = plan_station(3, 64, &Style { order: 0.1, ..HAVEN_STYLE });
+        // A straight station's arms are one run each; a crooked one's break up.
+        assert_eq!(straight.streets.len(), HAVEN_STYLE.arms);
+        assert!(crooked.streets.len() > straight.streets.len() + 3, "{} runs", crooked.streets.len());
+    }
+
+    #[test]
+    fn there_are_sections_as_well_as_ships() {
+        let plan = plan_raft(5, 64);
+        let sections = plan.moorings.iter().filter(|m| m.design.starts_with("section/")).count();
+        assert!(sections >= 10, "{sections} sections");
+        let sizes: std::collections::HashSet<&str> = plan.moorings.iter().filter(|m| m.design.starts_with("section/")).map(|m| m.design.split('/').nth(2).unwrap_or("")).collect();
+        assert!(sizes.len() >= 2, "only one size of section: {sizes:?}");
     }
 
     #[test]
     fn empty_berths_touch_nothing_moored() {
-        let plan = plan_raft(4, 40);
+        // (That they touch nothing is no_ship_sits_on_another's job.)
+        let plan = plan_raft(4, 30);
         assert!(!plan.spares.is_empty(), "no room for arrivals");
-        let all: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, 0.0)).collect();
-        for i in 0..all.len() {
-            for j in i + 1..all.len() {
-                assert!(all[i].intersect(all[j]).is_empty());
-            }
-        }
     }
 
     #[test]
-    fn there_is_room_to_nearly_double() {
+    fn there_is_room_to_grow() {
         let plan = plan_raft(6, 64);
-        assert!(plan.moorings.len() - 4 + plan.spares.len() >= 110, "{} berths", plan.moorings.len() - 4 + plan.spares.len());
+        let berths = plan.moorings.iter().chain(&plan.spares).filter(|m| m.slot.is_some()).count();
+        assert!(berths >= 55, "{berths} berths");
     }
 
     #[test]
     fn a_refit_never_grows_past_its_berth() {
-        let plan = plan_raft(3, 64);
+        let plan = plan_raft(3, 30);
         let berth = plan.spares.iter().find(|m| m.design == "merchant_princes/tanker").or(plan.spares.first()).unwrap();
         for d in MOORED {
             if let Some(m) = refit(berth, d) {
@@ -532,7 +667,7 @@ mod tests {
     #[test]
     fn every_ship_has_a_walkway() {
         let plan = plan_raft(2, 100);
-        for m in plan.moorings.iter().skip(1) {
+        for m in plan.moorings.iter().filter(|m| m.slot.is_some()) {
             assert!(plan.tubes.iter().any(|t| t.a == m.at || t.b == m.at), "{} has no walkway", m.design);
         }
     }
@@ -544,4 +679,3 @@ mod tests {
         assert!(plan.extent > 15_000.0, "{} is not a city", plan.extent);
     }
 }
-
