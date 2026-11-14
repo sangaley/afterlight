@@ -167,7 +167,7 @@ fn image(w: usize, h: usize, rgba: Vec<u8>) -> Image {
 
 /// Paint one design turned `quarter` quarter-turns. The lighting is fixed to
 /// the screen, so each turn is painted on its own.
-pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
+pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style::Theme) -> Baked {
     let mut rng = StdRng::seed_from_u64(seed ^ (quarter as u64) << 40);
     // Cells turned, and their box.
     let turned: Vec<(IVec2, &super::raft::DesignCell)> = design
@@ -226,7 +226,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
     }
 
     // One material: the detail kept, the colour pulled to gunmetal.
-    let gunmetal = [0.21f32, 0.23, 0.29];
+    let gunmetal = [0.21 * theme.tint[0], 0.23 * theme.tint[1], 0.29 * theme.tint[2]];
     for i in 0..w * h {
         if tinted[i] {
             continue; // glass, panels, cargo keep their own colour
@@ -278,9 +278,9 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
     // Lights: windows in the lit rooms, portholes round the edge, running
     // lights at the ends.
     let mut light = vec![Vec3::ZERO; w * h];
-    let warm_win = Vec3::new(1.0, 0.76, 0.42);
-    let white = Vec3::new(0.9, 0.94, 1.0);
-    let cyan = Vec3::new(0.45, 0.88, 1.0);
+    let warm_win = Vec3::from(theme.windows[0]);
+    let white = Vec3::from(theme.windows[1]);
+    let cyan = Vec3::from(theme.windows[2]);
     for (x0, y0) in lit_cells {
         for _ in 0..rng.gen_range(0..3) {
             let (x, y) = (x0 + rng.gen_range(1..PX - 2), y0 + rng.gen_range(1..PX - 1));
@@ -358,7 +358,8 @@ pub fn bake(design: &Design, quarter: u8, seed: u64) -> Baked {
 // ---------------------------------------------------------------------------
 // in the world
 
-pub type BakeKey = (&'static str, u8);
+/// What a picture is of: a design, turned, painted in a theme (station_style).
+pub type BakeKey = (&'static str, u8, u8);
 
 /// Pictures painted so far, and the ones being painted.
 #[derive(Resource, Default)]
@@ -385,7 +386,7 @@ impl RaftBakes {
             for key in new {
                 let Some(d) = design(key.0) else { continue };
                 let seed = key.0.bytes().fold(7u64, |a, b| a.wrapping_mul(31).wrapping_add(b as u64));
-                let baked = bake(d, key.1, seed);
+                let baked = bake(d, key.1, seed, super::station_style::theme(key.2));
                 if let Ok(mut p) = out.lock() {
                     p.push((key, baked));
                 }
@@ -475,9 +476,9 @@ pub struct RaftHull {
 }
 
 /// Build the Raft's sprites under `root`.
-pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &mut RaftBakes, seed: u64) {
+pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &mut RaftBakes, seed: u64, theme: u8) {
     // The empty berths' ships too, and the tug: arrivals need their pictures.
-    bakes.ask(plan.moorings.iter().chain(&plan.spares).map(|m| (m.design, m.quarter)).chain((0..2).map(|q| ("free_haulers_compact/tug", q))));
+    bakes.ask(plan.moorings.iter().chain(&plan.spares).map(|m| (m.design, m.quarter, theme)).chain((0..2).map(|q| ("free_haulers_compact/tug", q, theme))));
     let mut kids = Vec::new();
     // Haze: the city's light in the space round it.
     kids.push(
@@ -518,7 +519,7 @@ pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &
     }
     // The ships, higher ones over lower ones, lights over each.
     for m in &plan.moorings {
-        super::raft_life::spawn_ship(commands, root, m, bakes, seed);
+        super::raft_life::spawn_ship(commands, root, m, bakes, seed, theme);
     }
     super::raft_life::spawn_traffic(commands, root, plan, art, seed);
     commands.entity(root).add_children(&kids);
@@ -566,13 +567,13 @@ mod tests {
     #[test]
     fn a_design_bakes_to_a_picture_its_own_size() {
         let d = design("free_haulers_compact/tug").expect("tug design");
-        let b = bake(d, 0, 1);
+        let b = bake(d, 0, 1, crate::world::station_style::theme(0));
         let span = d.span();
         let (w, h) = (b.body.width() as usize, b.body.height() as usize);
         assert_eq!(w, span.x as usize * PX + 2 * PAD);
         assert_eq!(h, span.y as usize * PX + 2 * PAD);
         // Turned a quarter, it's the other way round.
-        let t = bake(d, 1, 1);
+        let t = bake(d, 1, 1, crate::world::station_style::theme(0));
         assert_eq!(t.body.width() as usize, h);
         // It has a hull and it has lights.
         let data = b.body.data.as_ref().unwrap();

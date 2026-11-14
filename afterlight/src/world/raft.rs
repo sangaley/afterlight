@@ -135,10 +135,48 @@ pub fn load_design(key: &str) -> Option<Design> {
     Some(Design { cells, min, max })
 }
 
-/// Every ship design the Raft moors, read once.
+/// Every ship design a station can moor, read once: Haven's mix, and every
+/// faction's working ships (not its stations, gun platforms or bosses).
 pub fn library() -> &'static HashMap<&'static str, Design> {
     static LIB: OnceLock<HashMap<&'static str, Design>> = OnceLock::new();
-    LIB.get_or_init(|| MOORED.iter().copied().filter_map(|k| load_design(k).map(|d| (k, d))).collect())
+    LIB.get_or_init(|| {
+        let mut keys: Vec<&'static str> = MOORED.to_vec();
+        if let Ok(dirs) = std::fs::read_dir("designs/factions") {
+            for dir in dirs.flatten().filter(|d| d.path().is_dir()) {
+                let slug = dir.file_name().to_string_lossy().to_string();
+                let Ok(files) = std::fs::read_dir(dir.path()) else { continue };
+                for f in files.flatten() {
+                    let name = f.file_name().to_string_lossy().to_string();
+                    let Some(stem) = name.strip_suffix(".json") else { continue };
+                    let key: &'static str = Box::leak(format!("{slug}/{stem}").into_boxed_str());
+                    if !keys.contains(&key) {
+                        keys.push(key);
+                    }
+                }
+            }
+        }
+        keys.into_iter()
+            .filter_map(|k| load_design(k).map(|d| (k, d)))
+            // Stations, platforms and bosses are not moored ships.
+            .filter(|(_, d)| d.span().max_element() <= 120 && d.cells.len() > 80)
+            .filter(|(k, _)| !k.ends_with("gun_platform"))
+            .collect()
+    })
+}
+
+/// The ships that moor at a station of `owner`: Haven's mix for nobody's,
+/// otherwise every working ship of a faction allowed to moor there.
+pub fn pool_for(owner: Option<crate::ai_ship::components::AiShipType>) -> Vec<&'static str> {
+    if owner.is_none() {
+        return MOORED.to_vec();
+    }
+    let mut keys: Vec<&'static str> = library()
+        .keys()
+        .copied()
+        .filter(|k| super::raft_life::faction_named(faction_of(k)).is_some_and(|f| super::station_style::may_moor(owner, f)))
+        .collect();
+    keys.sort();
+    keys
 }
 
 /// A design by key: a ship's, or a built part's (world::sections).
@@ -217,12 +255,16 @@ pub struct Style {
     pub order: f32,
     /// The hub's half-width, in blocks.
     pub hub: i32,
+    pub hub_kind: super::sections::HubKind,
     /// Arms in all, the four off the hub's flats and branches off them.
     pub arms: usize,
+    /// Where the berth arm ends, in blocks east of the centre: the station's
+    /// docking radius. The other arms are sized from it.
+    pub tip: f32,
 }
 
 /// Haven: a refuge, kept up but not grand.
-pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, arms: 11 };
+pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, hub_kind: super::sections::HubKind::Octagon, arms: 11, tip: 19_000.0 / CELL };
 
 /// Blocks of gantry between an arm and a moored ship.
 const GANTRY: i32 = 3;
@@ -250,7 +292,7 @@ fn clear(taken: &[(Rect, Owner)], r: Rect, own_arm: usize) -> bool {
 
 /// Haven as it is laid out at the start of a run.
 pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
-    plan_station(seed, ships, &HAVEN_STYLE)
+    plan_station(seed, ships, &HAVEN_STYLE, MOORED)
 }
 
 /// Lay a station out: a hub, arms out of it (straight or crooked by its
@@ -259,14 +301,14 @@ pub fn plan_raft(seed: u64, ships: usize) -> RaftPlan {
 /// flush, big and small. Nothing is placed where it would touch something it
 /// isn't joined to, so nothing hangs. `ships` berths nearest the hub are
 /// taken; the rest wait empty for arrivals.
-pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
+pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str]) -> RaftPlan {
     use super::sections;
     let mut rng = StdRng::seed_from_u64(seed);
     let order = style.order.clamp(0.0, 1.0);
     let mess = 1.0 - order;
     let mut moorings: Vec<Mooring> = Vec::new();
     let mut taken: Vec<(Rect, Owner)> = Vec::new();
-    let tip = east_tip_cells();
+    let tip = style.tip;
     // The lane in to the berth is never built in.
     taken.push((Rect::new(tip * CELL + CELL, -LANE_HALF_WIDTH, tip * CELL + 80_000.0, LANE_HALF_WIDTH), Owner::Thing));
 
@@ -281,18 +323,20 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
     };
 
     // The hub.
-    let hub = sections::hub_octagon(style.hub, &mut rng);
+    let hub = sections::hub(style.hub_kind, style.hub, &mut rng);
     let hub_m = static_piece(hub, Vec2::ZERO, 0, 0.85, None);
     if let Some(r) = outline(&hub_m, 0.0) {
         taken.push((r, Owner::Thing));
     }
     moorings.push(hub_m);
-    let collar = (style.hub + 7) as f32;
+    let (cx, cy) = sections::hub_reach(style.hub_kind, style.hub);
+    let (cx, cy) = (cx as f32 - 2.0, cy as f32 - 2.0);
 
     // The arms: (start, direction, length, must be straight).
-    let mut arms: Vec<(Vec2, IVec2, f32, bool)> = vec![(Vec2::new(collar - 2.0, 0.0), IVec2::X, tip - (collar - 2.0), true)];
+    let mut arms: Vec<(Vec2, IVec2, f32, bool)> = vec![(Vec2::new(cx, 0.0), IVec2::X, (tip - cx).max(30.0), true)];
     for dir in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y] {
-        arms.push((dir.as_vec2() * (collar - 2.0), dir, rng.gen_range(320.0..420.0), false));
+        let from = if dir.x != 0 { cx } else { cy };
+        arms.push((dir.as_vec2() * from, dir, tip * rng.gen_range(1.1..1.45), false));
     }
 
     // Each arm in straight runs; crooked ones jog between runs. Branches
@@ -348,7 +392,7 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
         let (a, dir, len) = (segs[i].a, segs[i].dir, segs[i].len);
         let at = rng.gen_range(40.0..(len - 30.0));
         let side = if rng.gen_bool(0.5) { IVec2::new(-dir.y, dir.x) } else { IVec2::new(dir.y, -dir.x) };
-        let blen = rng.gen_range(140.0..230.0);
+        let blen = tip * rng.gen_range(0.5..0.8);
         lay(&mut segs, &mut elbows, &mut rng, a + dir.as_vec2() * at, side, blen, false);
     }
 
@@ -374,8 +418,14 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
     }
 
     // Along both sides of every run: berths and sections.
-    let big: Vec<&'static str> = MOORED.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() >= 70)).collect();
-    let small: Vec<&'static str> = MOORED.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() < 70)).collect();
+    let mut big: Vec<&'static str> = pool.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() >= 70)).collect();
+    let mut small: Vec<&'static str> = pool.iter().copied().filter(|k| library().get(k).is_some_and(|d| d.span().max_element() < 70)).collect();
+    if small.is_empty() {
+        small = big.clone();
+    }
+    if big.is_empty() {
+        big = small.clone();
+    }
     let mut berths: Vec<(f32, Mooring)> = Vec::new();
     let mut variant = 0u32;
     for (i, seg) in segs.iter().enumerate() {
@@ -429,7 +479,8 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
                         }
                     }
                 } else {
-                    let kind = super::sections::ALL_KINDS[rng.gen_range(0..super::sections::ALL_KINDS.len())];
+                    let kinds = style_parts(style);
+                    let kind = kinds[rng.gen_range(0..kinds.len())];
                     let size = if rng.gen_bool(0.3) { rng.gen_range(0.6..1.0) } else { rng.gen_range(0.0..0.4) };
                     variant += 1;
                     let key = sections::section(kind, size, variant % 6, &mut rng);
@@ -482,6 +533,25 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style) -> RaftPlan {
     let mut all = plan.clone();
     all.moorings.extend(plan.spares.iter().cloned());
     plan.extent = collision_circles(&all).iter().map(|(c, r)| c.length() + r).fold(0.0, f32::max);
+    plan
+}
+
+/// The sections a style bolts on.
+fn style_parts(style: &Style) -> &'static [super::sections::Kind] {
+    PARTS.with(|p| *p.borrow()).filter(|_| style.hub > 0).unwrap_or(&super::sections::ALL_KINDS)
+}
+
+thread_local! {
+    /// The section mix for the station being laid out (station_style::Look).
+    static PARTS: std::cell::RefCell<Option<&'static [super::sections::Kind]>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Lay out a station for an owner's look.
+pub fn plan_for(seed: u64, ships: usize, look: &super::station_style::Look, hub: i32, tip: f32, pool: &[&'static str]) -> RaftPlan {
+    let style = Style { order: look.order, hub, hub_kind: look.hub, arms: look.arms, tip };
+    PARTS.with(|p| *p.borrow_mut() = Some(look.parts));
+    let plan = plan_station(seed, ships, &style, pool);
+    PARTS.with(|p| *p.borrow_mut() = None);
     plan
 }
 
@@ -601,7 +671,7 @@ mod tests {
         for seed in 0..6 {
             for order in [0.1, 0.55, 1.0] {
                 let style = Style { order, ..HAVEN_STYLE };
-                let plan = plan_station(seed, 200, &style);
+                let plan = plan_station(seed, 200, &style, MOORED);
                 let pieces: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, CELL * 0.6)).collect();
                 let mut reached = vec![false; pieces.len()];
                 reached[0] = true;
@@ -622,11 +692,40 @@ mod tests {
 
     #[test]
     fn a_proud_owner_builds_straight_and_a_poor_one_crooked() {
-        let straight = plan_station(3, 64, &Style { order: 1.0, ..HAVEN_STYLE });
-        let crooked = plan_station(3, 64, &Style { order: 0.1, ..HAVEN_STYLE });
+        let straight = plan_station(3, 64, &Style { order: 1.0, ..HAVEN_STYLE }, MOORED);
+        let crooked = plan_station(3, 64, &Style { order: 0.1, ..HAVEN_STYLE }, MOORED);
         // A straight station's arms are one run each; a crooked one's break up.
         assert_eq!(straight.streets.len(), HAVEN_STYLE.arms);
         assert!(crooked.streets.len() > straight.streets.len() + 3, "{} runs", crooked.streets.len());
+    }
+
+    /// Every owner's station is one piece, and moors no enemy of its owner.
+    #[test]
+    fn faction_stations_hold_together_and_moor_no_enemies() {
+        use crate::world::station_style::{look, may_moor, OWNERS};
+        for (i, owner) in OWNERS.iter().enumerate() {
+            let pool = pool_for(Some(*owner));
+            assert!(!pool.is_empty(), "{owner:?} has nobody to moor");
+            for k in &pool {
+                let f = crate::world::raft_life::faction_named(faction_of(k)).unwrap();
+                assert!(may_moor(Some(*owner), f), "{k} at {owner:?}'s station");
+            }
+            let l = look(Some(*owner));
+            let plan = plan_for(i as u64, 20, &l, 70, 200.0, &pool);
+            let pieces: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| outline(m, CELL * 0.6)).collect();
+            let mut reached = vec![false; pieces.len()];
+            reached[0] = true;
+            let mut frontier = vec![0];
+            while let Some(a) = frontier.pop() {
+                for b in 0..pieces.len() {
+                    if !reached[b] && !pieces[a].intersect(pieces[b]).is_empty() {
+                        reached[b] = true;
+                        frontier.push(b);
+                    }
+                }
+            }
+            assert!(reached.iter().all(|r| *r), "{owner:?}'s station has hanging pieces");
+        }
     }
 
     #[test]
@@ -649,7 +748,7 @@ mod tests {
     fn there_is_room_to_grow() {
         let plan = plan_raft(6, 64);
         let berths = plan.moorings.iter().chain(&plan.spares).filter(|m| m.slot.is_some()).count();
-        assert!(berths >= 55, "{berths} berths");
+        assert!(berths >= 45, "{berths} berths");
     }
 
     #[test]

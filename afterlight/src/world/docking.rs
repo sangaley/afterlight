@@ -170,7 +170,18 @@ pub fn run_docking(
     let Some(run) = docking.run.as_mut() else { return };
     let Ok((mut tf, mut vel, mut physics)) = ship.single_mut() else { return };
     let Some(site) = stations.sites.iter().find(|s| s.index == run.station).cloned() else {
+        // The station's gone (a jump mid-sequence): drop the sequence and
+        // everything it put up, so nothing is left hanging on screen.
         docking.run = None;
+        for (e, ..) in &lane {
+            commands.entity(e).despawn();
+        }
+        for (e, ..) in &walkway {
+            commands.entity(e).despawn();
+        }
+        for e in &notes {
+            commands.entity(e).despawn();
+        }
         return;
     };
     // F skips the rest.

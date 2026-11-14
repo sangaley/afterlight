@@ -13,6 +13,7 @@ pub mod docking;
 pub mod raft_art;
 pub mod raft_life;
 pub mod sections;
+pub mod station_style;
 pub mod station_types;
 
 #[allow(unused_imports)]
@@ -52,6 +53,7 @@ impl Plugin for WorldPlugin {
                     raft_life::raft_roster,
                     raft_life::raft_motion,
                     raft_life::raft_districts,
+                    home_base::park_at_station,
                 )
                     .chain()
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),

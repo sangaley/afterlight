@@ -61,13 +61,44 @@ pub const HAVEN_RADIUS: f32 = 19_000.0;
 pub const HAVEN_EXTENT: f32 = 50_000.0;
 /// Ships moored round Haven's anchor at the start of a run.
 pub const HAVEN_SHIPS: usize = 30;
-/// Every other station is still the old ring, at the old size.
-const OTHER_STATION_RADIUS: f32 = 2_600.0 * 0.8;
-
-/// Structure radius of the station with this global index.
+/// Structure radius of the station with this global index: how far east its
+/// berth arm reaches. By what it is, and a little either way, so no two are
+/// the same size; a pure function of the index, so docking, the map and
+/// collision agree without a save.
 pub fn station_radius(index: usize) -> f32 {
-    if index == 0 { HAVEN_RADIUS } else { OTHER_STATION_RADIUS }
+    if index == 0 {
+        return HAVEN_RADIUS;
+    }
+    let base = match station_type(index) {
+        StationType::TradeHub => 13_000.0,
+        StationType::Shipyard => 12_500.0,
+        StationType::MilitaryOutpost => 11_000.0,
+        StationType::ResearchOutpost => 9_500.0,
+        StationType::MiningColony => 9_000.0,
+        StationType::RefuelDepot => 8_000.0,
+    };
+    let wobble = ((index as f32 * 0.754_877_7).fract() - 0.5) * 0.3;
+    base * (1.0 + wobble)
 }
+
+/// How far any part of a station of this index can reach from its centre.
+pub fn station_extent(index: usize) -> f32 {
+    if index == 0 { HAVEN_EXTENT } else { station_radius(index) * 1.9 }
+}
+
+/// Ships moored at a station of this index at the start.
+fn station_ships(index: usize) -> usize {
+    match station_type(index) {
+        StationType::TradeHub => 20,
+        StationType::Shipyard => 18,
+        StationType::MilitaryOutpost => 16,
+        _ => 12,
+    }
+}
+
+/// Who a station was built for: rebuilt when its system changes hands.
+#[derive(Component, Clone, Copy, PartialEq)]
+pub struct StationOwner(pub Option<crate::ai_ship::components::AiShipType>);
 
 /// How far past a station's structure the ship's ROOT can be and still dock.
 /// Stations and hulls are solid (see ship::collision), and the root of a big
@@ -205,7 +236,7 @@ pub fn station_sites(def: &StarSystemDef) -> Vec<StationSite> {
                 let radius = 180_000.0 + ((n * 0.6180339).fract()) * 240_000.0;
                 keep_clear.nudge(
                     def.local_center + Vec2::new(angle.cos(), angle.sin()) * radius,
-                    station_radius(index) + DOCK_MARGIN,
+                    station_extent(index) + DOCK_MARGIN,
                 )
             };
             StationSite {
@@ -317,7 +348,7 @@ pub fn refresh_system_stations(
 pub fn sync_station_entities(
     mut commands: Commands,
     stations: Res<SystemStations>,
-    existing: Query<(Entity, &Station, Option<&RaftSeed>)>,
+    existing: Query<(Entity, &Station, Option<&RaftSeed>, Option<&StationOwner>)>,
     galaxy: Res<crate::celestial::resources::GalaxyMap>,
     art: Option<Res<super::raft_art::RaftArt>>,
     mut bakes: ResMut<super::raft_art::RaftBakes>,
@@ -328,10 +359,12 @@ pub fn sync_station_entities(
     let reload = std::mem::replace(&mut roster.reload, false);
     let seed = galaxy.galaxy_seed;
     let mut present: Vec<usize> = Vec::new();
-    for (entity, station, raft) in existing.iter() {
+    let owner_of = |system: u32| galaxy.systems.iter().find(|s| s.id == system).and_then(|s| s.faction);
+    for (entity, station, raft, owner) in existing.iter() {
         let still_here = stations.system_id == Some(station.system_id)
             && stations.sites.iter().any(|s| s.index == station.index)
-            && raft.is_none_or(|r| r.0 == seed && !reload);
+            && raft.is_none_or(|r| r.0 == seed && !(reload && station.index == 0))
+            && owner.is_none_or(|o| station.index == 0 || o.0 == owner_of(station.system_id));
         if still_here {
             present.push(station.index);
         } else {
@@ -344,7 +377,7 @@ pub fn sync_station_entities(
             if site.index == 0 {
                 spawn_haven_raft(&mut commands, site, seed, &art, &mut bakes, roster.berths.as_deref());
             } else {
-                spawn_station(&mut commands, site);
+                spawn_faction_station(&mut commands, site, owner_of(site.system_id), seed, &art, &mut bakes);
             }
         }
     }
@@ -483,7 +516,7 @@ fn spawn_haven_raft(
             live,
         ))
         .id();
-    super::raft_art::spawn_raft(commands, root, &plan, art, bakes, seed);
+    super::raft_art::spawn_raft(commands, root, &plan, art, bakes, seed, 0);
     let label = commands
         .spawn((
             Text2d::new(site.name.to_uppercase()),
@@ -496,9 +529,90 @@ fn spawn_haven_raft(
     commands.entity(root).add_child(label);
 }
 
+/// AFTERLIGHT_PARK_AT_STATION=1: once in a system other than Haven's, put the
+/// ship just off the end of its nearest station's lane, at rest -- for
+/// filming a faction's station without the long flight.
+pub fn park_at_station(
+    stations: Res<SystemStations>,
+    mut ship: Query<(&mut Transform, &mut Velocity), With<Ship>>,
+    mut done: Local<Option<u32>>,
+) {
+    if std::env::var("AFTERLIGHT_PARK_AT_STATION").ok().as_deref() != Some("1") {
+        return;
+    }
+    let Some(system) = stations.system_id.filter(|s| *s != 0) else { return };
+    if *done == Some(system) {
+        return;
+    }
+    let Some(site) = stations.sites.first() else { return };
+    let Ok((mut tf, mut vel)) = ship.single_mut() else { return };
+    let at = site.pos + Vec2::X * (site.radius() + 6_000.0);
+    tf.translation.x = at.x;
+    tf.translation.y = at.y;
+    vel.0 = Vec2::ZERO;
+    info!("AFTERLIGHT_PARK_AT_STATION: parked off {} ({:?})", site.name, site.kind);
+    *done = Some(system);
+}
+
+/// A system's station, built as its owner builds (world::station_style):
+/// the owner's paint and lights, hub shape, order and sections, and only
+/// the owner's and its friends' ships moored. Nobody's: a free port, built
+/// as Haven is.
+fn spawn_faction_station(
+    commands: &mut Commands,
+    site: &StationSite,
+    owner: Option<crate::ai_ship::components::AiShipType>,
+    seed: u64,
+    art: &super::raft_art::RaftArt,
+    bakes: &mut super::raft_art::RaftBakes,
+) {
+    let look = super::station_style::look(owner);
+    let pool = super::raft::pool_for(owner);
+    let r = site.radius();
+    let hub = ((r / super::raft::CELL) * 0.3).clamp(45.0, 85.0) as i32;
+    let layout_seed = seed ^ (site.index as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let plan = super::raft::plan_for(layout_seed, station_ships(site.index), &look, hub, r / super::raft::CELL, &pool);
+    let live = super::raft_life::RaftLive::for_owner(plan, layout_seed, None, look.theme, pool, false);
+    let plan = live.plan.clone();
+    let root = commands
+        .spawn((
+            Transform::from_xyz(site.pos.x, site.pos.y, 0.05),
+            Visibility::default(),
+            Station { index: site.index, system_id: site.system_id },
+            StationCircles(plan.circles.clone()),
+            RaftSeed(seed),
+            StationOwner(owner),
+            live,
+        ))
+        .id();
+    super::raft_art::spawn_raft(commands, root, &plan, art, bakes, layout_seed, look.theme);
+    let kind = station_type_name(site.kind);
+    let label = commands
+        .spawn((
+            Text2d::new(site.name.to_uppercase()),
+            TextFont { font_size: FontSize::Px(24.0), ..default() },
+            TextColor(Color::srgba(0.7, 0.8, 1.0, 0.8)),
+            Transform::from_xyz(0.0, plan.extent + 1_500.0, 0.03),
+            crate::camera::ZoomInvariantText,
+        ))
+        .id();
+    if !site.name.ends_with(kind) {
+        let span = commands
+            .spawn((
+                TextSpan::new(format!("\n{}", kind.to_uppercase())),
+                TextFont { font_size: FontSize::Px(16.0), ..default() },
+                TextColor(Color::srgba(0.6, 0.7, 0.9, 0.6)),
+            ))
+            .id();
+        commands.entity(label).add_child(span);
+    }
+    commands.entity(root).add_child(label);
+}
+
 /// Builds one station structure: a hub, a habitat ring on four spokes, four
 /// docking arms with lit heads, solar wings, radiators and running lights.
 /// Haven is the largest; the accent colour codes the station type.
+#[allow(dead_code)]
 fn spawn_station(commands: &mut Commands, site: &StationSite) {
     use shape::*;
     let is_haven = site.index == 0;
@@ -812,7 +926,7 @@ pub fn station_docking(
             .map(|c| c.bound_center.length() + c.bound_radius)
             .unwrap_or(STARTER_BERTH_RADIUS);
         // Fly it in, unless docking is set to Instant.
-        let extent = if site.index == 0 { HAVEN_EXTENT } else { site.radius() * 1.3 };
+        let extent = station_extent(site.index);
         if !arrived
             && super::docking::begin_docking(&mut docking, &settings, site.index, site.pos, site.radius(), extent, ship_pos, physics.rotation, ship_radius)
         {
@@ -905,7 +1019,17 @@ mod station_size_tests {
         let circles: Vec<(Vec2, f32)> = if radius == HAVEN_RADIUS {
             (0..6).flat_map(|seed| super::super::raft::plan_raft(seed, HAVEN_SHIPS).circles).collect()
         } else {
-            station_collider_circles(radius)
+            // A system station, as every owner would build it.
+            let cell = super::super::raft::CELL;
+            let hub = ((radius / cell) * 0.3).clamp(45.0, 85.0) as i32;
+            std::iter::once(None)
+                .chain(super::super::station_style::OWNERS.iter().copied().map(Some))
+                .flat_map(|owner| {
+                    let look = super::super::station_style::look(owner);
+                    let pool = super::super::raft::pool_for(owner);
+                    super::super::raft::plan_for(3, 16, &look, hub, radius / cell, &pool).circles
+                })
+                .collect()
         };
         circles
             .into_iter()

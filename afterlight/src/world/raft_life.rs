@@ -68,6 +68,12 @@ pub struct RaftLive {
     pub dark_streets: Vec<usize>,
     /// Bumped on every change to who is moored, or which streets are dark.
     pub version: u32,
+    /// Its paint (station_style::theme).
+    pub theme: u8,
+    /// Who may moor here: its owner's ships and those not hostile to it.
+    pub pool: Vec<&'static str>,
+    /// Haven: the one whose roster is saved and that takes in refugees.
+    pub haven: bool,
     /// Berths with a ship on its way in or out.
     pub busy: HashSet<usize>,
     /// On their way out: their berths come free once they're gone.
@@ -81,7 +87,12 @@ pub struct RaftLive {
 
 impl RaftLive {
     /// A Raft from its plan, or as a saved roster left it.
-    pub fn new(mut plan: RaftPlan, seed: u64, roster: Option<&[(usize, String)]>) -> Self {
+    pub fn new(plan: RaftPlan, seed: u64, roster: Option<&[(usize, String)]>) -> Self {
+        Self::for_owner(plan, seed, roster, 0, super::raft::MOORED.to_vec(), true)
+    }
+
+    /// A station's live state: `theme` its paint, `pool` who may moor.
+    pub fn for_owner(mut plan: RaftPlan, seed: u64, roster: Option<&[(usize, String)]>, theme: u8, pool: Vec<&'static str>, haven: bool) -> Self {
         let base = plan.moorings.iter().filter(|m| m.slot.is_some()).count();
         if let Some(roster) = roster {
             let lib = library();
@@ -122,6 +133,9 @@ impl RaftLive {
             target,
             dark_streets: Vec::new(),
             version: 1,
+            theme,
+            pool,
+            haven,
             busy: HashSet::new(),
             departing: Vec::new(),
             arriving: Vec::new(),
@@ -204,8 +218,8 @@ const ARRIVE_S: f32 = 18.0;
 const TUG: &str = "free_haulers_compact/tug";
 
 /// A moored ship's two sprites (picture and lights), under `root`.
-pub fn spawn_ship(commands: &mut Commands, root: Entity, m: &Mooring, bakes: &RaftBakes, seed: u64) -> [Entity; 2] {
-    let key: BakeKey = (m.design, m.quarter);
+pub fn spawn_ship(commands: &mut Commands, root: Entity, m: &Mooring, bakes: &RaftBakes, seed: u64, theme: u8) -> [Entity; 2] {
+    let key: BakeKey = (m.design, m.quarter, theme);
     let z = 0.01 + m.level * 0.03;
     let mut out = [Entity::PLACEHOLDER; 2];
     for (i, lights) in [false, true].into_iter().enumerate() {
@@ -313,7 +327,8 @@ pub fn raft_roster(
 
         // Bigger as the Cascade spreads: the refugees have nowhere else.
         let berths = live.berths();
-        live.target = live.base + ((berths.saturating_sub(live.base)) as f32 * level).round() as usize;
+        // Haven fills with refugees; a faction's station keeps its own count.
+        live.target = if live.haven { live.base + ((berths.saturating_sub(live.base)) as f32 * level).round() as usize } else { live.base };
 
         // Streets go dark with the scene round Haven, outermost first.
         let n_streets = live.plan.streets.len();
@@ -384,14 +399,14 @@ pub fn raft_roster(
                     live.busy.insert(slot);
                     let out = m.at.normalize_or(Vec2::Y);
                     let from = m.at + out * (live.plan.extent * 0.9 + 25_000.0);
-                    let [a, b] = spawn_ship(&mut commands, root, &m, &bakes, slot as u64);
+                    let [a, b] = spawn_ship(&mut commands, root, &m, &bakes, slot as u64, live.theme);
                     for e in [a, b] {
                         commands.entity(e).insert((Arriving { t: 0.0, from, to: m.at, slot, tug: false }, Transform::from_translation(from.extend(0.05))));
                     }
                     // A tug leads it in, just ahead of it.
                     let q = if out.x.abs() > out.y.abs() { 0 } else { 1 };
-                    bakes.ask([(TUG, q)]);
-                    if let Some((body, _, size)) = bakes.done_get(&(TUG, q)) {
+                    bakes.ask([(TUG, q, live.theme)]);
+                    if let Some((body, _, size)) = bakes.done_get(&(TUG, q, live.theme)) {
                         let tug = commands
                             .spawn((
                                 Sprite { image: body.clone(), custom_size: Some(*size), ..default() },
@@ -409,7 +424,9 @@ pub fn raft_roster(
         }
 
         // Haven's roster, for the save.
-        roster.berths = Some(live.roster());
+        if live.haven {
+            roster.berths = Some(live.roster());
+        }
     }
 }
 
@@ -420,7 +437,7 @@ pub fn raft_roster(
 fn pick_refugee(live: &mut RaftLive, loss: &std::collections::HashMap<&'static str, f32>, bakes: &mut RaftBakes) -> Option<(usize, Mooring)> {
     // Whose ship it is.
     let factions: Vec<&'static str> = {
-        let mut f: Vec<&'static str> = MOORED.iter().map(|d| faction_of(d)).collect();
+        let mut f: Vec<&'static str> = live.pool.iter().map(|d| faction_of(d)).collect();
         f.sort();
         f.dedup();
         f
@@ -444,7 +461,7 @@ fn pick_refugee(live: &mut RaftLive, loss: &std::collections::HashMap<&'static s
         }
     }
     let quarter = per_street.into_iter().max_by_key(|(_, n)| *n).map(|(s, _)| s);
-    let theirs: Vec<&'static str> = MOORED.iter().copied().filter(|d| faction_of(d) == who).collect();
+    let theirs: Vec<&'static str> = live.pool.iter().copied().filter(|d| faction_of(d) == who).collect();
     // Every empty berth they fit, their quarter first.
     let mut best: Vec<(f32, usize, Mooring)> = Vec::new();
     for (i, spare) in live.plan.spares.iter().enumerate() {
@@ -457,8 +474,8 @@ fn pick_refugee(live: &mut RaftLive, loss: &std::collections::HashMap<&'static s
     }
     best.sort_by(|a, b| b.0.total_cmp(&a.0));
     for (_, i, m) in best {
-        bakes.ask([(m.design, m.quarter)]);
-        if bakes.done_get(&(m.design, m.quarter)).is_some() {
+        bakes.ask([(m.design, m.quarter, live.theme)]);
+        if bakes.done_get(&(m.design, m.quarter, live.theme)).is_some() {
             return Some((i, m));
         }
     }
