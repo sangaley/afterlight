@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use super::raft::Shape;
 use super::sections::{HubKind, Kind};
 use crate::ai_ship::components::{factions_hostile, AiShipType};
 
@@ -15,6 +16,8 @@ use crate::ai_ship::components::{factions_hostile, AiShipType};
 pub struct Theme {
     pub tint: [f32; 3],
     pub windows: [[f32; 3]; 3],
+    /// The owner's paint on the outer plating (None: bare metal).
+    pub livery: Option<crate::ai_ship::livery::Livery>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -25,6 +28,8 @@ pub struct Look {
     pub hub: HubKind,
     pub arms: usize,
     pub parts: &'static [Kind],
+    /// The plan of its arms.
+    pub shape: Shape,
 }
 
 const WARM: [f32; 3] = [1.0, 0.76, 0.42];
@@ -51,7 +56,7 @@ pub const OWNERS: [AiShipType; 12] = [
 pub fn theme(id: u8) -> Theme {
     use AiShipType::*;
     let Some(owner) = id.checked_sub(1).and_then(|i| OWNERS.get(i as usize)) else {
-        return Theme { tint: [1.0, 1.0, 1.0], windows: [WARM, WHITE, CYAN] };
+        return Theme { tint: [1.0, 1.0, 1.0], windows: [WARM, WHITE, CYAN], livery: None };
     };
     let base = crate::ai_ship::components::faction_map_color(*owner).to_srgba();
     // The metal leans a little toward the faction's colour; no more.
@@ -70,7 +75,7 @@ pub fn theme(id: u8) -> Theme {
         FreeHaulersCompact => [[1.0, 0.7, 0.3], [1.0, 0.9, 0.6], WHITE],
         RecursiveKingdom => [[1.0, 0.55, 0.25], [1.0, 0.3, 0.2], WARM],
     };
-    Theme { tint, windows }
+    Theme { tint, windows, livery: Some(crate::ai_ship::livery::livery(*owner)) }
 }
 
 /// How `owner` (None: nobody's) builds.
@@ -78,7 +83,7 @@ pub fn look(owner: Option<AiShipType>) -> Look {
     use AiShipType::*;
     use Kind::*;
     let Some(owner) = owner else {
-        return Look { theme: 0, order: 0.55, hub: HubKind::Octagon, arms: 9, parts: &[Habitat, Solar, Radiator, Tanks, Cargo, Antenna, Greenhouse, Crane] };
+        return Look { theme: 0, order: 0.55, hub: HubKind::Octagon, arms: 9, parts: &[Habitat, Solar, Radiator, Tanks, Cargo, Antenna, Greenhouse, Crane], shape: Shape::Cross };
     };
     let theme = OWNERS.iter().position(|o| *o == owner).map_or(0, |i| i as u8 + 1);
     let (order, hub, arms, parts): (f32, HubKind, usize, &'static [Kind]) = match owner {
@@ -95,7 +100,15 @@ pub fn look(owner: Option<AiShipType>) -> Look {
         BrokenChoir => (0.1, HubKind::Hex, 6, &[Antenna, Antenna, Radiator, Habitat]),
         RecursiveKingdom => (0.15, HubKind::Octagon, 6, &[Cargo, Tanks, Crane, Radiator]),
     };
-    Look { theme, order, hub, arms, parts }
+    let shape = match owner {
+        TerranHegemony => Shape::Cross,
+        EternalHegemony => Shape::Lattice,
+        GildedThrone | Shepherd | StellarPreserve => Shape::Ring,
+        TheSilence | SynthesisCollective => Shape::Spine,
+        MerchantPrinces | RecursiveKingdom => Shape::Ladder,
+        FreeHaulersCompact | CorpseStars | BrokenChoir => Shape::Sprawl,
+    };
+    Look { theme, order, hub, arms, parts, shape }
 }
 
 /// Whether ships of `ship` may moor at a station of `owner`: always at an

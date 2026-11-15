@@ -264,6 +264,30 @@ pub struct Style {
     /// A hub that is already there (a faction's starport): the arms root on
     /// it and nothing of the station's own is built where it is.
     pub given: Option<GivenHub>,
+    /// The plan of its arms: what it looks like from far off.
+    pub shape: Shape,
+    /// An arm's half-width in blocks, at its narrowest, and how much wider a
+    /// crooked run may come out.
+    pub width: i32,
+    pub spread: f32,
+}
+
+/// The plan of a station's arms. Every arm runs square to the map, so the
+/// difference is in how they're joined.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    /// Four arms off the hub and branches off them, wherever they fall.
+    Cross,
+    /// The cross, its branches in matched pairs at even spacing.
+    Lattice,
+    /// A square ring round the hub on four spokes, branches off the ring.
+    Ring,
+    /// Two long rails either side of the hub, joined by rungs: a dockyard.
+    Ladder,
+    /// One long spine through the hub, short ribs off it both sides.
+    Spine,
+    /// Arms of any length, branches off branches: grown, not planned.
+    Sprawl,
 }
 
 /// Someone else's hull at the middle, in blocks: how far it reaches along
@@ -302,7 +326,7 @@ impl GivenHub {
 }
 
 /// Haven: a refuge, kept up but not grand.
-pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, hub_kind: super::sections::HubKind::Octagon, arms: 11, tip: 19_000.0 / CELL, given: None };
+pub const HAVEN_STYLE: Style = Style { order: 0.55, hub: 100, hub_kind: super::sections::HubKind::Octagon, arms: 11, tip: 19_000.0 / CELL, given: None, shape: Shape::Cross, width: 5, spread: 3.0 };
 
 /// Blocks of gantry between an arm and a moored ship.
 const GANTRY: i32 = 3;
@@ -377,10 +401,108 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
     };
     let cx = roots[0];
 
-    // The arms: (start, direction, length, must be straight).
+    // The arms: (start, direction, length, must be straight). The berth arm
+    // due east is every shape's.
     let mut arms: Vec<(Vec2, IVec2, f32, bool)> = vec![(Vec2::new(cx, 0.0), IVec2::X, (tip - cx).max(30.0), true)];
-    for (i, dir) in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
-        arms.push((dir.as_vec2() * roots[i + 1], dir, tip * rng.gen_range(1.1..1.45), false));
+    // Laid after the arms they come off: (start, direction, length, straight).
+    let mut fixed_branches: Vec<(Vec2, IVec2, f32, bool)> = Vec::new();
+    let mut random_branches = style.arms.saturating_sub(4);
+    // Branches may come off branches.
+    let mut branch_of_branch = false;
+    let side_of = |dir: IVec2, s: i32| IVec2::new(-dir.y, dir.x) * s;
+    match style.shape {
+        Shape::Cross | Shape::Lattice => {
+            let straight = style.shape == Shape::Lattice;
+            for (i, dir) in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
+                let len = tip * rng.gen_range(1.1..1.45);
+                arms.push((dir.as_vec2() * roots[i + 1], dir, len, straight));
+                if straight {
+                    // Two bars across each arm, the outer one shorter.
+                    for (at, reach) in [(0.42, 0.42), (0.8, 0.3)] {
+                        let from = dir.as_vec2() * (roots[i + 1] + len * at);
+                        for s in [-1, 1] {
+                            fixed_branches.push((from, side_of(dir, s), tip * reach, true));
+                        }
+                    }
+                }
+            }
+            if straight {
+                random_branches = 0;
+            }
+        }
+        Shape::Ring => {
+            // Clear of the hull and room for ships inside it.
+            let hull = roots.iter().copied().fold(0.0, f32::max);
+            let r = (hull + 80.0).max(tip * 0.68).round();
+            for (i, dir) in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
+                arms.push((dir.as_vec2() * roots[i + 1], dir, r - roots[i + 1], true));
+            }
+            let w = (style.width + 1) as f32;
+            for dir in [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y] {
+                let along = side_of(dir, 1);
+                arms.push((dir.as_vec2() * r - along.as_vec2() * (r + w), along, 2.0 * (r + w) + 1.0, true));
+            }
+            // Out from the ring's far sides, square to it.
+            for dir in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y] {
+                let len = tip * rng.gen_range(0.45..0.6);
+                for s in [-1.0, 1.0] {
+                    let along = side_of(dir, 1).as_vec2();
+                    fixed_branches.push((dir.as_vec2() * r + along * s * r * 0.55, dir, len, true));
+                }
+            }
+            random_branches = 0;
+        }
+        Shape::Ladder => {
+            // Rails north and south, clear of the lane in, running west.
+            let d = (roots[1].max(roots[3]) + 60.0).max(LANE_HALF_WIDTH / CELL + style.width as f32 + 20.0).round();
+            let (east, west) = (tip * 0.75, tip * rng.gen_range(1.25..1.5));
+            arms.push((Vec2::new(0.0, roots[1]), IVec2::Y, d - roots[1], true));
+            arms.push((Vec2::new(0.0, -roots[3]), IVec2::NEG_Y, d - roots[3], true));
+            for y in [d, -d] {
+                arms.push((Vec2::new(east, y), IVec2::NEG_X, east + west, true));
+            }
+            // Rungs between the rails.
+            for x in [-west * 0.45, -west + 1.0] {
+                arms.push((Vec2::new(x, -d), IVec2::Y, 2.0 * d, order >= 0.9));
+            }
+            // And out past the rails.
+            for (y, dir) in [(d, IVec2::Y), (-d, IVec2::NEG_Y)] {
+                for _ in 0..2 {
+                    fixed_branches.push((Vec2::new(-west * rng.gen_range(0.2..0.95), y), dir, tip * rng.gen_range(0.3..0.55), false));
+                }
+            }
+            random_branches = random_branches.saturating_sub(4);
+        }
+        Shape::Spine => {
+            let (n, s) = (tip * rng.gen_range(1.4..1.7), tip * rng.gen_range(1.4..1.7));
+            arms.push((Vec2::new(0.0, roots[1]), IVec2::Y, n, true));
+            arms.push((Vec2::new(0.0, -roots[3]), IVec2::NEG_Y, s, true));
+            // Ribs, both sides, evenly down the spine.
+            for (dir, root, len) in [(IVec2::Y, roots[1], n), (IVec2::NEG_Y, roots[3], s)] {
+                let ribs = 4;
+                for k in 0..ribs {
+                    let at = root + len * (0.18 + 0.8 * k as f32 / ribs as f32);
+                    for side in [-1, 1] {
+                        let reach = tip * if k % 2 == 0 { 0.42 } else { 0.3 } * rng.gen_range(0.85..1.15);
+                        fixed_branches.push((dir.as_vec2() * at, side_of(dir, side), reach, false));
+                    }
+                }
+            }
+            random_branches = 0;
+        }
+        Shape::Sprawl => {
+            // Some ways out, of any length; the rest grown off them.
+            for (i, dir) in [IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].into_iter().enumerate() {
+                if i > 0 && rng.gen_bool(0.25) {
+                    // Grown elsewhere instead.
+                    random_branches += 2;
+                    continue;
+                }
+                arms.push((dir.as_vec2() * roots[i + 1], dir, tip * rng.gen_range(0.55..1.7), false));
+            }
+            random_branches += 2;
+            branch_of_branch = true;
+        }
     }
 
     // Each arm in straight runs; crooked ones jog between runs. Branches
@@ -393,6 +515,8 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
     }
     let mut segs: Vec<Seg> = Vec::new();
     let mut elbows: Vec<(Mooring, usize)> = Vec::new();
+    let (width, spread) = (style.width, style.spread);
+    let worn = (mess * 3.0).round() as u8;
     let mut lay = |segs: &mut Vec<Seg>, elbows: &mut Vec<(Mooring, usize)>, rng: &mut StdRng, start: Vec2, dir: IVec2, len: f32, straight: bool| {
         let perp = IVec2::new(-dir.y, dir.x);
         let mut pos = start;
@@ -403,7 +527,7 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
             if len - t - piece < 40.0 {
                 piece = len - t;
             }
-            let half = 5 + if straight { 1 } else { rng.gen_range(0..=((mess * 3.0) as i32)) };
+            let half = width + if straight { 1 } else { rng.gen_range(0..=((mess * spread) as i32)) };
             segs.push(Seg { a: pos, dir, len: piece, half });
             pos += dir.as_vec2() * piece;
             t += piece;
@@ -413,7 +537,7 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
                     // An elbow joins the runs: a short arm across, overlapping both.
                     let across = perp * jog.signum();
                     let elbow_len = jog.abs() + half * 2 + 1;
-                    let key = sections::arm_segment(elbow_len, half);
+                    let key = sections::arm_segment(elbow_len, half, worn);
                     let centre = pos + across.as_vec2() * (jog.abs() as f32 * 0.5) - dir.as_vec2() * (half as f32 * 0.5);
                     // The design lies along +x: turn it to lie along `across`.
                     elbows.push((static_piece(key, centre, (quarter_facing(across) + 1) % 4, 0.5, None), segs.len() - 1));
@@ -422,13 +546,14 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
             }
         }
     };
-    for (start, dir, len, straight) in arms {
+    for (start, dir, len, straight) in arms.into_iter().chain(fixed_branches) {
         lay(&mut segs, &mut elbows, &mut rng, start, dir, len, straight);
     }
     let mains = segs.len();
-    for _ in 0..style.arms.saturating_sub(4) {
+    for _ in 0..random_branches {
         // Off a main arm's run (not the berth arm), square to it.
-        let candidates: Vec<usize> = (0..mains).filter(|i| segs[*i].dir != IVec2::X || segs[*i].a.y.abs() > 1.0).filter(|i| segs[*i].len > 90.0).collect();
+        let from = if branch_of_branch { segs.len() } else { mains };
+        let candidates: Vec<usize> = (0..from).filter(|i| segs[*i].dir != IVec2::X || segs[*i].a.y.abs() > 1.0).filter(|i| segs[*i].len > 90.0).collect();
         if candidates.is_empty() {
             break;
         }
@@ -443,7 +568,7 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
     // The runs themselves, as designs.
     let mut streets = Vec::new();
     for (i, seg) in segs.iter().enumerate() {
-        let key = sections::arm_segment(seg.len.round().max(2.0) as i32, seg.half);
+        let key = sections::arm_segment(seg.len.round().max(2.0) as i32, seg.half, worn);
         let centre = seg.a + seg.dir.as_vec2() * (seg.len * 0.5);
         let q = (quarter_facing(seg.dir) + 1) % 4; // the run's design lies along +x
         let m = static_piece(key, centre, q, 0.5, Some(i));
@@ -592,14 +717,20 @@ thread_local! {
 
 /// Lay out a station for an owner's look.
 pub fn plan_for(seed: u64, ships: usize, look: &super::station_style::Look, hub: i32, tip: f32, pool: &[&'static str]) -> RaftPlan {
-    plan_styled(seed, ships, &Style { order: look.order, hub, hub_kind: look.hub, arms: look.arms, tip, given: None }, look, pool)
+    plan_styled(seed, ships, &style_of(look, hub, tip, None), look, pool)
 }
 
 /// Lay out an owner's arms round a hull already there (its starport).
 /// `tip` is where the berth arm ends, in blocks east of the middle.
 pub fn plan_round(seed: u64, ships: usize, look: &super::station_style::Look, hull: GivenHub, tip: f32, pool: &[&'static str]) -> RaftPlan {
-    let style = Style { order: look.order, hub: hull.half.max_element() as i32, hub_kind: look.hub, arms: look.arms, tip, given: Some(hull) };
-    plan_styled(seed, ships, &style, look, pool)
+    plan_styled(seed, ships, &style_of(look, hull.half.max_element() as i32, tip, Some(hull)), look, pool)
+}
+
+/// An owner's way of building as a layout: a proud owner's arms broad and
+/// even, a poor one's narrower and never the same width twice.
+fn style_of(look: &super::station_style::Look, hub: i32, tip: f32, given: Option<GivenHub>) -> Style {
+    let mess = 1.0 - look.order.clamp(0.0, 1.0);
+    Style { order: look.order, hub, hub_kind: look.hub, arms: look.arms, tip, given, shape: look.shape, width: 5 + (look.order * 3.0).round() as i32, spread: 3.0 + mess * 5.0 }
 }
 
 fn plan_styled(seed: u64, ships: usize, style: &Style, look: &super::station_style::Look, pool: &[&'static str]) -> RaftPlan {

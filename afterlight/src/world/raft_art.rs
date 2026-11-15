@@ -207,6 +207,14 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
                 if c.outer {
                     col = col.map(|v| v * 0.82);
                 }
+                let mut own = c.tint.is_some();
+                if let (true, Some(l)) = (c.outer && c.tint.is_none(), theme.livery) {
+                    // The owner's paint over the plate, as a faction paints
+                    // its ships: base and accent in its own pattern.
+                    let p = if l.accent_at(c.at, design.min, design.max) { l.accent } else { l.base }.to_srgba();
+                    col = [col[0] * p.red * 1.6, col[1] * p.green * 1.6, col[2] * p.blue * 1.6].map(|v| v.min(1.0));
+                    own = true;
+                }
                 if let Some(t) = c.tint {
                     col = t;
                 }
@@ -217,7 +225,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
                     module.v[i] = 1.0;
                 }
                 lift.v[i] = c.lift;
-                tinted[i] = c.tint.is_some();
+                tinted[i] = own;
             }
         }
         if c.lit {
@@ -369,15 +377,26 @@ pub struct RaftBakes {
     pending: Arc<Mutex<Vec<(BakeKey, Baked)>>>,
 }
 
+/// The picture a key is really painted as: at a faction's station a moored
+/// ship keeps its own faction's paint (a visitor looks like one), while the
+/// station's own metal is in the owner's. At Haven everything is one gunmetal.
+pub fn painted_as(key: BakeKey) -> BakeKey {
+    if key.2 == 0 || !super::raft::library().contains_key(key.0) {
+        return key;
+    }
+    let own = super::raft_life::faction_named(super::raft::faction_of(key.0)).and_then(|f| super::station_style::OWNERS.iter().position(|o| *o == f));
+    (key.0, key.1, own.map_or(key.2, |i| i as u8 + 1))
+}
+
 impl RaftBakes {
     /// A finished picture: (hull, lights, world size).
     pub fn done_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
-        self.done.get(key)
+        self.done.get(&painted_as(*key))
     }
 
     /// Paint these on a thread of their own, unless they're done or asked.
     pub fn ask(&mut self, keys: impl IntoIterator<Item = BakeKey>) {
-        let new: Vec<BakeKey> = keys.into_iter().filter(|k| !self.done.contains_key(k) && self.asked.insert(*k)).collect();
+        let new: Vec<BakeKey> = keys.into_iter().map(painted_as).filter(|k| !self.done.contains_key(k) && self.asked.insert(*k)).collect();
         if new.is_empty() {
             return;
         }
@@ -552,7 +571,7 @@ pub fn apply_raft_bakes(mut images: ResMut<Assets<Image>>, bakes: Option<ResMut<
         if sprite.color != Color::NONE {
             continue;
         }
-        if let Some((body, glow, size)) = bakes.done.get(&hull.key) {
+        if let Some((body, glow, size)) = bakes.done.get(&painted_as(hull.key)) {
             sprite.image = if hull.lights { glow.clone() } else { body.clone() };
             sprite.custom_size = Some(*size);
             sprite.color = Color::WHITE;

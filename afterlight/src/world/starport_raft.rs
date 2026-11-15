@@ -19,7 +19,7 @@ use crate::ai_ship::components::AiShipType;
 pub struct StarportRaft;
 
 /// Ships moored round a starport when it's laid out.
-const SHIPS: usize = 22;
+const SHIPS: usize = 14;
 /// How far the berth arm runs past the starport's hull, in blocks.
 const BERTH_ARM: f32 = 110.0;
 
@@ -106,7 +106,7 @@ mod tests {
             let reach = cells.iter().map(|c| c.as_vec2().length()).fold(0.0, f32::max) * CELL;
             assert!(plan.extent > reach + 4_000.0, "{owner:?}: {} round a {reach} hull", plan.extent);
             let ships = plan.moorings.iter().filter(|m| m.slot.is_some()).count();
-            assert!(ships >= 12, "{owner:?}: {ships} ships");
+            assert!(ships >= 8, "{owner:?}: {ships} ships");
             // Nothing of the city's own where the hull is, but the arms.
             let hull_rect = Rect::from_center_half_size(Vec2::ZERO, (hull.half - Vec2::splat(1.0)) * CELL);
             for m in plan.moorings.iter().chain(&plan.spares).filter(|m| !m.design.starts_with("arm/")) {
@@ -116,7 +116,8 @@ mod tests {
             // Joined: every piece reaches an arm that runs in under the hull.
             let pieces: Vec<Rect> = plan.moorings.iter().chain(&plan.spares).filter_map(|m| super::super::raft::outline(m, CELL * 0.6)).collect();
             let mut reached: Vec<bool> = pieces.iter().map(|p| !p.intersect(hull_rect).is_empty()).collect();
-            assert!(reached.iter().filter(|r| **r).count() >= 4, "{owner:?}: arms don't reach the hull");
+            // A sprawl may leave a side bare; the berth arm and one more at least.
+            assert!(reached.iter().filter(|r| **r).count() >= 2, "{owner:?}: arms don't reach the hull");
             let mut frontier: Vec<usize> = (0..pieces.len()).filter(|i| reached[*i]).collect();
             while let Some(i) = frontier.pop() {
                 for j in 0..pieces.len() {
@@ -136,5 +137,52 @@ mod tests {
         let a = plan(42, AiShipType::GildedThrone, "exchange");
         let b = lay_out(seed_for(42, AiShipType::GildedThrone), AiShipType::GildedThrone, &hull_cells(AiShipType::GildedThrone, "exchange"));
         assert_eq!(a.moorings, b.moorings);
+    }
+
+    /// Maps of every starport city, as pictures, for looking at by eye:
+    /// `CITY_MAPS=<dir> cargo test city_maps -- --ignored`.
+    #[test]
+    #[ignore]
+    fn city_maps() {
+        let Ok(dir) = std::env::var("CITY_MAPS") else { return };
+        for owner in crate::world::station_style::OWNERS {
+            let Some(sp) = station_plan(owner) else { continue };
+            let cells = hull_cells(owner, sp.key);
+            let plan = lay_out(seed_for(3, owner), owner, &cells);
+            let size = 900usize;
+            let scale = size as f32 / (plan.extent * 2.1);
+            let mut px = vec![[8u8, 10, 16]; size * size];
+            let mut fill = |r: Rect, c: [u8; 3]| {
+                let to = |v: Vec2| ((v.x * scale + size as f32 / 2.0) as i32, (size as f32 / 2.0 - v.y * scale) as i32);
+                let (x0, y1) = to(r.min);
+                let (x1, y0) = to(r.max);
+                for y in y0.max(0)..=y1.min(size as i32 - 1) {
+                    for x in x0.max(0)..=x1.min(size as i32 - 1) {
+                        px[y as usize * size + x as usize] = c;
+                    }
+                }
+            };
+            for m in plan.moorings.iter().filter(|m| m.design.starts_with("arm/")) {
+                fill(super::super::raft::outline(m, 0.0).unwrap(), [120, 125, 140]);
+            }
+            for c in &cells {
+                let at = c.as_vec2() * CELL;
+                fill(Rect::from_center_half_size(at, Vec2::splat(CELL * 0.5)), [40, 60, 130]);
+            }
+            for m in plan.moorings.iter().filter(|m| !m.design.starts_with("arm/")) {
+                let r = super::super::raft::outline(m, 0.0).unwrap();
+                let c = if m.slot.is_some() { [90, 170, 230] } else if m.design.starts_with("gantry") { [150, 150, 150] } else { [200, 160, 90] };
+                fill(r, c);
+            }
+            for m in &plan.spares {
+                let r = super::super::raft::outline(m, 0.0).unwrap();
+                fill(Rect::from_center_half_size(r.center(), r.half_size() * 0.3), [60, 80, 100]);
+            }
+            let mut out = format!("P6 {size} {size} 255\n").into_bytes();
+            for p in px {
+                out.extend_from_slice(&p);
+            }
+            std::fs::write(format!("{dir}/{owner:?}.ppm"), out).unwrap();
+        }
     }
 }

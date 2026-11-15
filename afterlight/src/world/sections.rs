@@ -270,17 +270,38 @@ pub fn hub_reach(kind: HubKind, r: i32) -> (i32, i32) {
 }
 
 /// One straight run of an arm, `len` blocks along +x, `half` either side:
-/// plating with a hallway down the middle and lit frames along it.
-pub fn arm_segment(len: i32, half: i32) -> &'static str {
-    register(format!("arm/{len}/{half}"), || {
+/// plating with a hallway down the middle and lit frames along it, a frame
+/// across it every dozen blocks, and a row of windows down each side. `worn`
+/// (0 kept up .. 3 falling apart) patches the plating with odd plate and
+/// leaves windows dark.
+pub fn arm_segment(len: i32, half: i32, worn: u8) -> &'static str {
+    let key = format!("arm/{len}/{half}/{worn}");
+    let mut rng = seeded(&key);
+    register(key, || {
         let mut b = Builder::new();
+        let patches: Vec<(IVec2, IVec2, &'static str)> = (0..(len * worn as i32) / 30)
+            .map(|_| {
+                let at = IVec2::new(rng.gen_range(0..len.max(1)), rng.gen_range(-half..=half));
+                let size = IVec2::new(rng.gen_range(2..7), rng.gen_range(2..4));
+                (at, size, if rng.gen_bool(0.5) { COMPOSITE } else { TITANIUM })
+            })
+            .collect();
+        let patch = |x: i32, y: i32| patches.iter().find(|(a, s, _)| x >= a.x && y >= a.y && x < a.x + s.x && y < a.y + s.y).map(|p| p.2);
         for x in 0..len {
             for y in -half..=half {
                 let edge = y.abs() == half;
                 if y.abs() <= 1 {
                     b.put(x, y, if x % 6 == 0 { FRAME } else { HALL }, x % 6 == 0, x % 6 == 0, false);
+                } else if x % 12 == 0 {
+                    // A frame across, standing a little proud.
+                    b.put(x, y, TITANIUM, false, false, edge);
+                    b.lift(x, y, 0.4);
+                } else if half >= 5 && y.abs() == half - 2 && x % 12 != 11 && x % 12 != 1 {
+                    let dark = worn > 0 && rng.gen_range(0..6) < worn;
+                    b.put(x, y, HALL, true, !dark && x % 2 == 0, false);
                 } else {
-                    b.put(x, y, if edge { STEEL } else if x % 9 == 4 { BATTERY } else { STEEL }, false, false, edge);
+                    let sprite = patch(x, y).unwrap_or(if edge { STEEL } else if x % 9 == 4 { BATTERY } else { STEEL });
+                    b.put(x, y, sprite, false, false, edge);
                 }
             }
         }
