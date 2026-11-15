@@ -102,10 +102,10 @@ struct Shrunk {
     px: Vec<[f32; 4]>,
 }
 
-fn shrunk(path: &'static str) -> Option<&'static Shrunk> {
-    static CACHE: OnceLock<Mutex<HashMap<&'static str, Option<&'static Shrunk>>>> = OnceLock::new();
+fn shrunk(path: &'static str, px_a_block: usize) -> Option<&'static Shrunk> {
+    static CACHE: OnceLock<Mutex<HashMap<(&'static str, usize), Option<&'static Shrunk>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(hit) = cache.lock().ok()?.get(path) {
+    if let Some(hit) = cache.lock().ok()?.get(&(path, px_a_block)) {
         return *hit;
     }
     let made = (|| {
@@ -125,7 +125,7 @@ fn shrunk(path: &'static str) -> Option<&'static Shrunk> {
             return None;
         }
         let (bw, bh) = (((sw as f32 / 378.0).round() as usize).max(1), ((sh as f32 / 378.0).round() as usize).max(1));
-        let (w, h) = (bw * PX, bh * PX);
+        let (w, h) = (bw * px_a_block, bh * px_a_block);
         let mut px = vec![[0.0f32; 4]; w * h];
         for y in 0..h {
             for x in 0..w {
@@ -151,7 +151,7 @@ fn shrunk(path: &'static str) -> Option<&'static Shrunk> {
         }
         Some(&*Box::leak(Box::new(Shrunk { w, h, px })))
     })();
-    cache.lock().ok()?.insert(path, made);
+    cache.lock().ok()?.insert((path, px_a_block), made);
     made
 }
 
@@ -168,6 +168,15 @@ fn image(w: usize, h: usize, rgba: Vec<u8>) -> Image {
 /// Paint one design turned `quarter` quarter-turns. The lighting is fixed to
 /// the screen, so each turn is painted on its own.
 pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style::Theme) -> Baked {
+    bake_at(design, quarter, seed, theme, PX)
+}
+
+/// `bake` at `px` pixels a block: the shading, shadows and glow keep their
+/// size in blocks whatever the sharpness.
+pub fn bake_at(design: &Design, quarter: u8, seed: u64, theme: super::station_style::Theme, px: usize) -> Baked {
+    let k = px as f32 / PX as f32;
+    let pad = (PAD as f32 * k).round() as usize;
+    let sh = |v: f32| ((v * k).round() as isize).max(1);
     let mut rng = StdRng::seed_from_u64(seed ^ (quarter as u64) << 40);
     // Cells turned, and their box.
     let turned: Vec<(IVec2, &super::raft::DesignCell)> = design
@@ -178,7 +187,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     let min = turned.iter().fold(IVec2::MAX, |a, (p, _)| a.min(*p));
     let max = turned.iter().fold(IVec2::MIN, |a, (p, _)| a.max(*p));
     let (gw, gh) = ((max.x - min.x + 1) as usize, (max.y - min.y + 1) as usize);
-    let (w, h) = (gw * PX + 2 * PAD, gh * PX + 2 * PAD);
+    let (w, h) = (gw * px + 2 * pad, gh * px + 2 * pad);
     let idx = |x: usize, y: usize| y * w + x;
 
     let mut rgb = vec![[0.0f32; 3]; w * h];
@@ -189,16 +198,16 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     let mut lit_cells: Vec<(usize, usize)> = Vec::new();
     let steel = [0.42f32, 0.45, 0.52];
     for (p, c) in &turned {
-        let x0 = PAD + (p.x - min.x) as usize * PX;
-        let y0 = PAD + (max.y - p.y) as usize * PX;
-        let src = shrunk(c.sprite);
-        for dy in 0..PX {
-            for dx in 0..PX {
+        let x0 = pad + (p.x - min.x) as usize * px;
+        let y0 = pad + (max.y - p.y) as usize * px;
+        let src = shrunk(c.sprite, px);
+        for dy in 0..px {
+            for dx in 0..px {
                 let mut col = steel;
                 if let Some(s) = src {
                     let (pc, pr, pw, ph) = c.part;
-                    let sx = (pc as usize * PX + dx) * s.w / (pw as usize * PX).max(1);
-                    let sy = (pr as usize * PX + dy) * s.h / (ph as usize * PX).max(1);
+                    let sx = (pc as usize * px + dx) * s.w / (pw as usize * px).max(1);
+                    let sy = (pr as usize * px + dy) * s.h / (ph as usize * px).max(1);
                     let v = s.px[sy.min(s.h - 1) * s.w + sx.min(s.w - 1)];
                     for k in 0..3 {
                         col[k] = steel[k] * (1.0 - v[3]) + v[k] * v[3];
@@ -249,29 +258,29 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     // Shape: anti-aliased edge, domed body, lit from the upper left.
     let soft = mask.blur(1.0);
     let m: Vec<f32> = soft.v.iter().map(|v| smoothstep(0.42, 0.58, *v)).collect();
-    let d1 = mask.blur(5.0);
-    let d2 = mask.blur(12.0);
-    let mb = module.blur(2.0);
-    let lb = lift.blur(2.0);
+    let d1 = mask.blur(5.0 * k);
+    let d2 = mask.blur(12.0 * k);
+    let mb = module.blur(2.0 * k);
+    let lb = lift.blur(2.0 * k);
     let mut height = Plane::new(w, h);
     for i in 0..w * h {
         height.v[i] = (d1.v[i] * 0.3 + d2.v[i] * 0.3 + mb.v[i] * 0.05 + lb.v[i] * 0.35) * m[i];
     }
-    let hb = height.blur(1.2);
-    let ao = height.blur(7.0);
-    let cast = height.blur(2.0).shifted(5, 5);
+    let hb = height.blur(1.2 * k);
+    let ao = height.blur(7.0 * k);
+    let cast = height.blur(2.0 * k).shifted(sh(5.0), sh(5.0));
     let key = Vec3::new(-0.55, -0.5, 0.67).normalize();
     let fill = Vec3::new(0.6, 0.55, 0.58).normalize();
     let warm = Vec3::new(1.0, 0.86, 0.70);
     let cool = Vec3::new(0.42, 0.52, 0.85);
-    let k = 45.0;
+    let kn = 45.0 * k;
     let mut lit = vec![Vec3::ZERO; w * h];
     for y in 0..h {
         for x in 0..w {
             let i = idx(x, y);
             let gx = (hb.at(x as isize + 1, y as isize) - hb.at(x as isize - 1, y as isize)) * 0.5;
             let gy = (hb.at(x as isize, y as isize + 1) - hb.at(x as isize, y as isize - 1)) * 0.5;
-            let n = Vec3::new(-gx * k, -gy * k, 1.0).normalize();
+            let n = Vec3::new(-gx * kn, -gy * kn, 1.0).normalize();
             let diff = n.dot(key).max(0.0);
             let fil = n.dot(fill).max(0.0);
             let spec = diff.powi(24);
@@ -291,16 +300,20 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     let cyan = Vec3::from(theme.windows[2]);
     for (x0, y0) in lit_cells {
         for _ in 0..rng.gen_range(0..3) {
-            let (x, y) = (x0 + rng.gen_range(1..PX - 2), y0 + rng.gen_range(1..PX - 1));
+            let (x, y) = (x0 + rng.gen_range(1..px - 2), y0 + rng.gen_range(1..px - 1));
             let col = if rng.gen_bool(0.8) { warm_win } else if rng.gen_bool(0.6) { white } else { cyan };
             let s = rng.gen_range(0.9..1.6);
-            light[idx(x, y)] += col * s;
-            light[idx(x + 1, y)] += col * s;
+            let (ww, wh) = ((2.0 * k).round().max(2.0) as usize, k.round().max(1.0) as usize);
+            for dy in 0..wh {
+                for dx in 0..ww {
+                    light[idx((x + dx).min(w - 1), (y + dy).min(h - 1))] += col * s;
+                }
+            }
         }
     }
-    let inner = mask.blur(2.5);
-    for y in (0..h).step_by(3) {
-        for x in (0..w).step_by(3) {
+    let inner = mask.blur(2.5 * k);
+    for y in (0..h).step_by((3.0 * k) as usize) {
+        for x in (0..w).step_by((3.0 * k) as usize) {
             let i = idx(x, y);
             let rim = m[i] - smoothstep(0.75, 0.95, inner.v[i]);
             if rim > 0.5 && rng.gen_bool(0.3) {
@@ -310,9 +323,9 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     }
     let long_x = gw >= gh;
     let ends = if long_x {
-        [(PAD + 1, h / 2), (w - PAD - 2, h / 2)]
+        [(pad + 1, h / 2), (w - pad - 2, h / 2)]
     } else {
-        [(w / 2, PAD + 1), (w / 2, h - PAD - 2)]
+        [(w / 2, pad + 1), (w / 2, h - pad - 2)]
     };
     for ((x, y), col) in ends.into_iter().zip([Vec3::new(1.0, 0.2, 0.15), Vec3::new(0.3, 1.0, 0.45)]) {
         for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
@@ -331,7 +344,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     let mut glow = vec![Vec3::ZERO; w * h];
     for c in 0..3 {
         let base = chan(c);
-        let (g1, g2, g3, spill) = (base.blur(1.5), base.blur(5.0), base.blur(12.0), base.blur(9.0));
+        let (g1, g2, g3, spill) = (base.blur(1.5 * k), base.blur(5.0 * k), base.blur(12.0 * k), base.blur(9.0 * k));
         for i in 0..w * h {
             glow[i][c] = base.v[i] * 0.8 + g1.v[i] * 1.0 + g2.v[i] * 0.8 + g3.v[i] * 0.5;
             lit[i][c] += rgb[i][c] * spill.v[i] * 4.0 * m[i];
@@ -339,7 +352,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
     }
 
     // The hull's shadow on whatever is below it.
-    let shadow = mask.shifted(5, 5).blur(4.0);
+    let shadow = mask.shifted(sh(5.0), sh(5.0)).blur(4.0 * k);
     let mut body = Vec::with_capacity(w * h * 4);
     let mut lights = Vec::with_capacity(w * h * 4);
     for i in 0..w * h {
@@ -359,7 +372,7 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
             lights.extend_from_slice(&[0, 0, 0, 0]);
         }
     }
-    let size = Vec2::new(w as f32, h as f32) * (CELL / PX as f32);
+    let size = Vec2::new(w as f32, h as f32) * (CELL / px as f32);
     Baked { body: image(w, h, body), lights: image(w, h, lights), size }
 }
 
@@ -369,12 +382,25 @@ pub fn bake(design: &Design, quarter: u8, seed: u64, theme: super::station_style
 /// What a picture is of: a design, turned, painted in a theme (station_style).
 pub type BakeKey = (&'static str, u8, u8);
 
-/// Pictures painted so far, and the ones being painted.
+/// Pictures painted so far, and the ones being painted. Each design is
+/// painted once at `PX` (the whole station draws from those), and the pieces
+/// the camera is close to are painted again sharp (`fine`) while it stays.
 #[derive(Resource, Default)]
 pub struct RaftBakes {
     done: HashMap<BakeKey, (Handle<Image>, Handle<Image>, Vec2)>,
     asked: HashSet<BakeKey>,
     pending: Arc<Mutex<Vec<(BakeKey, Baked)>>>,
+    fine: HashMap<BakeKey, (Handle<Image>, Handle<Image>, Vec2)>,
+    fine_asked: HashSet<BakeKey>,
+    fine_pending: Arc<Mutex<Vec<(BakeKey, Baked)>>>,
+    /// When each sharp picture was last wanted.
+    fine_used: HashMap<BakeKey, f32>,
+}
+
+/// Pixels a block for a design's sharp picture: as many as keep its long side
+/// near 3,600 pixels, up to 22 (a block is 22 screen pixels at camera scale 3).
+pub fn fine_px(design: &Design) -> usize {
+    (3_600 / design.span().max_element().max(1) as usize).clamp(PX + 2, 22)
 }
 
 /// The picture a key is really painted as: at a faction's station a moored
@@ -389,6 +415,39 @@ pub fn painted_as(key: BakeKey) -> BakeKey {
 }
 
 impl RaftBakes {
+    /// The sharp picture of `key`, if it's painted.
+    pub fn fine_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
+        self.fine.get(&painted_as(*key))
+    }
+
+    /// Paint `key` sharp, unless it is or is being; either way it's wanted now.
+    pub fn ask_fine(&mut self, key: BakeKey, now: f32) {
+        let key = painted_as(key);
+        self.fine_used.insert(key, now);
+        if self.fine.contains_key(&key) || !self.fine_asked.insert(key) {
+            return;
+        }
+        let out = self.fine_pending.clone();
+        std::thread::spawn(move || {
+            let Some(d) = design(key.0) else { return };
+            let seed = key.0.bytes().fold(7u64, |a, b| a.wrapping_mul(31).wrapping_add(b as u64));
+            let baked = bake_at(d, key.1, seed, super::station_style::theme(key.2), fine_px(d));
+            if let Ok(mut p) = out.lock() {
+                p.push((key, baked));
+            }
+        });
+    }
+
+    /// Let go of sharp pictures nobody has wanted for `idle` seconds.
+    pub fn release_fine(&mut self, now: f32, idle: f32) {
+        let stale: Vec<BakeKey> = self.fine_used.iter().filter(|(_, t)| now - **t > idle).map(|(k, _)| *k).collect();
+        for k in stale {
+            self.fine_used.remove(&k);
+            self.fine.remove(&k);
+            self.fine_asked.remove(&k);
+        }
+    }
+
     /// A finished picture: (hull, lights, world size).
     pub fn done_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
         self.done.get(&painted_as(*key))
@@ -559,6 +618,14 @@ pub fn spawn_tube(commands: &mut Commands, art: &RaftArt, tube: &super::raft::Tu
 /// Put finished pictures on the ships waiting for them.
 pub fn apply_raft_bakes(mut images: ResMut<Assets<Image>>, bakes: Option<ResMut<RaftBakes>>, mut hulls: Query<(&RaftHull, &mut Sprite)>) {
     let Some(mut bakes) = bakes else { return };
+    let sharp: Vec<(BakeKey, Baked)> = bakes.fine_pending.lock().map(|mut p| p.drain(..).collect()).unwrap_or_default();
+    for (key, baked) in sharp {
+        // Let go of while it was being painted: not kept.
+        if bakes.fine_asked.contains(&key) {
+            let entry = (images.add(baked.body), images.add(baked.lights), baked.size);
+            bakes.fine.insert(key, entry);
+        }
+    }
     let ready: Vec<(BakeKey, Baked)> = match bakes.pending.lock() {
         Ok(mut p) if !p.is_empty() => p.drain(..).collect(),
         _ => return,

@@ -39,14 +39,19 @@ pub const ART_FROM: f32 = 8.0;
 pub const ART_SOLID: f32 = 10.5;
 
 /// Pixels per block. At zoom 11 a block is six screen pixels: one to one.
-const PX_PER_CELL: f32 = 6.0;
+/// Painted at twice the pixels a block it's first seen at, so the picture is
+/// shrunk on screen, never stretched; its own smaller copies (mipmaps) keep
+/// it clean as the camera goes on out.
+const PX_PER_CELL: f32 = 12.0;
 /// Ship-local units per baked pixel.
 const UNITS_PER_PX: f32 = crate::building::GRID_SIZE / PX_PER_CELL;
+/// A ship too long for a fine picture is painted at half the pixels.
+const COARSE_UNITS_PER_PX: f32 = UNITS_PER_PX * 2.0;
 /// Samples per baked pixel, each way.
 const SUBSAMPLES: usize = 1;
 /// Source art is shrunk to this many pixels on its long side before it's
 /// sampled, so a sample stands for an area of the art, not one stray texel.
-const MIP_SIDE: u32 = 32;
+const MIP_SIDE: u32 = 64;
 /// Over a ship's blocks (0-1) and its weapons raised over the roof (0.75),
 /// under its turrets (1.2), which carry pictures of their own.
 pub(crate) const SHIP_ART_Z: f32 = 1.15;
@@ -244,29 +249,37 @@ pub struct Canvas {
     pub w: u32,
     pub h: u32,
     pub px: Vec<LinearRgba>,
+    /// Ship-local units a pixel.
+    pub upp: f32,
 }
 
 impl Canvas {
     /// A clear canvas over `bounds` (ship-local), with room for the rim.
     pub fn over(bounds: Rect) -> Option<Self> {
-        let pad = 2.0 * UNITS_PER_PX;
-        let lo = ((bounds.min - pad) / UNITS_PER_PX).floor() * UNITS_PER_PX;
-        let hi = ((bounds.max + pad) / UNITS_PER_PX).ceil() * UNITS_PER_PX;
-        let w = ((hi.x - lo.x) / UNITS_PER_PX).round() as u32;
-        let h = ((hi.y - lo.y) / UNITS_PER_PX).round() as u32;
+        Self::over_at(bounds, UNITS_PER_PX).or_else(|| Self::over_at(bounds, COARSE_UNITS_PER_PX))
+    }
+
+    /// A clear canvas at `upp` ship-local units a pixel.
+    pub fn over_at(bounds: Rect, upp: f32) -> Option<Self> {
+        let pad = 2.0 * upp;
+        let lo = ((bounds.min - pad) / upp).floor() * upp;
+        let hi = ((bounds.max + pad) / upp).ceil() * upp;
+        let w = ((hi.x - lo.x) / upp).round() as u32;
+        let h = ((hi.y - lo.y) / upp).round() as u32;
         if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
             return None;
         }
-        Some(Self { origin: lo, w, h, px: vec![LinearRgba::NONE; (w * h) as usize] })
+        Some(Self { origin: lo, w, h, px: vec![LinearRgba::NONE; (w * h) as usize], upp })
     }
 
     /// Paint one sprite over what's there.
     pub fn paint(&mut self, stamp: &Stamp) {
         let b = stamp.bounds();
-        let x0 = (((b.min.x - self.origin.x) / UNITS_PER_PX).floor().max(0.0)) as u32;
-        let y0 = (((b.min.y - self.origin.y) / UNITS_PER_PX).floor().max(0.0)) as u32;
-        let x1 = (((b.max.x - self.origin.x) / UNITS_PER_PX).ceil() as u32).min(self.w);
-        let y1 = (((b.max.y - self.origin.y) / UNITS_PER_PX).ceil() as u32).min(self.h);
+        let upp = self.upp;
+        let x0 = (((b.min.x - self.origin.x) / upp).floor().max(0.0)) as u32;
+        let y0 = (((b.min.y - self.origin.y) / upp).floor().max(0.0)) as u32;
+        let x1 = (((b.max.x - self.origin.x) / upp).ceil() as u32).min(self.w);
+        let y1 = (((b.max.y - self.origin.y) / upp).ceil() as u32).min(self.h);
         let share = 1.0 / (SUBSAMPLES * SUBSAMPLES) as f32;
         for y in y0..y1 {
             for x in x0..x1 {
@@ -277,7 +290,7 @@ impl Canvas {
                             + Vec2::new(
                                 x as f32 + (sx as f32 + 0.5) / SUBSAMPLES as f32,
                                 y as f32 + (sy as f32 + 0.5) / SUBSAMPLES as f32,
-                            ) * UNITS_PER_PX;
+                            ) * upp;
                         if let Some(c) = stamp.sample(p) {
                             src = src + c * share;
                         }
@@ -329,18 +342,19 @@ impl Canvas {
 
     /// The finished picture, rows top down.
     pub fn finish(self) -> Picture {
+        let upp = self.upp;
         let mut bytes = Vec::with_capacity((self.w * self.h * 4) as usize);
         for y in (0..self.h).rev() {
             for x in 0..self.w {
                 bytes.extend_from_slice(&self.bytes_at(x, y));
             }
         }
-        Picture { origin: self.origin, w: self.w, h: self.h, bytes }
+        Picture { origin: self.origin, w: self.w, h: self.h, bytes, upp }
     }
 
     /// Ship-local centre and size of the picture.
     pub fn placement(&self) -> (Vec2, Vec2) {
-        let size = Vec2::new(self.w as f32, self.h as f32) * UNITS_PER_PX;
+        let size = Vec2::new(self.w as f32, self.h as f32) * self.upp;
         (self.origin + size * 0.5, size)
     }
 }
@@ -351,11 +365,47 @@ pub struct Picture {
     w: u32,
     h: u32,
     bytes: Vec<u8>,
+    upp: f32,
 }
 
 impl Picture {
     /// As an image to hand the renderer.
     fn image(&self) -> Image {
+        // Each level half the last, averaged by coverage so the clear
+        // pixels round the hull don't darken its edge.
+        let mut data = self.bytes.clone();
+        let (mut w, mut h) = (self.w, self.h);
+        let mut level = self.bytes.clone();
+        let mut levels = 1;
+        while w > 1 || h > 1 {
+            let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+            let mut next = vec![0u8; (nw * nh * 4) as usize];
+            for y in 0..nh {
+                for x in 0..nw {
+                    let (mut c, mut a) = ([0.0f32; 3], 0.0f32);
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let (sx, sy) = ((x * 2 + dx).min(w - 1), (y * 2 + dy).min(h - 1));
+                        let i = ((sy * w + sx) * 4) as usize;
+                        let al = level[i + 3] as f32;
+                        for k in 0..3 {
+                            c[k] += level[i + k] as f32 * al;
+                        }
+                        a += al;
+                    }
+                    let o = ((y * nw + x) * 4) as usize;
+                    if a > 0.0 {
+                        for k in 0..3 {
+                            next[o + k] = (c[k] / a).round() as u8;
+                        }
+                    }
+                    next[o + 3] = (a / 4.0).round() as u8;
+                }
+            }
+            data.extend_from_slice(&next);
+            level = next;
+            (w, h) = (nw, nh);
+            levels += 1;
+        }
         let mut image = Image::new(
             Extent3d { width: self.w, height: self.h, depth_or_array_layers: 1 },
             TextureDimension::D2,
@@ -363,14 +413,22 @@ impl Picture {
             TextureFormat::Rgba8UnormSrgb,
             RenderAssetUsages::RENDER_WORLD,
         );
-        image.sampler = ImageSampler::linear();
+        // The smaller copies follow the picture in the same data.
+        image.data = Some(data);
+        image.texture_descriptor.mip_level_count = levels;
+        image.sampler = ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+            mag_filter: bevy::image::ImageFilterMode::Linear,
+            min_filter: bevy::image::ImageFilterMode::Linear,
+            mipmap_filter: bevy::image::ImageFilterMode::Linear,
+            ..default()
+        });
         image
     }
 
     /// Whether something at `bounds`, rim included, fits in the picture.
     fn has_room_for(&self, bounds: Rect) -> bool {
-        let size = Vec2::new(self.w as f32, self.h as f32) * UNITS_PER_PX;
-        let room = Rect::from_corners(self.origin, self.origin + size).inflate(-UNITS_PER_PX);
+        let size = Vec2::new(self.w as f32, self.h as f32) * self.upp;
+        let room = Rect::from_corners(self.origin, self.origin + size).inflate(-self.upp);
         room.contains(bounds.min) && room.contains(bounds.max)
     }
 
@@ -379,8 +437,8 @@ impl Picture {
     fn repaint(&mut self, square: IVec2, stamps: &[(Rect, &Stamp)]) {
         let side = SQUARE_CELLS * crate::building::GRID_SIZE;
         let lo = square.as_vec2() * side;
-        let Some(mut canvas) = Canvas::over(Rect::from_corners(lo, lo + side)) else { return };
-        let size = Vec2::new(canvas.w as f32, canvas.h as f32) * UNITS_PER_PX;
+        let Some(mut canvas) = Canvas::over_at(Rect::from_corners(lo, lo + side), self.upp) else { return };
+        let size = Vec2::new(canvas.w as f32, canvas.h as f32) * self.upp;
         let area = Rect::from_corners(canvas.origin, canvas.origin + size);
         for (bounds, stamp) in stamps {
             if !bounds.intersect(area).is_empty() {
@@ -389,7 +447,7 @@ impl Picture {
         }
         canvas.rim();
         // The outermost pixels only show the rim what's beside them.
-        let offset = ((canvas.origin - self.origin) / UNITS_PER_PX).round().as_ivec2();
+        let offset = ((canvas.origin - self.origin) / self.upp).round().as_ivec2();
         for y in 1..canvas.h.saturating_sub(1) {
             for x in 1..canvas.w.saturating_sub(1) {
                 let (px, py) = (x as i32 + offset.x, y as i32 + offset.y);
@@ -713,7 +771,7 @@ pub fn bake_far_art(
         let whole = match &art.picture {
             None => true,
             Some(p) => {
-                let squares_in_it = (p.w * p.h) as f32 * UNITS_PER_PX * UNITS_PER_PX / (side * side);
+                let squares_in_it = (p.w * p.h) as f32 * p.upp * p.upp / (side * side);
                 !stamps.is_empty() && (!room || squares.len() as f32 * 2.0 > squares_in_it)
             }
         };
@@ -875,7 +933,7 @@ mod tests {
         let mut canvas = Canvas::over(s.bounds()).unwrap();
         canvas.paint(&s);
         let filled = canvas.px.iter().filter(|c| c.alpha > 0.99).count();
-        assert_eq!(filled, (PX_PER_CELL * PX_PER_CELL) as usize, "one block is 6x6 pixels");
+        assert_eq!(filled, (PX_PER_CELL * PX_PER_CELL) as usize, "one block is a square of pixels");
         canvas.rim();
         let rim = canvas.px.iter().filter(|c| (c.alpha - RIM.alpha).abs() < 1e-4).count();
         assert_eq!(rim, 4 * PX_PER_CELL as usize + 4, "a one-pixel ring round it");
@@ -934,8 +992,9 @@ mod tests {
 
     #[test]
     fn mips_average_the_art() {
-        let m = Mip::build(64, 64, |x, _| if x % 2 == 0 { LinearRgba::WHITE } else { LinearRgba::NONE });
-        assert_eq!((m.w, m.h), (32, 32));
+        let side = MIP_SIDE * 2;
+        let m = Mip::build(side, side, |x, _| if x % 2 == 0 { LinearRgba::WHITE } else { LinearRgba::NONE });
+        assert_eq!((m.w, m.h), (MIP_SIDE, MIP_SIDE));
         let c = m.at(10.0, 10.0);
         assert!((c.alpha - 0.5).abs() < 1e-4 && (c.red - 0.5).abs() < 1e-4, "premultiplied half cover: {c:?}");
     }
