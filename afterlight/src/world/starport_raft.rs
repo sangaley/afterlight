@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use bevy::prelude::*;
 
-use super::raft::{plan_round, GivenHub, RaftPlan, CELL};
+use super::raft::{plan_round, GivenHub, Mooring, RaftPlan, CELL};
 use crate::ai_ship::components::AiShipType;
 
 /// The city round a starport. Sits in `LiveStation::parts`, so it goes when
@@ -45,13 +45,50 @@ pub fn plan(system_id: u32, owner: AiShipType, key: &'static str) -> Arc<RaftPla
     p
 }
 
+/// How far the deck under the starport reaches past its hull, in blocks.
+const DECK: i32 = 6;
+/// A collar's length, where an arm meets the deck, in blocks.
+const COLLAR: i32 = 16;
+
 fn lay_out(seed: u64, owner: AiShipType, cells: &[IVec2]) -> RaftPlan {
     let look = super::station_style::look(Some(owner));
     let pool = super::raft::pool_for(Some(owner));
-    let hull = GivenHub::from_cells(cells);
+    let mut hull = GivenHub::from_cells(cells);
+    let inside = Rect::from_center_half_size(Vec2::ZERO, hull.half);
+    // Nothing moors where the deck and the collars on its rim are.
+    hull.half += Vec2::splat((DECK + COLLAR / 2 + 2) as f32);
     let reach = cells.iter().map(|c| c.as_vec2().length()).fold(0.0, f32::max);
     let mut plan = plan_round(seed, SHIPS, &look, hull, hull.reach[0] + BERTH_ARM, &pool);
     plan.extent = plan.extent.max(reach * CELL + CELL);
+
+    // The deck the starport stands on, over the arms' roots.
+    let key = super::sections::deck(&format!("{owner:?}"), cells, DECK);
+    let Some(deck) = super::sections::get(key) else { return plan };
+    let on_deck: std::collections::HashSet<IVec2> = deck.cells.iter().map(|c| c.at).collect();
+    let piece = |design: &'static str, at: Vec2, quarter: u8, level: f32| Mooring { design, at, quarter, level, street: None, slot: None, dock: Vec2::ZERO };
+    let mut added = vec![piece(key, deck.centre() * CELL, 0, 0.55)];
+    // A collar where each arm leaves it, over both.
+    let worn = ((1.0 - look.order.clamp(0.0, 1.0)) * 3.0).round() as u8;
+    for (i, (a, b)) in plan.streets.iter().enumerate() {
+        let start = *a / CELL;
+        if !inside.contains(start) {
+            continue;
+        }
+        let dir = (*b - *a).normalize_or_zero().round().as_ivec2();
+        let Some(arm) = plan.moorings.iter().find(|m| m.street == Some(i) && m.design.starts_with("arm/")) else { continue };
+        let half: i32 = arm.design.split('/').nth(2).and_then(|h| h.parse().ok()).unwrap_or(6);
+        let mut edge = start.round().as_ivec2();
+        for _ in 0..600 {
+            if !on_deck.contains(&(edge + dir)) {
+                break;
+            }
+            edge += dir;
+        }
+        let collar = super::sections::arm_segment(COLLAR, half + 3, worn);
+        added.push(piece(collar, edge.as_vec2() * CELL, arm.quarter, 0.6));
+    }
+    plan.moorings.splice(0..0, added);
+    plan.circles = super::raft::collision_circles(&plan);
     plan
 }
 
@@ -109,7 +146,7 @@ mod tests {
             assert!(ships >= 8, "{owner:?}: {ships} ships");
             // Nothing of the city's own where the hull is, but the arms.
             let hull_rect = Rect::from_center_half_size(Vec2::ZERO, (hull.half - Vec2::splat(1.0)) * CELL);
-            for m in plan.moorings.iter().chain(&plan.spares).filter(|m| !m.design.starts_with("arm/")) {
+            for m in plan.moorings.iter().chain(&plan.spares).filter(|m| !m.design.starts_with("arm/") && !m.design.starts_with("deck/")) {
                 let r = super::super::raft::outline(m, 0.0).unwrap();
                 assert!(r.intersect(hull_rect).is_empty(), "{owner:?}: {} under the hull", m.design);
             }
@@ -162,6 +199,9 @@ mod tests {
                     }
                 }
             };
+            for m in plan.moorings.iter().filter(|m| m.design.starts_with("deck/")) {
+                fill(super::super::raft::outline(m, 0.0).unwrap(), [70, 74, 86]);
+            }
             for m in plan.moorings.iter().filter(|m| m.design.starts_with("arm/")) {
                 fill(super::super::raft::outline(m, 0.0).unwrap(), [120, 125, 140]);
             }
@@ -169,7 +209,7 @@ mod tests {
                 let at = c.as_vec2() * CELL;
                 fill(Rect::from_center_half_size(at, Vec2::splat(CELL * 0.5)), [40, 60, 130]);
             }
-            for m in plan.moorings.iter().filter(|m| !m.design.starts_with("arm/")) {
+            for m in plan.moorings.iter().filter(|m| !m.design.starts_with("arm/") && !m.design.starts_with("deck/")) {
                 let r = super::super::raft::outline(m, 0.0).unwrap();
                 let c = if m.slot.is_some() { [90, 170, 230] } else if m.design.starts_with("gantry") { [150, 150, 150] } else { [200, 160, 90] };
                 fill(r, c);

@@ -844,7 +844,7 @@ pub fn update_shields(
     time: Res<Time>,
     channels: Res<crate::resources::PowerChannels>,
     player_query: Query<Entity, With<Ship>>,
-    mut shield_query: Query<(Entity, &mut ShipShield, &Children)>,
+    mut shield_query: Query<(Entity, &mut ShipShield, &Children, Has<crate::diplomacy::stations::StationCore>)>,
     // The player's bubble carries ShieldSegment and is driven by
     // update_shield_segment instead — exclude it here so we only paint AI bubbles.
     mut bubble_query: Query<&mut Sprite, (With<ShieldBubble>, Without<ShieldSegment>)>,
@@ -852,7 +852,7 @@ pub fn update_shields(
     let dt = time.delta_secs();
     let player = player_query.single().ok();
 
-    for (entity, mut shield, children) in shield_query.iter_mut() {
+    for (entity, mut shield, children, station) in shield_query.iter_mut() {
         shield.since_hit += dt;
         shield.flash = (shield.flash - dt * 3.0).max(0.0);
 
@@ -886,7 +886,10 @@ pub fn update_shields(
             if let Ok(mut sprite) = bubble_query.get_mut(child) {
                 let alpha = if shield.is_up() && !shield_fx_hidden() {
                     let charge = if shield.max > 0.0 { shield.current / shield.max } else { 0.0 };
-                    (0.12 + 0.18 * charge + shield.flash * SHIELD_FLASH_ALPHA).min(0.9)
+                    // A starport sits in its city: an outline round it at
+                    // rest would cut it off from its arms, so only hits show.
+                    let rest = if station { 0.0 } else { 0.12 + 0.18 * charge };
+                    (rest + shield.flash * SHIELD_FLASH_ALPHA).min(0.9)
                 } else {
                     0.0
                 };

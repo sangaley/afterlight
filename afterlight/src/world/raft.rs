@@ -498,7 +498,7 @@ pub fn plan_station(seed: u64, ships: usize, style: &Style, pool: &[&'static str
                     random_branches += 2;
                     continue;
                 }
-                arms.push((dir.as_vec2() * roots[i + 1], dir, tip * rng.gen_range(0.55..1.7), false));
+                arms.push((dir.as_vec2() * roots[i + 1], dir, tip * rng.gen_range(0.85..1.7), false));
             }
             random_branches += 2;
             branch_of_branch = true;

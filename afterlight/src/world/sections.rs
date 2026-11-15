@@ -309,6 +309,57 @@ pub fn arm_segment(len: i32, half: i32, worn: u8) -> &'static str {
     })
 }
 
+/// The deck a faction's starport stands on: the hull's own outline grown
+/// `grow` blocks all round, its notches filled, in the city's plating -- so
+/// the arms plug into one deck with the starport on it. A lit row of windows
+/// runs round inside its rim, and frames cross it.
+pub fn deck(name: &str, cells: &[IVec2], grow: i32) -> &'static str {
+    let key = format!("deck/{name}/{grow}");
+    if get(&key).is_some() {
+        return register(key, || unreachable!());
+    }
+    let mut rng = seeded(&key);
+    let disc = |r: i32| -> Vec<IVec2> {
+        let mut v = Vec::new();
+        for x in -r..=r {
+            for y in -r..=r {
+                if x * x + y * y <= r * r {
+                    v.push(IVec2::new(x, y));
+                }
+            }
+        }
+        v
+    };
+    // Grown past the deck's size, then shrunk back: notches close.
+    let fill = 4;
+    let mut grown: std::collections::HashSet<IVec2> = std::collections::HashSet::new();
+    let big = disc(grow + fill);
+    for c in cells {
+        for o in &big {
+            grown.insert(*c + *o);
+        }
+    }
+    let small = disc(fill);
+    let deck: std::collections::HashSet<IVec2> = grown.iter().copied().filter(|c| small.iter().all(|o| grown.contains(&(*c + *o)))).collect();
+    // How far in from the rim each cell is, up to 4.
+    let depth = |c: IVec2| (1..=4).find(|d| [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].iter().any(|dir| !deck.contains(&(c + *dir * *d)))).unwrap_or(5);
+    let mut b = Builder::new();
+    for c in &deck {
+        let (x, y) = (c.x, c.y);
+        match depth(*c) {
+            1 => b.put(x, y, STEEL, false, false, true),
+            3 => b.put(x, y, HALL, true, x.rem_euclid(2) == 0 && rng.gen_bool(0.85), false),
+            _ if x.rem_euclid(12) == 0 || y.rem_euclid(12) == 0 => {
+                b.put(x, y, TITANIUM, false, false, false);
+                b.lift(x, y, 0.3);
+            }
+            _ => b.put(x, y, if (x + 2 * y).rem_euclid(11) == 0 { BATTERY } else { STEEL }, false, false, false),
+        }
+    }
+    let d = b.done();
+    register(key, || d)
+}
+
 /// A gantry a ship ties up to: `len` blocks out from the arm (+y), three wide.
 pub fn gantry(len: i32) -> &'static str {
     register(format!("gantry/{len}"), || {
