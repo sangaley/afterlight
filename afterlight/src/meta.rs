@@ -88,7 +88,7 @@ fn save_unlocks(unlocks: Res<Unlocks>) {
 /// count if they are the ship's children, or nobody's and not an AI ship's.
 #[derive(bevy::ecs::system::SystemParam)]
 struct PlayerShipParts<'w, 's> {
-    ship: Query<'w, 's, (Entity, &'static Transform), With<Ship>>,
+    ship: Query<'w, 's, (Entity, &'static Transform, Option<&'static crate::vfx::ship_roof::ShipPaint>), With<Ship>>,
     modules: Query<'w, 's, (
         &'static Module,
         Option<&'static CustomModule>,
@@ -120,6 +120,8 @@ struct PlayerShipParts<'w, 's> {
 /// The player ship's blocks and crew, in save form.
 struct ShipParts {
     position: Vec2,
+    /// The ship's paint (the builder's paint mode).
+    paint: Option<crate::vfx::ship_roof::ShipPaint>,
     modules: Vec<ModuleData>,
     hull_segments: Vec<HullSaveData>,
     crew: Vec<CrewSaveData>,
@@ -129,7 +131,7 @@ impl PlayerShipParts<'_, '_> {
     /// `None` without exactly one player ship -- nothing to save, and writing
     /// an empty ship over the slot would be worse than not saving.
     fn collect(&self) -> Option<ShipParts> {
-        let (ship, transform) = self.ship.single().ok()?;
+        let (ship, transform, paint) = self.ship.single().ok()?;
 
         let on_ship: Vec<Entity> = self.turrets.iter().filter(|(_, _, p)| p.parent() == ship).map(|(e, _, _)| e).collect();
         let mut modules: Vec<ModuleData> = self.modules
@@ -218,6 +220,7 @@ impl PlayerShipParts<'_, '_> {
 
         Some(ShipParts {
             position: transform.translation.truncate(),
+            paint: paint.cloned(),
             modules,
             hull_segments,
             crew,
@@ -315,13 +318,14 @@ fn collect_save_data(
     jobs: &crate::diplomacy::jobs::Jobs,
     galaxy_time: f64,
 ) -> SaveData {
-    let ShipParts { position, modules, hull_segments, crew } = ship_parts;
+    let ShipParts { position, paint, modules, hull_segments, crew } = ship_parts;
 
     // Timestamp
     let timestamp = format!("Save {}", slot);
 
     SaveData {
         version: 1,
+        paint,
         haven_berths: Vec::new(), // filled in by handle_save_request
         slot_info: SaveSlotInfo {
             slot,
@@ -705,6 +709,15 @@ fn rebuild_entities_from_save(
         commands.spawn(root).id()
     };
     commands.entity(ship_entity).insert(Depth(save.current_depth));
+    // The ship's paint, or the default scheme for a save from before paint.
+    match &save.paint {
+        Some(paint) => {
+            commands.entity(ship_entity).insert(paint.clone());
+        }
+        None => {
+            commands.entity(ship_entity).remove::<crate::vfx::ship_roof::ShipPaint>();
+        }
+    }
     *towing = default();
     dash_target.0 = None;
     // Ghosts are the old ship's missing blocks; left queued, crew rebuilt

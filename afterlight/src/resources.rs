@@ -1772,6 +1772,10 @@ pub struct HeldBy {
 #[derive(Resource, Serialize, Deserialize)]
 pub struct SaveData {
     pub version: u32,
+    /// The player ship's paint (the builder's paint mode). None on older
+    /// saves: the default scheme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paint: Option<crate::vfx::ship_roof::ShipPaint>,
     /// Haven's Raft: (berth, design) for every ship moored there
     /// (world::raft_life). Empty on older saves: Haven as a new run lays it.
     #[serde(default)]
@@ -1850,6 +1854,7 @@ impl Default for SaveData {
     fn default() -> Self {
         Self {
             version: 1,
+            paint: None,
             haven_berths: Vec::new(),
             slot_info: SaveSlotInfo {
                 slot: 0,

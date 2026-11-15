@@ -142,6 +142,26 @@ fn own_roof_alpha(zoom: f32, inside: &SeeInside, air_view: bool) -> f32 {
     if inside.on || air_view { 0.0 } else { roof_alpha(zoom) }
 }
 
+/// Whether your ship's roof shows the way it does in flight, is held on for
+/// the builder's paint mode, or is off (docked, not painting).
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct PlayerRoofView<'w> {
+    state: Option<Res<'w, State<crate::states::GameState>>>,
+    paint: Option<Res<'w, crate::building::paint_mode::PaintMode>>,
+}
+
+impl PlayerRoofView<'_> {
+    pub fn alpha(&self, flying: f32) -> f32 {
+        if self.paint.as_ref().is_some_and(|p| p.on) {
+            return 1.0;
+        }
+        match self.state.as_ref().map(|s| *s.get()) {
+            Some(crate::states::GameState::Exploring) | None => flying,
+            _ => 0.0,
+        }
+    }
+}
+
 /// Which cells the deck plating covers: every interior floor cell -- a hull
 /// cell that is not the outer skin -- with no part standing on it. Parts are
 /// never covered; each module is its footprint and whether it stands above
@@ -184,6 +204,7 @@ pub fn update_ship_roof(
     assets: Res<AssetServer>,
     camera: Res<CameraState>,
     inside: Res<SeeInside>,
+    view: PlayerRoofView,
     ships: Query<(Entity, &Scars, Has<PressureOverlayVisible>, &GlobalTransform, Option<&ShipPaint>), With<Ship>>,
     hull: Query<(&HullSegment, &ChildOf), (Without<HullDestroyed>, Without<OwnedByAiShip>)>,
     modules: Query<(&Module, &ChildOf), (Without<DestroyedModule>, Without<OwnedByAiShip>)>,
@@ -191,7 +212,7 @@ pub fn update_ship_roof(
     mut last: Local<Option<(Entity, usize, usize, usize, u64)>>,
 ) {
     let Ok((ship, scars, air_view, ship_gt, paint)) = ships.single() else { return };
-    let alpha = own_roof_alpha(camera.zoom, &inside, air_view);
+    let alpha = view.alpha(own_roof_alpha(camera.zoom, &inside, air_view));
     let mine = |t: &(Entity, &ChildOf)| t.1.parent() == ship;
     if alpha <= 0.0 {
         if last.is_some() {
@@ -1002,17 +1023,22 @@ impl Scheme {
     }
 }
 
-/// The paint schemes to choose from (AFTERLIGHT_ROOF_PAINT).
+/// The default paint for your ship (AFTERLIGHT_ROOF_PAINT picks another).
 pub fn scheme() -> Scheme {
     static ON: std::sync::OnceLock<Scheme> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| match std::env::var("AFTERLIGHT_ROOF_PAINT").ok().as_deref() {
+    *ON.get_or_init(|| scheme_named(std::env::var("AFTERLIGHT_ROOF_PAINT").ok().as_deref().unwrap_or("salvager")))
+}
+
+/// The ready-made schemes, by name: "salvager", "raider", "navy".
+pub fn scheme_named(name: &str) -> Scheme {
+    match name {
         // Gunmetal with deep red panels and bright red trim.
-        Some("raider") => Scheme { main: Vec3::new(0.34, 0.34, 0.38), second: Vec3::new(0.52, 0.13, 0.13), trim: Vec3::new(0.95, 0.22, 0.18), warm: false },
+        "raider" => Scheme { main: Vec3::new(0.34, 0.34, 0.38), second: Vec3::new(0.52, 0.13, 0.13), trim: Vec3::new(0.95, 0.22, 0.18), warm: false },
         // Navy with white panels and cyan trim.
-        Some("navy") => Scheme { main: Vec3::new(0.24, 0.31, 0.47), second: Vec3::new(0.86, 0.88, 0.9), trim: Vec3::new(0.42, 0.85, 1.0), warm: false },
+        "navy" => Scheme { main: Vec3::new(0.24, 0.31, 0.47), second: Vec3::new(0.86, 0.88, 0.9), trim: Vec3::new(0.42, 0.85, 1.0), warm: false },
         // Bone with charcoal panels and orange trim.
         _ => Scheme { main: Vec3::new(0.70, 0.68, 0.63), second: Vec3::new(0.33, 0.34, 0.37), trim: Vec3::new(0.86, 0.46, 0.18), warm: true },
-    })
+    }
 }
 
 /// A ship's paint as the builder keeps it: its three colours and the tiles
@@ -1476,7 +1502,7 @@ pub struct AngleDressed;
 #[allow(clippy::type_complexity)]
 pub fn dress_angled_armour(
     mut commands: Commands,
-    ships: Query<Entity, With<Ship>>,
+    ships: Query<(Entity, Option<&ShipPaint>), With<Ship>>,
     plates: Query<(Entity, &Module, &ChildOf, Option<&Children>), (Without<AngleDressed>, Without<OwnedByAiShip>, Without<DestroyedModule>)>,
     hull: Query<(&HullSegment, &ChildOf)>,
     mut quads: Query<(&mut Sprite, &Transform), (Without<Module>, Without<super::block_height::HeightShadow>)>,
@@ -1484,7 +1510,8 @@ pub fn dress_angled_armour(
     if !roof_all() {
         return;
     }
-    let Ok(ship) = ships.single() else { return };
+    let Ok((ship, ship_paint)) = ships.single() else { return };
+    let trim = ship_paint.cloned().unwrap_or_default().scheme().trim;
     let mine: Vec<_> = plates.iter().filter(|(_, m, p, _)| p.parent() == ship && is_angled(m.module_type)).collect();
     if mine.is_empty() {
         return;
@@ -1497,7 +1524,7 @@ pub fn dress_angled_armour(
     for (entity, module, _, children) in mine {
         let _ = (&livery, lo, hi);
         // Angled armour is trim: the bright paint along the hull's slants.
-        let t = scheme().trim * 0.8;
+        let t = trim * 0.8;
         let body = Color::srgb(t.x, t.y, t.z);
         if is_wedge(module.module_type) {
             // Children not spawned yet: next frame.
@@ -1510,12 +1537,28 @@ pub fn dress_angled_armour(
                 }
             }
         } else {
-            commands.entity(entity).try_insert(crate::ai_ship::livery::Paint(body));
+            // The block's base colour: damage tinting reads it every frame.
+            commands.entity(entity).try_insert(crate::components::BaseSpriteColor(body));
         }
         commands.entity(entity).try_insert(AngleDressed);
     }
 }
 
+
+/// When your ship's paint changes (the builder's paint mode), its guns and
+/// angled armour are painted again.
+pub fn repaint_on_paint_change(
+    mut commands: Commands,
+    changed: Query<(), (With<Ship>, Changed<ShipPaint>)>,
+    painted: Query<Entity, (Or<(With<GunPainted>, With<AngleDressed>)>, Without<OwnedByAiShip>)>,
+) {
+    if changed.is_empty() {
+        return;
+    }
+    for e in painted.iter() {
+        commands.entity(e).try_remove::<(GunPainted, AngleDressed)>();
+    }
+}
 
 /// On a gun block or turret plate already painted for a full roof.
 #[derive(Component)]
@@ -1807,6 +1850,7 @@ pub fn update_ai_ship_roofs(
 pub fn fit_roofs(
     camera: Res<CameraState>,
     inside: Res<SeeInside>,
+    view: PlayerRoofView,
     owners: Query<(&GlobalTransform, Has<Ship>, Has<PressureOverlayVisible>)>,
     mut tiles: Query<(&mut Sprite, &RoofTile, Option<&Edge>, &mut Transform, &ChildOf)>,
     mut seen: Local<HashMap<Entity, Option<(f32, Quat)>>>,
@@ -1816,7 +1860,7 @@ pub fn fit_roofs(
         let owner = parent.parent();
         let Some((alpha, turn)) = *seen.entry(owner).or_insert_with(|| {
             owners.get(owner).ok().map(|(gt, mine, air)| {
-                let alpha = if mine { own_roof_alpha(camera.zoom, &inside, air) } else { roof_alpha(camera.zoom) };
+                let alpha = if mine { view.alpha(own_roof_alpha(camera.zoom, &inside, air)) } else { roof_alpha(camera.zoom) };
                 (alpha, gt.to_scale_rotation_translation().1)
             })
         }) else {

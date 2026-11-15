@@ -27,6 +27,7 @@ pub mod stat_calculator;
 pub mod blueprint;
 pub mod turret_build;
 pub mod gun_stamp;
+pub mod paint_mode;
 
 pub use registry::ModuleRegistry;
 pub use stat_calculator::StatCalculator;
@@ -48,6 +49,22 @@ impl Plugin for BuildingPlugin {
             .init_resource::<build_info::ModuleSearchState>()
             .init_resource::<clipboard::BuildClipboard>()
             .init_resource::<templates::TemplateState>()
+            .init_resource::<paint_mode::PaintMode>()
+            // The builder's paint mode (building::paint_mode).
+            .add_systems(
+                Update,
+                (
+                    paint_mode::toggle_paint_mode,
+                    paint_mode::paint_window_clicks,
+                    paint_mode::paint_tiles,
+                    paint_mode::sync_paint_window,
+                )
+                    .chain()
+                    .run_if(in_state(GameState::StationDocked)),
+            )
+            .add_systems(OnExit(BuildState::Inactive), paint_mode::spawn_paint_button)
+            .add_systems(OnEnter(BuildState::Inactive), paint_mode::despawn_paint_ui)
+            .add_systems(OnExit(GameState::StationDocked), paint_mode::despawn_paint_ui)
             .insert_resource(registry::build_registry())
             .insert_resource({
                 let mut reg = customization::parameters::CustomizationRegistry::default();
@@ -1340,9 +1357,11 @@ fn handle_module_placement(
     module_query: Query<&Module, Without<crate::ai_ship::components::OwnedByAiShip>>,
     player_children: Query<&Children, With<Ship>>,
     hull_blocks: Query<(), With<HullSegment>>,
+    paint: Res<paint_mode::PaintMode>,
 ) {
     // A pre-made weapon goes down whole (gun_stamp), not block by block.
-    if *current_state.get() != BuildState::Placing || build_state.deck != BuildDeck::Hull || build_state.premade_index().is_some() {
+    // In paint mode the mouse paints (paint_mode::paint_tiles).
+    if *current_state.get() != BuildState::Placing || build_state.deck != BuildDeck::Hull || build_state.premade_index().is_some() || paint.on {
         build_state.hull_rect_anchor = None;
         return;
     }
@@ -1564,13 +1583,15 @@ fn handle_module_removal(
     turrets: Query<(&crate::combat::turret_deck::HasTurretBody, &crate::combat::turret_deck::TurretBody)>,
     bodies: Query<&Children, With<crate::combat::turret_deck::TurretBody>>,
     mut notifications: MessageWriter<ShowNotification>,
+    paint: Res<paint_mode::PaintMode>,
 ) {
     let state = *current_state.get();
     let in_deleting = state == BuildState::Deleting;
     let in_placing = state == BuildState::Placing;
 
-    // The turret deck takes its own clicks (turret_build::turret_deck_clicks).
-    if (!in_deleting && !in_placing) || build_state.deck != BuildDeck::Hull {
+    // The turret deck takes its own clicks (turret_build::turret_deck_clicks),
+    // and in paint mode the mouse paints.
+    if (!in_deleting && !in_placing) || build_state.deck != BuildDeck::Hull || paint.on {
         return;
     }
 

@@ -356,6 +356,7 @@ pub(crate) fn builtin_starter_design() -> crate::building::blueprint::Blueprint 
         created_at: "builtin".into(),
         version: BLUEPRINT_VERSION,
         guns: Vec::new(),
+        paint: None,
     }
 }
 

@@ -35,6 +35,9 @@ pub struct Blueprint {
     /// it to every ship that carries it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guns: Vec<GunPlacement>,
+    /// The ship's paint (the builder's paint mode); None: the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paint: Option<crate::vfx::ship_roof::ShipPaint>,
 }
 
 /// One saved gun design fitted to a ship design.
@@ -457,6 +460,7 @@ impl DesignCapture<'_, '_> {
             created_at: chrono_lite_timestamp(),
             version: BLUEPRINT_VERSION,
             guns: Vec::new(),
+            paint: None,
         })
     }
 }
@@ -464,7 +468,7 @@ impl DesignCapture<'_, '_> {
 pub fn save_blueprint_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    ship_query: Query<&Children, With<Ship>>,
+    ship_query: Query<(&Children, Option<&crate::vfx::ship_roof::ShipPaint>), With<Ship>>,
     capture: DesignCapture,
     mut resource: ResMut<BlueprintResource>,
     mut notifications: MessageWriter<ShowNotification>,
@@ -482,7 +486,7 @@ pub fn save_blueprint_system(
         return;
     }
 
-    let Ok(children) = ship_query.single() else {
+    let Ok((children, paint)) = ship_query.single() else {
         notifications.write(ShowNotification {
             message: "No ship to save.".into(),
             notification_type: NotificationType::Warning,
@@ -493,7 +497,10 @@ pub fn save_blueprint_system(
 
     // The same reading of the ship every other "this ship as a design" uses,
     // turret decks included.
-    let Some(mut blueprint) = capture.capture(children, String::new()) else {
+    let Some(mut blueprint) = capture.capture(children, String::new()).map(|mut b| {
+        b.paint = paint.cloned();
+        b
+    }) else {
         notifications.write(ShowNotification {
             message: "Nothing to save - build some hull/modules first.".into(),
             notification_type: NotificationType::Warning,
@@ -716,6 +723,9 @@ pub fn spawn_ship_from_design(
     ship: Entity,
     design: &Blueprint,
 ) {
+    if let Some(paint) = &design.paint {
+        commands.entity(ship).insert(paint.clone());
+    }
     for cell in &design.hull_cells {
         let color = match cell.layer {
             HullLayer::Outer => Color::WHITE,
@@ -823,6 +833,7 @@ mod scale_design_tests {
             created_at: String::new(),
             version: 1,
             guns: Vec::new(),
+            paint: None,
         }
     }
 
@@ -886,6 +897,7 @@ mod gun_placement_tests {
                 GunPlacement { design: "little_gun".into(), at: IVec2::new(3, 3), facing: Rotation::North, turret: Some(IVec2::new(1, 1)) },
                 GunPlacement { design: "nothing by this name".into(), at: IVec2::ZERO, facing: Rotation::East, turret: None },
             ],
+            paint: None,
         };
         expand_gun_placements(&mut bp, &[gun]);
         assert!(bp.guns.is_empty());

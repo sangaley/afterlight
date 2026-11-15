@@ -73,15 +73,26 @@ impl Plugin for VfxPlugin {
                 Update,
                 (
                     ship_roof::toggle_see_inside.before(crate::ui::pressure_overlay::toggle_pressure_overlay),
-                    ship_roof::update_ship_roof,
                     ship_roof::update_ai_ship_roofs,
-                    ship_roof::fit_roofs,
                     ship_roof::raise_weapons_over_roof,
+                )
+                    .chain()
+                    .run_if(in_state(GameState::Exploring)),
+            )
+            // Your ship's roof: in flight, and in the builder for paint mode
+            // alone (building::paint_mode), painted as you paint it.
+            .add_systems(
+                Update,
+                (
+                    ship_roof::repaint_on_paint_change,
+                    ship_roof::update_ship_roof,
+                    ship_roof::fit_roofs.after(ship_roof::update_ai_ship_roofs),
                     ship_roof::dress_angled_armour,
                     ship_roof::paint_guns,
                 )
                     .chain()
-                    .run_if(in_state(GameState::Exploring)),
+                    .after(ship_roof::toggle_see_inside)
+                    .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),
             )
             .init_resource::<ship_roof::SeeInside>()
             .add_systems(OnExit(GameState::Exploring), (ship_roof::clear_ship_roof, ship_roof::lower_weapons))

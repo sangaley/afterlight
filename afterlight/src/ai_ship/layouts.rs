@@ -94,6 +94,7 @@ impl AiShipLayout {
             created_at: "builtin".into(),
             version: BLUEPRINT_VERSION,
             guns: Vec::new(),
+            paint: None,
         }
     }
 }
