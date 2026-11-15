@@ -284,7 +284,23 @@ pub fn update_ship_roof(
         *m.entry(rooms[c]).or_insert(0) += 1;
         m
     });
-    let height = layers(&walkway, &raised, &bridge, &rooms, &room_size);
+    // Rooms with roof art of their own lie flat: no centre plate over the art.
+    let art_rooms: HashSet<usize> = if roof_art() {
+        let mut kinds: HashMap<usize, Option<crate::components::ModuleType>> = HashMap::new();
+        for ((cells, _, _), t) in footprints.iter().zip(&types) {
+            for c in cells.iter().filter(|c| raised.contains(*c)) {
+                let Some(r) = rooms.get(c) else { continue };
+                let k = kinds.entry(*r).or_insert(Some(*t));
+                if *k != Some(*t) {
+                    *k = None;
+                }
+            }
+        }
+        kinds.into_iter().filter(|(_, k)| k.is_some_and(|t| art_kind(t).is_some())).map(|(r, _)| r).collect()
+    } else {
+        HashSet::new()
+    };
+    let height = layers(&walkway, &raised, &bridge, &rooms, &room_size, &art_rooms);
     // Each room's kind, or None for a bay of mixed parts.
     let room_kind: HashMap<usize, Option<ModuleCategory>> = {
         let mut kinds: HashMap<usize, Option<ModuleCategory>> = HashMap::new();
@@ -310,7 +326,12 @@ pub fn update_ship_roof(
             return Color::srgb(tone, tone, tone);
         }
         if bridge.contains(&cell) {
-            return over_plate(glass(cell, blo, bhi), material);
+            let has_glass = height.values().any(|h| *h == GLASS);
+            if !has_glass || height.get(&cell) == Some(&GLASS) {
+                return over_plate(glass(cell, blo, bhi), material);
+            }
+            // The bridge's frame: the lightest paint on the ship.
+            return over_plate(scheme().main * 0.98 * tone, material);
         }
         let layer = if frame.contains(&cell) && !roof.contains(&cell) { SKIN } else { height.get(&cell).copied().unwrap_or(ROOM) };
         let band = accent_at(&livery, cell, lo, hi);
@@ -341,7 +362,7 @@ pub fn update_ship_roof(
                 custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
                 ..default()
             },
-            Transform::from_translation(grid_to_local(cell).extend(ROOF_Z)),
+            Transform::from_translation(grid_to_local(cell).extend(ROOF_Z + lift(height.get(&cell).copied().unwrap_or(ROOM)))),
             RoofTile(1.0),
             ChildOf(ship),
         ));
@@ -464,6 +485,8 @@ pub enum EdgeKind {
     Window,
     /// Light caught on the bridge glass.
     Glint,
+    /// A whole cell's shadow thrown off a tall part, away from the light.
+    Cast,
 }
 
 /// One edge of the full roof: a strip along a straight edge, square to the
@@ -494,6 +517,8 @@ impl Edge {
             EdgeKind::Drop => (5.0, 22.0, 70.0),
             EdgeKind::Window => (2.4, 7.0, 20.0),
             EdgeKind::Glint => (3.0, 8.0, 22.0),
+            // For a cast shadow: how far it falls.
+            EdgeKind::Cast => (10.0, 40.0, 120.0),
         };
         (px * zoom).clamp(least, most)
     }
@@ -517,12 +542,33 @@ impl Edge {
             EdgeKind::Drop => (Vec3::ZERO, 0.7 * away),
             EdgeKind::Window => (Vec3::new(0.62, 0.9, 1.0), 0.9),
             EdgeKind::Glint => (Vec3::new(0.85, 0.95, 1.0), 0.16),
+            EdgeKind::Cast => (Vec3::ZERO, 0.5),
         }
     }
 
     /// Size, place and shade the strip for this zoom and ship heading.
     pub fn fit(&self, sprite: &mut Sprite, tf: &mut Transform, zoom: f32, turn: Quat, alpha: f32) {
         let w = self.width(zoom);
+        if self.kind == EdgeKind::Cast {
+            // The cell's square, slid away from the light (world-fixed, so
+            // carried into the ship's frame).
+            let away = (turn.inverse() * (-LIGHT_TO.normalize()).extend(0.0)).truncate();
+            let centre = self.at + away * w;
+            let (rgb, share) = self.shade(0.0);
+            let colour = Color::srgba(rgb.x, rgb.y, rgb.z, share * alpha);
+            let size = Vec2::splat(self.length);
+            if sprite.custom_size != Some(size) {
+                sprite.custom_size = Some(size);
+            }
+            if sprite.color != colour {
+                sprite.color = colour;
+            }
+            if tf.translation.truncate() != centre {
+                tf.translation.x = centre.x;
+                tf.translation.y = centre.y;
+            }
+            return;
+        }
         // Drawn across x, then turned to face along the normal.
         let size = Vec2::new(w, self.length);
         let centre = self.at + self.normal * (w * 0.5) * if self.inside() { -1.0 } else { 1.0 };
@@ -673,7 +719,7 @@ fn lay_angles(
     let group = |c: IVec2| -> Option<usize> {
         match h(c) {
             FLOOR | TRIM => Some(usize::MAX),
-            BRIDGE => Some(usize::MAX - 1),
+            BRIDGE | GLASS => Some(usize::MAX - 1),
             ROOM | PLATE => rooms.get(&c).copied(),
             _ => None,
         }
@@ -707,13 +753,14 @@ fn lay_angles(
         }
         let (a, b) = (w + IVec2::new(s.x, 0), w + IVec2::new(0, s.y));
         let corner = grid_to_local(w) + s.as_vec2() * (g * 0.5);
-        lay.triangle(commands, image, corner, s, g, colour(a), ANGLE_Z);
+        let up = lift(h(a));
+        lay.triangle(commands, image, corner, s, g, colour(a), ANGLE_Z + up);
         closed.insert((a, IVec2::new(-s.x, 0)));
         closed.insert((b, IVec2::new(0, -s.y)));
         filled.insert(w);
         let normal = -s.as_vec2().normalize();
-        lay.edge(commands, grid_to_local(w), normal, g * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z);
-        lay.edge_rise(commands, grid_to_local(w), normal, g * std::f32::consts::SQRT_2, EdgeKind::Step, (h(a) - hw) as f32, ANGLE_STEP_Z);
+        lay.edge(commands, grid_to_local(w), normal, g * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z + up);
+        lay.edge_rise(commands, grid_to_local(w), normal, g * std::f32::consts::SQRT_2, EdgeKind::Step, (h(a) - hw) as f32, ANGLE_STEP_Z + lift(hw));
     }
 
     for &c in &cells {
@@ -744,11 +791,12 @@ fn lay_angles(
             // One size of cut per kind, so corners repeat ship-wide.
             let leg = if hc == ROOM && along >= 4 { 1.0 } else { 0.5 } * g;
             let corner = grid_to_local(c) + s.as_vec2() * (g * 0.5);
-            lay.triangle(commands, image, corner, s, leg, colour(n3), ANGLE_Z);
+            let up = lift(hc);
+            lay.triangle(commands, image, corner, s, leg, colour(n3), ANGLE_Z + up);
             let normal = s.as_vec2().normalize();
             let mid = corner - s.as_vec2() * (leg * 0.5);
-            lay.edge(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z);
-            lay.edge_rise(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Step, (hc - h(n3)) as f32, ANGLE_STEP_Z);
+            lay.edge(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z + up);
+            lay.edge_rise(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Step, (hc - h(n3)) as f32, ANGLE_STEP_Z + up);
         }
     }
     closed
@@ -780,8 +828,8 @@ fn lay_depth(
             }
             let below = height.get(&n).copied().unwrap_or(SKIN);
             if h > below {
-                lay.side(commands, c, d, EdgeKind::Lip, ROOF_Z + 0.012);
-                lay.side_rise(commands, c, d, EdgeKind::Step, (h - below) as f32, ROOF_Z + 0.011);
+                lay.side(commands, c, d, EdgeKind::Lip, ROOF_Z + 0.012 + lift(h));
+                lay.side_rise(commands, c, d, EdgeKind::Step, (h - below) as f32, ROOF_Z + 0.011 + lift(below).max(if h >= BRIDGE { 0.015 } else { 0.0 }));
             } else if h == below && h >= ROOM && rooms.get(&c) != rooms.get(&n) {
                 // Two rooms side by side: each its own roof piece, with
                 // its own lip where they meet.
@@ -791,23 +839,30 @@ fn lay_depth(
     }
     // The windows: along the bridge's front (the bow is +x), a pane to a
     // cell, on the foremost cell of each row -- one unbroken row of glass.
+    let glass: Vec<IVec2> = bridge.iter().copied().filter(|c| height.get(c) == Some(&GLASS)).collect();
+    let glass: Vec<IVec2> = if glass.is_empty() { bridge.iter().copied().collect() } else { glass };
     let mut front: HashMap<i32, i32> = HashMap::new();
-    for c in bridge {
+    for c in &glass {
         let x = front.entry(c.y).or_insert(c.x);
         *x = (*x).max(c.x);
     }
     for (y, x) in front {
         let cell = IVec2::new(x, y);
         let at = grid_to_local(cell) + Vec2::X * (g * 0.5 - g * 0.12);
-        lay.edge(commands, at, Vec2::X, g * 0.8, EdgeKind::Window, ROOF_Z + 0.016);
+        lay.edge(commands, at, Vec2::X, g * 0.8, EdgeKind::Window, ROOF_Z + 0.04);
+    }
+    // The bridge stands tall: its whole shape throws a shadow across the
+    // roof beside it, away from the light.
+    for c in bridge {
+        lay.edge(commands, grid_to_local(*c), Vec2::X, g, EdgeKind::Cast, ROOF_Z + 0.015);
     }
     // One glint across the glass, corner to corner.
-    if !bridge.is_empty() {
-        let (lo, hi) = bridge.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
+    if !glass.is_empty() {
+        let (lo, hi) = glass.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
         let centre = (grid_to_local(lo) + grid_to_local(hi)) * 0.5;
         let span = (hi - lo + IVec2::ONE).as_vec2() * g;
         let normal = Vec2::new(1.0, -1.0).normalize();
-        lay.edge(commands, centre, normal, span.min_element() * 0.9, EdgeKind::Glint, ROOF_Z + 0.015);
+        lay.edge(commands, centre, normal, span.min_element() * 0.9, EdgeKind::Glint, ROOF_Z + 0.039);
     }
     // The outline runs along each angled plate's slope, not round the
     // square sides under it, which showed through its open half as a stair.
@@ -974,6 +1029,17 @@ const TRIM: u8 = 3;
 const ROOM: u8 = 5;
 const PLATE: u8 = 6;
 const BRIDGE: u8 = 8;
+const GLASS: u8 = 10;
+
+/// How far above the roof a layer's tiles and edges are drawn: the bridge
+/// stands over everything round it, its shadow included.
+fn lift(layer: u8) -> f32 {
+    match layer {
+        GLASS => 0.026,
+        BRIDGE => 0.02,
+        _ => 0.0,
+    }
+}
 
 /// Each roofed cell's layer. A hallway cell with hallway all round is sunk
 /// floor; one along a hallway's side is its trim. A room's cells are room
@@ -985,6 +1051,7 @@ pub fn layers(
     bridge: &HashSet<IVec2>,
     rooms: &HashMap<IVec2, usize>,
     room_size: &HashMap<usize, usize>,
+    flat: &HashSet<usize>,
 ) -> HashMap<IVec2, u8> {
     const ROUND: [IVec2; 8] = [
         IVec2::new(1, 0), IVec2::new(-1, 0), IVec2::new(0, 1), IVec2::new(0, -1),
@@ -997,10 +1064,11 @@ pub fn layers(
     }
     for &c in raised {
         let layer = if bridge.contains(&c) {
-            BRIDGE
+            // A frame round the bridge, the glass set in it a tier higher.
+            if ROUND[..4].iter().all(|d| bridge.contains(&(c + *d))) { GLASS } else { BRIDGE }
         } else {
             let r = rooms.get(&c);
-            let big = r.and_then(|r| room_size.get(r)).is_some_and(|n| *n >= 9);
+            let big = r.and_then(|r| room_size.get(r)).is_some_and(|n| *n >= 9) && !r.is_some_and(|r| flat.contains(r));
             let inside = ROUND.iter().all(|d| raised.contains(&(c + *d)) && !bridge.contains(&(c + *d)) && rooms.get(&(c + *d)) == r);
             if big && inside { PLATE } else { ROOM }
         };
@@ -1148,6 +1216,83 @@ fn flush(t: crate::components::ModuleType) -> bool {
     t.category() == ModuleCategory::Structural || matches!(t, EmergencyBulkhead | FirebreakWall | AntiFlashDoor)
 }
 
+/// Under a full roof, the rooms with fittings on the outside of the hull
+/// wear roof art of their own kind (tools/art/gen_roof_art.py) instead of
+/// plain plates with a mark. AFTERLIGHT_ROOF_ART=0 turns it off.
+pub fn roof_art() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| roof_all() && std::env::var("AFTERLIGHT_ROOF_ART").ok().as_deref() != Some("0"))
+}
+
+/// Which roof art a kind of room wears.
+pub fn art_kind(t: crate::components::ModuleType) -> Option<&'static str> {
+    use crate::components::ModuleType::*;
+    let name = format!("{t:?}");
+    // Only what shows on the outside of a hull: housings, radiators,
+    // vents, intakes and hatches. Batteries, cabins, the mess, sick bay and
+    // the like are inside the ship and keep plain plating -- zoomed out is
+    // the shell.
+    Some(match t {
+        BulkCargoHold | SmallCargo => "cargo",
+        OxygenScrubber => "scrubber",
+        CoolingPump | ReactorCooling => "cooling",
+        HeatVent => "vent",
+        _ if name.contains("Reactor") && !name.contains("Cooling") => "reactor",
+        _ => return None,
+    })
+}
+
+/// How strongly the roof art shows over the plating under it: quiet, so it
+/// reads as fittings pressed into the hull rather than a picture on it.
+const ART_SHARE: f32 = 0.62;
+const DECAL_SHARE: f32 = 0.7;
+
+/// Lay a room's roof art: two-by-two pieces wherever a square of the room
+/// fits, single-cell pieces in what's left. Each piece is the art tinted
+/// with the room's paint, and its decal -- lights, hazard stripes -- in its
+/// own colours on top.
+fn lay_art(commands: &mut Commands, lay: &Lay, assets: &AssetServer, cells: &[IVec2], kind: &str, paint: Vec3) {
+    let g = crate::building::GRID_SIZE;
+    let room: HashSet<IVec2> = cells.iter().copied().collect();
+    let mut used: HashSet<IVec2> = HashSet::new();
+    let mut order: Vec<IVec2> = cells.to_vec();
+    // Bottom-left first, so squares tile from one corner.
+    order.sort_by_key(|c| (c.y, c.x));
+    // The art's grey averages 0.62 (gen_roof_art.py MEAN): tint it to the paint.
+    let tint = over_art(paint, {
+        let m = Color::srgb(0.62, 0.62, 0.62).to_linear();
+        Vec3::new(m.red, m.green, m.blue)
+    });
+    let mut put = |at: Vec2, n: u32| {
+        let size = Some(Vec2::splat(g * n as f32));
+        commands.spawn((
+            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}.png")), color: tint.with_alpha(ART_SHARE * lay.alpha), custom_size: size, ..default() },
+            Transform::from_translation(at.extend(ROOF_Z + 0.003)),
+            RoofTile(ART_SHARE),
+            ChildOf(lay.ship),
+        ));
+        commands.spawn((
+            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}_decal.png")), color: Color::WHITE.with_alpha(DECAL_SHARE * lay.alpha), custom_size: size, ..default() },
+            Transform::from_translation(at.extend(ROOF_Z + 0.0035)),
+            RoofTile(DECAL_SHARE),
+            ChildOf(lay.ship),
+        ));
+    };
+    for c in order {
+        if used.contains(&c) {
+            continue;
+        }
+        let square = [c, c + IVec2::X, c + IVec2::Y, c + IVec2::ONE];
+        if square.iter().all(|q| room.contains(q) && !used.contains(q)) {
+            used.extend(square);
+            put((grid_to_local(c) + grid_to_local(c + IVec2::ONE)) * 0.5, 2);
+        } else {
+            used.insert(c);
+            put(grid_to_local(c), 1);
+        }
+    }
+}
+
 /// A room's roof says what it is, the way Cosmoteer's do: a reactor's ring,
 /// cargo's hazard hatching, life support's vents, a crew deck's hatch. Rows
 /// of the same room then read as rows. Machinery bays of mixed small parts
@@ -1177,7 +1322,7 @@ fn lay_marks(
         }
     }
     let z = ROOF_Z + 0.005;
-    let mut stamp = |at: Vec2, size: f32, path: &'static str, rgb: Vec3, share: f32| {
+    let stamp = |commands: &mut Commands, at: Vec2, size: f32, path: &'static str, rgb: Vec3, share: f32| {
         commands.spawn((
             Sprite {
                 image: assets.load(path),
@@ -1195,25 +1340,30 @@ fn lay_marks(
     rooms.sort_by_key(|(cells, _)| cells.iter().min_by_key(|c| (c.x, c.y)).copied().map(|c| (c.x, c.y)));
     for (cells, t) in rooms {
         let Some(t) = t else { continue };
+        if let Some(art) = art_kind(t).filter(|_| roof_art()) {
+            let paint = scheme().room(Some(t.category())).unwrap_or(scheme().main) * 0.82;
+            lay_art(commands, lay, assets, &cells, art, paint);
+            continue;
+        }
         let (lo, hi) = cells.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
         let centre = (grid_to_local(lo) + grid_to_local(hi)) * 0.5;
         let side = ((hi - lo + IVec2::ONE).min_element() as f32 * g).min(3.0 * g);
         match t.category() {
             ModuleCategory::Power => {
                 let glow = if t == ModuleType::BatteryBank { Vec3::new(0.4, 0.9, 0.85) } else { Vec3::new(1.0, 0.68, 0.28) };
-                stamp(centre, side * 0.78, "sprites/roof_marks/ring.png", glow, 0.6);
+                stamp(commands, centre, side * 0.78, "sprites/roof_marks/ring.png", glow, 0.6);
             }
             ModuleCategory::Storage => {
                 for c in &cells {
-                    stamp(grid_to_local(*c), g, "sprites/roof_marks/hatch.png", DARK, 0.22);
+                    stamp(commands, grid_to_local(*c), g, "sprites/roof_marks/hatch.png", DARK, 0.22);
                 }
             }
             ModuleCategory::LifeSupport => {
                 for c in &cells {
-                    stamp(grid_to_local(*c), g, "sprites/roof_marks/grille.png", DARK, 0.4);
+                    stamp(commands, grid_to_local(*c), g, "sprites/roof_marks/grille.png", DARK, 0.4);
                 }
             }
-            ModuleCategory::Crew => stamp(centre, g * 0.85, "sprites/roof_marks/hatch_door.png", DARK, 0.35),
+            ModuleCategory::Crew => stamp(commands, centre, g * 0.85, "sprites/roof_marks/hatch_door.png", DARK, 0.35),
             _ => {}
         }
     }
