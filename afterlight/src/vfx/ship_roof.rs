@@ -275,6 +275,14 @@ pub fn update_ship_roof(
     let image = assets.load(if roof_all { roof_path_quiet(material) } else { roof_path(material) });
     let types: Vec<crate::components::ModuleType> = mine_modules.iter().map(|m| m.module_type).collect();
     let bridge = bridge_cells(&footprints, &types);
+    let raised: HashSet<IVec2> = roof.iter().copied().filter(|c| !low.contains(c)).collect();
+    let walkway: HashSet<IVec2> = roof.iter().copied().filter(|c| low.contains(c)).collect();
+    let rooms = rooms_of(&footprints, &types, Some(&raised));
+    let room_size: HashMap<usize, usize> = raised.iter().fold(HashMap::new(), |mut m, c| {
+        *m.entry(rooms[c]).or_insert(0) += 1;
+        m
+    });
+    let height = layers(&walkway, &raised, &bridge, &rooms, &room_size);
     let (lo, hi) = hull_cells.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
     let livery = player_livery();
     let (blo, bhi) = bridge.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
@@ -288,7 +296,14 @@ pub fn update_ship_roof(
         if bridge.contains(&cell) {
             return over_plate(glass(cell, blo, bhi), material);
         }
-        roof_paint(&livery, material, cell, lo, hi, low.contains(&cell), tone)
+        // A hallway's sunken floor a shade darker, a room's centre plate a
+        // shade lighter: higher catches more light.
+        let lift = match height.get(&cell) {
+            Some(&FLOOR) => 0.78,
+            Some(&PLATE) => 1.08,
+            _ => 1.0,
+        };
+        roof_paint(&livery, material, cell, lo, hi, low.contains(&cell), tone * lift)
     };
     for &cell in &roof {
         let q = cell.rem_euclid(IVec2::splat(2));
@@ -333,18 +348,44 @@ pub fn update_ship_roof(
         ));
     }
     if roof_all {
-        let raised: HashSet<IVec2> = roof.iter().copied().filter(|c| !low.contains(c)).collect();
         let lay = Lay { ship, zoom: camera.zoom, turn: ship_gt.to_scale_rotation_translation().1, alpha };
-        let walkway: HashSet<IVec2> = roof.iter().copied().filter(|c| low.contains(c)).collect();
         let tri = assets.load(roof_path_tri(material));
-        let rooms = rooms_of(&footprints, &types, Some(&raised));
-        let room_size: HashMap<usize, usize> = raised.iter().fold(HashMap::new(), |mut m, c| {
-            *m.entry(rooms[c]).or_insert(0) += 1;
-            m
-        });
+        if let Some(path) = std::env::var_os("AFTERLIGHT_ROOF_DUMP") {
+            // For mock-ups: every hull cell, what it is under the roof.
+            let kind: HashMap<IVec2, crate::components::ModuleType> = footprints.iter().zip(&types).flat_map(|((c, _, _), t)| c.iter().map(move |c| (*c, *t))).collect();
+            let mut out = String::new();
+            for c in &hull_cells {
+                let class = if bridge.contains(c) { "bridge" } else if raised.contains(c) { "room" } else if walkway.contains(c) { "walk" } else if frame.contains(c) { "frame" } else { "hole" };
+                let t = kind.get(c).map(|t| format!("{t:?}")).unwrap_or_default();
+                let cat = kind.get(c).map(|t| format!("{:?}", t.category())).unwrap_or_default();
+                out += &format!("{} {} {} {} {} {}\n", c.x, c.y, class, rooms.get(c).copied().unwrap_or(0), t, cat);
+            }
+            for m in &mine_modules {
+                if !hull_cells.contains(&m.grid_position) {
+                    out += &format!("{} {} armour 0 {:?} {:?}\n", m.grid_position.x, m.grid_position.y, m.module_type, m.rotation);
+                }
+            }
+            let _ = std::fs::write(path, out);
+        }
         lay_marks(&mut commands, &lay, &assets, &footprints, &types, &rooms, &raised, &bridge);
-        let closed = lay_angles(&mut commands, &lay, &tri, (&rooms, &room_size), &raised, &walkway, &colour);
-        lay_depth(&mut commands, &lay, (&rooms, &bridge, &closed), &raised, &roof, &frame, &hull_cells);
+        // The hallway floors' grating.
+        for (cell, h) in &height {
+            if *h == FLOOR {
+                commands.spawn((
+                    Sprite {
+                        image: assets.load("sprites/roof_marks/grate.png"),
+                        color: Color::srgba(0.0, 0.0, 0.0, 0.32 * alpha),
+                        custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
+                        ..default()
+                    },
+                    Transform::from_translation(grid_to_local(*cell).extend(ROOF_Z + 0.004)),
+                    RoofTile(0.32),
+                    ChildOf(ship),
+                ));
+            }
+        }
+        let closed = lay_angles(&mut commands, &lay, &tri, (&rooms, &room_size, &height), &raised, &walkway, &colour);
+        lay_depth(&mut commands, &lay, (&rooms, &bridge, &closed), &height, &hull_cells);
     }
 }
 
@@ -365,8 +406,6 @@ pub enum EdgeKind {
     Rim,
     /// The shadow the whole hull throws on space.
     Drop,
-    /// The longer shadow the bridge throws: it stands a deck higher.
-    TallStep,
     /// The bridge's lit windows, along its front.
     Window,
     /// Light caught on the bridge glass.
@@ -386,6 +425,8 @@ pub struct Edge {
     /// Along the edge.
     length: f32,
     kind: EdgeKind,
+    /// How many layers it drops: a shadow falls further off a taller step.
+    rise: f32,
 }
 
 impl Edge {
@@ -395,9 +436,8 @@ impl Edge {
         let (px, least, most) = match self.kind {
             EdgeKind::Lip => (2.0, 5.0, 16.0),
             EdgeKind::Rim => (1.5, 4.0, 12.0),
-            EdgeKind::Step => (3.5, 14.0, 34.0),
+            EdgeKind::Step => (1.75 * self.rise, 7.0 * self.rise, (17.0 * self.rise).min(60.0)),
             EdgeKind::Drop => (5.0, 22.0, 70.0),
-            EdgeKind::TallStep => (6.0, 22.0, 56.0),
             EdgeKind::Window => (2.4, 7.0, 20.0),
             EdgeKind::Glint => (3.0, 8.0, 22.0),
         };
@@ -417,9 +457,8 @@ impl Edge {
             EdgeKind::Lip if facing > 0.0 => (WHITE, 0.42 * facing),
             EdgeKind::Lip => (Vec3::ZERO, 0.75 * away),
             EdgeKind::Rim => (WHITE, 0.35 * facing.max(0.0)),
-            EdgeKind::Step => (Vec3::ZERO, 0.62 * away),
+            EdgeKind::Step => (Vec3::ZERO, (0.45 + 0.06 * self.rise).min(0.72) * away),
             EdgeKind::Drop => (Vec3::ZERO, 0.7 * away),
-            EdgeKind::TallStep => (Vec3::ZERO, 0.7 * away),
             EdgeKind::Window => (Vec3::new(0.62, 0.9, 1.0), 0.9),
             EdgeKind::Glint => (Vec3::new(0.85, 0.95, 1.0), 0.16),
         }
@@ -462,7 +501,11 @@ struct Lay {
 
 impl Lay {
     fn edge(&self, commands: &mut Commands, at: Vec2, normal: Vec2, length: f32, kind: EdgeKind, z: f32) {
-        let edge = Edge { at, normal, length, kind };
+        self.edge_rise(commands, at, normal, length, kind, 2.0, z);
+    }
+
+    fn edge_rise(&self, commands: &mut Commands, at: Vec2, normal: Vec2, length: f32, kind: EdgeKind, rise: f32, z: f32) {
+        let edge = Edge { at, normal, length, kind, rise };
         // Sized from the start: a sprite spawned at no size has no bounds to
         // draw within, and the renderer never shows it.
         let (mut sprite, mut tf) = (Sprite::default(), Transform::from_translation(at.extend(z)));
@@ -472,8 +515,12 @@ impl Lay {
 
     /// Along the side of `cell` that faces `d`.
     fn side(&self, commands: &mut Commands, cell: IVec2, d: IVec2, kind: EdgeKind, z: f32) {
+        self.side_rise(commands, cell, d, kind, 2.0, z);
+    }
+
+    fn side_rise(&self, commands: &mut Commands, cell: IVec2, d: IVec2, kind: EdgeKind, rise: f32, z: f32) {
         let g = crate::building::GRID_SIZE;
-        self.edge(commands, grid_to_local(cell) + d.as_vec2() * (g * 0.5), d.as_vec2(), g, kind, z);
+        self.edge_rise(commands, grid_to_local(cell) + d.as_vec2() * (g * 0.5), d.as_vec2(), g, kind, rise, z);
     }
 
     /// A right triangle of roof, its right angle at `corner` and its legs
@@ -511,7 +558,7 @@ fn lay_angles(
     commands: &mut Commands,
     lay: &Lay,
     image: &Handle<Image>,
-    (rooms, room_size): (&HashMap<IVec2, usize>, &HashMap<usize, usize>),
+    (rooms, room_size, height): (&HashMap<IVec2, usize>, &HashMap<usize, usize>, &HashMap<IVec2, u8>),
     raised: &HashSet<IVec2>,
     low: &HashSet<IVec2>,
     colour: &dyn Fn(IVec2) -> Color,
@@ -581,43 +628,62 @@ fn lay_angles(
             lay.triangle(commands, image, corner, s, leg, colour(n3), ANGLE_Z);
             let normal = s.as_vec2().normalize();
             let mid = corner - s.as_vec2() * (leg * 0.5);
+            let drop = height.get(&c).copied().unwrap_or(ROOM).saturating_sub(height.get(&n3).copied().unwrap_or(SKIN)).max(1);
             lay.edge(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z);
-            lay.edge(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Step, ANGLE_STEP_Z);
+            lay.edge_rise(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Step, drop as f32, ANGLE_STEP_Z);
+        }
+    }
+
+    // A centre plate's corners cut small, on the room it stands on.
+    let mut plates: Vec<IVec2> = height.iter().filter(|(_, h)| **h == PLATE).map(|(c, _)| *c).collect();
+    plates.sort_by_key(|c| (c.x, c.y));
+    for c in plates {
+        for s in corners {
+            let (n1, n2, n3) = (c + IVec2::new(s.x, 0), c + IVec2::new(0, s.y), c + s);
+            if [n1, n2, n3].iter().any(|n| height.get(n) != Some(&ROOM)) {
+                continue;
+            }
+            let leg = 0.5 * g;
+            let corner = grid_to_local(c) + s.as_vec2() * (g * 0.5);
+            lay.triangle(commands, image, corner, s, leg, colour(n3), ANGLE_Z);
+            let normal = s.as_vec2().normalize();
+            let mid = corner - s.as_vec2() * (leg * 0.5);
+            lay.edge(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Lip, ANGLE_LIP_Z);
+            lay.edge_rise(commands, mid, normal, leg * std::f32::consts::SQRT_2, EdgeKind::Step, 1.0, ANGLE_STEP_Z);
         }
     }
     closed
 }
 
-/// Depth for a full roof: the room roofs stand a step above the walkway deck
-/// -- a lip round each, lit on the side toward the light and dark on the
-/// other, and a shadow thrown on the deck below -- and the whole hull has a
-/// lit rim and throws its shadow on space. The bridge stands a deck higher
-/// again, its windows lit along the bow.
+/// Depth for a full roof, in layers: the hull skin lowest, the hallways a
+/// layer up -- trim along their sides, the floor between sunk a little --
+/// the rooms above them, a big room's centre plate above that, and the
+/// bridge highest. Every drop from one layer to the next has a lip, lit on
+/// the side toward the light and dark on the other, and throws a shadow on
+/// the layer below as long as the drop is deep. The whole hull has a lit rim
+/// and throws its shadow on space, and the bridge has its windows lit along
+/// the bow.
 #[allow(clippy::too_many_arguments)]
 fn lay_depth(
     commands: &mut Commands,
     lay: &Lay,
     (rooms, bridge, closed): (&HashMap<IVec2, usize>, &HashSet<IVec2>, &HashSet<(IVec2, IVec2)>),
-    raised: &HashSet<IVec2>,
-    roof: &HashSet<IVec2>,
-    frame: &HashSet<IVec2>,
+    height: &HashMap<IVec2, u8>,
     hull: &HashSet<IVec2>,
 ) {
     const SIDES: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
     let g = crate::building::GRID_SIZE;
-    for &c in raised {
+    for (&c, &h) in height {
         for d in SIDES {
             let n = c + d;
-            let tall = bridge.contains(&c) && !bridge.contains(&n);
-            if closed.contains(&(c, d)) {
+            if closed.contains(&(c, d)) || !hull.contains(&n) {
                 continue;
             }
-            if !raised.contains(&n) || tall {
+            let below = height.get(&n).copied().unwrap_or(SKIN);
+            if h > below {
                 lay.side(commands, c, d, EdgeKind::Lip, ROOF_Z + 0.012);
-                if roof.contains(&n) || frame.contains(&n) {
-                    lay.side(commands, c, d, if tall { EdgeKind::TallStep } else { EdgeKind::Step }, ROOF_Z + 0.011);
-                }
-            } else if rooms.get(&c) != rooms.get(&n) {
+                lay.side_rise(commands, c, d, EdgeKind::Step, (h - below) as f32, ROOF_Z + 0.011);
+            } else if h == below && h >= ROOM && rooms.get(&c) != rooms.get(&n) {
                 // Two rooms side by side: each its own roof piece, with
                 // its own lip where they meet.
                 lay.side(commands, c, d, EdgeKind::Lip, ROOF_Z + 0.012);
@@ -706,6 +772,48 @@ fn glass(cell: IVec2, lo: IVec2, hi: IVec2) -> Vec3 {
     // Toward the bow (+x) and to port (+y).
     let lit = 0.5 * (f.x + f.y);
     BRIDGE_GLASS * (0.8 + 0.45 * lit)
+}
+
+/// The layers of a full roof, low to high.
+const SKIN: u8 = 0;
+const FLOOR: u8 = 2;
+const TRIM: u8 = 3;
+const ROOM: u8 = 5;
+const PLATE: u8 = 6;
+const BRIDGE: u8 = 8;
+
+/// Each roofed cell's layer. A hallway cell with hallway all round is sunk
+/// floor; one along a hallway's side is its trim. A room's cells are room
+/// roof, but a big room (nine cells or more) has a centre plate standing on
+/// it: every cell with its own room all round. The bridge stands highest.
+pub fn layers(
+    walkway: &HashSet<IVec2>,
+    raised: &HashSet<IVec2>,
+    bridge: &HashSet<IVec2>,
+    rooms: &HashMap<IVec2, usize>,
+    room_size: &HashMap<usize, usize>,
+) -> HashMap<IVec2, u8> {
+    const ROUND: [IVec2; 8] = [
+        IVec2::new(1, 0), IVec2::new(-1, 0), IVec2::new(0, 1), IVec2::new(0, -1),
+        IVec2::new(1, 1), IVec2::new(1, -1), IVec2::new(-1, 1), IVec2::new(-1, -1),
+    ];
+    let mut height = HashMap::new();
+    for &c in walkway {
+        let sunk = ROUND[..4].iter().all(|d| walkway.contains(&(c + *d)));
+        height.insert(c, if sunk { FLOOR } else { TRIM });
+    }
+    for &c in raised {
+        let layer = if bridge.contains(&c) {
+            BRIDGE
+        } else {
+            let r = rooms.get(&c);
+            let big = r.and_then(|r| room_size.get(r)).is_some_and(|n| *n >= 9);
+            let inside = ROUND.iter().all(|d| raised.contains(&(c + *d)) && !bridge.contains(&(c + *d)) && rooms.get(&(c + *d)) == r);
+            if big && inside { PLATE } else { ROOM }
+        };
+        height.insert(c, layer);
+    }
+    height
 }
 
 /// The bridge: every command block joined to a bridge wing or the helm.
