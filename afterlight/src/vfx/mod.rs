@@ -75,6 +75,8 @@ impl Plugin for VfxPlugin {
                     ship_roof::toggle_see_inside.before(crate::ui::pressure_overlay::toggle_pressure_overlay),
                     ship_roof::update_ship_roof,
                     ship_roof::raise_weapons_over_roof,
+                    ship_roof::dress_angled_armour,
+                    ship_roof::paint_guns,
                 )
                     .chain()
                     .run_if(in_state(GameState::Exploring)),

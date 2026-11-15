@@ -48,12 +48,32 @@ pub fn block_height(module: ModuleType) -> Option<f32> {
         | MineralScanner | SignalBuoy | SignalJammer | ShieldEmitter | Floodlight | Searchlight
         | DeepFloodlight => Some(17.0),
         _ if module.category() == ModuleCategory::Weapons => Some(GUN_HEIGHT),
+        // Under a full roof engine bells stand out of the hull too.
+        _ if module.category() == ModuleCategory::Propulsion && super::ship_roof::roof_all() => Some(ENGINE_HEIGHT),
+        _ if super::ship_roof::is_angled(module) && super::ship_roof::roof_all() => Some(ANGLE_HEIGHT),
         _ => None,
     }
 }
 
 /// Guns, and the barrels that turn on top of them.
 const GUN_HEIGHT: f32 = 13.0;
+
+/// Angled armour, under a full roof: a layer over the hull.
+const ANGLE_HEIGHT: f32 = 8.0;
+
+/// Engine bells, under a full roof.
+const ENGINE_HEIGHT: f32 = 9.0;
+
+/// Under a full roof, shadows lengthen as the camera pulls out -- by the
+/// zoom over this, up to SHADOW_STRETCH times -- so a turret still stands off
+/// the hull at the zoom you fly at, where a 13-unit shadow is one pixel.
+const SHADOW_ZOOM: f32 = 2.5;
+const SHADOW_STRETCH: f32 = 3.5;
+
+/// How much longer shadows fall at a zoom.
+pub fn shadow_stretch(zoom: f32) -> f32 {
+    if super::ship_roof::roof_all() { (zoom / SHADOW_ZOOM).clamp(1.0, SHADOW_STRETCH) } else { 1.0 }
+}
 
 /// A turret deck stands on its ring, above the hull and everything on it:
 /// its floor casts the shadow that shows it's a layer of its own.
@@ -94,12 +114,24 @@ pub fn attach_height_shadows(
     decks: Query<(Entity, &Sprite), (With<crate::combat::turret_deck::TurretPlate>, Without<CastsShadow>)>,
     // The gun house roof: blocks on a turret above its gun parts.
     roofs: Query<(Entity, &Module, &Sprite), (With<crate::combat::turret_deck::OnTurret>, Without<CastsShadow>, Without<DestroyedModule>)>,
+    kids: Query<&Children>,
+    quads: Query<&Sprite, (Without<Module>, Without<HeightShadow>)>,
 ) {
     for (entity, module, sprite, mut tf) in &mut blocks {
         let Some(height) = block_height(module.module_type) else { continue };
         // Wedge plates and other blocks drawn as NONE have no silhouette of
-        // their own to cast.
+        // their own to cast -- under a full roof a wedge's quads cast for it.
         if sprite.color.alpha() == 0.0 {
+            if super::ship_roof::roof_all() && super::ship_roof::is_angled(module.module_type) {
+                let Ok(children) = kids.get(entity) else { continue };
+                for quad in children.iter() {
+                    if let Ok(q) = quads.get(quad) {
+                        let layer = commands.spawn(shadow_of(q, height)).id();
+                        commands.entity(quad).add_child(layer);
+                    }
+                }
+                commands.entity(entity).try_insert(CastsShadow);
+            }
             continue;
         }
         tf.translation.z = tf.translation.z.max(TALL_Z);
@@ -136,9 +168,11 @@ fn cast(commands: &mut Commands, entity: Entity, sprite: &Sprite, height: f32) {
 /// parent's own frame each frame, so it always falls the same way however
 /// the ship is turned.
 pub fn place_height_shadows(
+    camera: Option<Res<crate::camera::CameraState>>,
     mut shadows: Query<(&HeightShadow, &ChildOf, &mut Transform, &mut Visibility)>,
     parents: Query<(&GlobalTransform, Has<DestroyedModule>)>,
 ) {
+    let stretch = camera.map_or(1.0, |c| shadow_stretch(c.zoom));
     for (shadow, parent, mut tf, mut vis) in &mut shadows {
         let Ok((parent_gt, destroyed)) = parents.get(parent.parent()) else { continue };
         // A wrecked block has fallen flat.
@@ -147,7 +181,7 @@ pub fn place_height_shadows(
             *vis = want;
         }
         let (scale, rotation, _) = parent_gt.to_scale_rotation_translation();
-        let world = (SHADOW_DIR.normalize() * shadow.height).extend(0.0);
+        let world = (SHADOW_DIR.normalize() * shadow.height * stretch).extend(0.0);
         let local = rotation.inverse() * world / scale.max(Vec3::splat(1e-3));
         tf.translation.x = local.x;
         tf.translation.y = local.y;
