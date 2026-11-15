@@ -360,6 +360,36 @@ pub fn deck(name: &str, cells: &[IVec2], grow: i32) -> &'static str {
     register(key, || d)
 }
 
+/// A station's shuttle: a little working craft, bow to +x -- a lit cabin
+/// forward, a cargo pod amidships, two drives aft.
+pub fn shuttle() -> &'static str {
+    register("craft/shuttle".to_string(), || {
+        let mut b = Builder::new();
+        for x in 0..12 {
+            let half: i32 = match x {
+                0 | 1 => 1,
+                10 | 11 => 1,
+                _ => 2,
+            };
+            for y in -half..=half {
+                let edge = y.abs() == half || x == 0 || x == 11;
+                let (sprite, module, lit) = match x {
+                    9 | 10 if y.abs() <= 1 => (QUARTERS, true, true),
+                    4..=7 if y.abs() <= 1 => (CARGO, true, false),
+                    0 | 1 if y != 0 => (REACTOR, true, false),
+                    _ => (if edge { STEEL } else { TITANIUM }, false, false),
+                };
+                b.put(x, y, sprite, module, lit, edge && !module);
+            }
+        }
+        // Drive bells aft.
+        for y in [-2, 2] {
+            b.put(-1, y, REACTOR, true, false, false);
+        }
+        b.done()
+    })
+}
+
 /// A gantry a ship ties up to: `len` blocks out from the arm (+y), three wide.
 pub fn gantry(len: i32) -> &'static str {
     register(format!("gantry/{len}"), || {

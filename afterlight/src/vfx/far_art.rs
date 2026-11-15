@@ -818,16 +818,27 @@ pub fn show_far_art(
     }
 }
 
-/// Off the flight screen every block draws again.
-pub fn clear_far_art(mut commands: Commands, hidden: Query<Entity, With<FarHidden>>) {
+/// Off the flight screen every block draws again, and the pictures go: the
+/// berth draws the ship close in, and nothing fades a picture there, so one
+/// left showing from a far-out approach sat over the blocks the whole stay.
+pub fn clear_far_art(
+    mut commands: Commands,
+    hidden: Query<Entity, With<FarHidden>>,
+    mut pictures: Query<(&mut Sprite, &mut Visibility), With<FarArtSprite>>,
+) {
     for block in hidden.iter() {
         commands.entity(block).try_remove::<(RenderLayers, FarHidden)>();
+    }
+    for (mut sprite, mut vis) in &mut pictures {
+        sprite.color.set_alpha(0.0);
+        *vis = Visibility::Hidden;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::ecs::system::RunSystemOnce;
 
     fn solid(c: LinearRgba) -> Mip {
         Mip::build(4, 4, |_, _| c)
@@ -1165,5 +1176,21 @@ mod tests {
         app.update();
         assert!(app.world().get::<FarHidden>(b).is_none());
         assert!(app.world().get::<RenderLayers>(late).is_none());
+    }
+
+    /// The complaint: docked after coming in far out, the ship stayed the
+    /// far picture however close the camera came.
+    #[test]
+    fn leaving_the_flight_screen_takes_the_picture_off() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        hull(&mut app, s, IVec2::ZERO);
+        app.update();
+        app.update();
+        let sprite = app.world().get::<FarArt>(s).unwrap().sprite;
+        assert_ne!(app.world().get::<Visibility>(sprite), Some(&Visibility::Hidden), "no picture far out");
+        app.world_mut().run_system_once(clear_far_art).unwrap();
+        assert_eq!(app.world().get::<Visibility>(sprite), Some(&Visibility::Hidden), "the picture stays over the berth");
+        assert_eq!(app.world().get::<Sprite>(sprite).unwrap().color.alpha(), 0.0);
     }
 }

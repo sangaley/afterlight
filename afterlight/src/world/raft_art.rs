@@ -497,7 +497,7 @@ pub struct RaftHull {
 /// Build the Raft's sprites under `root`.
 pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &mut RaftBakes, seed: u64, theme: u8) {
     // The empty berths' ships too, and the tug: arrivals need their pictures.
-    bakes.ask(plan.moorings.iter().chain(&plan.spares).map(|m| (m.design, m.quarter, theme)).chain((0..2).map(|q| ("free_haulers_compact/tug", q, theme))));
+    bakes.ask(plan.moorings.iter().chain(&plan.spares).map(|m| (m.design, m.quarter, theme)).chain((0..2).map(|q| ("free_haulers_compact/tug", q, theme))).chain([(super::sections::shuttle(), 0, theme)]));
     let mut kids = Vec::new();
     // Haze: the city's light in the space round it.
     kids.push(
@@ -540,7 +540,7 @@ pub fn spawn_raft(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &
     for m in &plan.moorings {
         super::raft_life::spawn_ship(commands, root, m, bakes, seed, theme);
     }
-    super::raft_life::spawn_traffic(commands, root, plan, art, seed);
+    super::raft_life::spawn_traffic(commands, root, plan, art, bakes, seed, theme);
     commands.entity(root).add_children(&kids);
 }
 

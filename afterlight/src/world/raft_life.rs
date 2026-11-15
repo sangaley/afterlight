@@ -186,7 +186,10 @@ pub struct StreetMover {
     pub phase: f32,
 }
 
-/// A shuttle between the hulk and a moored ship.
+/// How fast a shuttle crosses the city: a working craft, not a missile.
+const SHUTTLE_SPEED: f32 = 320.0;
+
+/// A shuttle between two moored ships.
 #[derive(Component)]
 pub struct Shuttle {
     pub from: Vec2,
@@ -244,7 +247,7 @@ pub fn spawn_ship(commands: &mut Commands, root: Entity, m: &Mooring, bakes: &Ra
 }
 
 /// The street traffic and shuttles a Raft starts with.
-pub fn spawn_traffic(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, seed: u64) {
+pub fn spawn_traffic(commands: &mut Commands, root: Entity, plan: &RaftPlan, art: &RaftArt, bakes: &RaftBakes, seed: u64, theme: u8) {
     let mut rng = StdRng::seed_from_u64(seed ^ 0x7A4F);
     let mut kids = Vec::new();
     for (a, b) in &plan.streets {
@@ -266,18 +269,25 @@ pub fn spawn_traffic(commands: &mut Commands, root: Entity, plan: &RaftPlan, art
             );
         }
     }
+    // Shuttles hop from one moored ship to another.
     let docks: Vec<Vec2> = plan.moorings.iter().filter(|m| m.slot.is_some()).map(|m| m.dock).collect();
-    for _ in 0..10 {
-        let to = if docks.is_empty() { Vec2::X * 5_000.0 } else { docks[rng.gen_range(0..docks.len())] };
-        kids.push(
-            commands
-                .spawn((
-                    Sprite { image: art.shuttle.clone(), custom_size: Some(Vec2::new(CELL * 7.0, CELL * 3.5)), ..default() },
-                    Transform::from_xyz(0.0, 0.0, 0.06),
-                    Shuttle { from: Vec2::new(rng.gen_range(-2_500.0..2_500.0), rng.gen_range(-2_000.0..2_000.0)), to, t: rng.gen_range(0.0..1.0), wait: 0.0 },
-                ))
-                .id(),
-        );
+    if docks.len() >= 2 {
+        let key: BakeKey = (super::sections::shuttle(), 0, theme);
+        for _ in 0..6 {
+            let from = docks[rng.gen_range(0..docks.len())];
+            let to = docks[rng.gen_range(0..docks.len())];
+            let mut sprite = Sprite { color: Color::NONE, ..default() };
+            if let Some((body, _, size)) = bakes.done_get(&key) {
+                sprite.image = body.clone();
+                sprite.custom_size = Some(*size);
+                sprite.color = Color::WHITE;
+            }
+            kids.push(
+                commands
+                    .spawn((sprite, Transform::from_translation(from.extend(0.06)), RaftHull { key, lights: false }, Shuttle { from, to, t: rng.gen_range(0.0..1.0), wait: 0.0 }))
+                    .id(),
+            );
+        }
     }
     commands.entity(root).add_children(&kids);
 }
@@ -584,25 +594,21 @@ pub fn raft_motion(
             continue;
         }
         let len = s.from.distance(s.to).max(1.0);
-        s.t += dt * 900.0 / len;
+        s.t += dt * SHUTTLE_SPEED / len;
         let p = s.from.lerp(s.to, ease(s.t));
         tf.translation.x = p.x;
         tf.translation.y = p.y;
         tf.rotation = Quat::from_rotation_z((s.to - s.from).to_angle());
         if s.t >= 1.0 {
-            // Turn round, and sometimes pick another ship to run to.
+            // Tied up a while, then on to another ship.
             s.t = 0.0;
-            s.wait = 2.5;
-            let back = s.from;
+            s.wait = 4.0;
             s.from = s.to;
-            s.to = back;
-            if s.from.length() < 3_000.0 {
-                if let Ok(mut live) = rafts.get_mut(parent.parent()) {
-                    let docks: Vec<Vec2> = live.plan.moorings.iter().filter(|m| m.slot.is_some()).map(|m| m.dock).collect();
-                    if !docks.is_empty() {
-                        let i = live.rng.gen_range(0..docks.len());
-                        s.to = docks[i];
-                    }
+            if let Ok(mut live) = rafts.get_mut(parent.parent()) {
+                let docks: Vec<Vec2> = live.plan.moorings.iter().filter(|m| m.slot.is_some()).map(|m| m.dock).collect();
+                if !docks.is_empty() {
+                    let i = live.rng.gen_range(0..docks.len());
+                    s.to = docks[i];
                 }
             }
         }

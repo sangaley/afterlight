@@ -15,6 +15,7 @@ pub mod raft_life;
 pub mod sections;
 pub mod station_style;
 pub mod starport_raft;
+pub mod raft_detail;
 pub mod station_types;
 
 #[allow(unused_imports)]
@@ -41,6 +42,9 @@ impl Plugin for WorldPlugin {
             .add_systems(Update, raft_life::forget_roster_on_new_run)
             .add_plugins(docking::DockingPlugin)
             .add_systems(Startup, raft_art::make_raft_art)
+            .init_resource::<raft_detail::DetailWindow>()
+            .add_systems(OnExit(GameState::Exploring), raft_detail::clear_station_detail)
+            .add_systems(OnExit(GameState::StationDocked), raft_detail::clear_station_detail)
             // Stations follow whichever system is streamed in, and have to
             // exist while docked too — the game opens docked at Haven.
             .add_systems(OnEnter(GameState::StationDocked), home_base::spawn_base_arrow)
@@ -51,6 +55,7 @@ impl Plugin for WorldPlugin {
                     home_base::sync_station_entities,
                     home_base::pulse_station_beacons,
                     raft_art::apply_raft_bakes,
+                    raft_detail::update_station_detail,
                     raft_life::raft_roster,
                     raft_life::raft_motion,
                     raft_life::raft_districts,
