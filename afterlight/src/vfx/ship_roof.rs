@@ -175,55 +175,63 @@ pub fn frame_cells(hull: &[(IVec2, HullLayer)], modules: &[(Vec<IVec2>, bool, bo
     frame
 }
 
-/// Lay the roof when it comes into view or the ship changes under it, and take
-/// it away when you zoom back in.
+/// Lay your ship's roof when it comes into view or the ship changes under
+/// it, and take it away when you zoom back in. `fit_roofs` keeps it sized
+/// and lit from frame to frame.
 #[allow(clippy::too_many_arguments)]
 pub fn update_ship_roof(
     mut commands: Commands,
     assets: Res<AssetServer>,
     camera: Res<CameraState>,
     inside: Res<SeeInside>,
-    ships: Query<(Entity, &Scars, Has<PressureOverlayVisible>, &GlobalTransform), With<Ship>>,
+    ships: Query<(Entity, &Scars, Has<PressureOverlayVisible>, &GlobalTransform, Option<&ShipPaint>), With<Ship>>,
     hull: Query<(&HullSegment, &ChildOf), (Without<HullDestroyed>, Without<OwnedByAiShip>)>,
     modules: Query<(&Module, &ChildOf), (Without<DestroyedModule>, Without<OwnedByAiShip>)>,
-    mut tiles: Query<(Entity, &mut Sprite, &RoofTile, Option<&Edge>, &mut Transform)>,
-    mut last: Local<Option<(Entity, usize, usize, usize)>>,
+    tiles: Query<(Entity, &ChildOf), With<RoofTile>>,
+    mut last: Local<Option<(Entity, usize, usize, usize, u64)>>,
 ) {
-    let Ok((ship, scars, air_view, ship_gt)) = ships.single() else { return };
+    let Ok((ship, scars, air_view, ship_gt, paint)) = ships.single() else { return };
     let alpha = own_roof_alpha(camera.zoom, &inside, air_view);
+    let mine = |t: &(Entity, &ChildOf)| t.1.parent() == ship;
     if alpha <= 0.0 {
         if last.is_some() {
-            for (tile, ..) in tiles.iter() {
+            for (tile, _) in tiles.iter().filter(mine) {
                 commands.entity(tile).try_despawn();
             }
             *last = None;
         }
         return;
     }
-    let mine_hull: Vec<(&HullSegment, &ChildOf)> = hull.iter().filter(|(_, p)| p.parent() == ship).collect();
+    let mine_hull: Vec<&HullSegment> = hull.iter().filter(|(_, p)| p.parent() == ship).map(|(h, _)| h).collect();
     let mine_modules: Vec<&Module> = modules.iter().filter(|(_, p)| p.parent() == ship).map(|(m, _)| m).collect();
-    let key = (ship, mine_hull.len(), mine_modules.len(), scars.0.len());
+    let paint = paint.cloned().unwrap_or_default();
+    let key = (ship, mine_hull.len(), mine_modules.len(), scars.0.len(), paint.stamp());
     // Tiles cleared from outside (clear_ship_roof) are laid again too.
-    if *last == Some(key) && !tiles.is_empty() {
-        let turn = ship_gt.to_scale_rotation_translation().1;
-        for (_, mut sprite, tile, edge, mut tf) in tiles.iter_mut() {
-            if let Some(edge) = edge {
-                edge.fit(&mut sprite, &mut tf, camera.zoom, turn, alpha);
-                continue;
-            }
-            let want = alpha * tile.0;
-            if (sprite.color.alpha() - want).abs() > 0.001 {
-                sprite.color.set_alpha(want);
-            }
-        }
+    if *last == Some(key) && tiles.iter().any(|t| mine(&t)) {
         return;
     }
     *last = Some(key);
-    for (tile, ..) in tiles.iter() {
+    for (tile, _) in tiles.iter().filter(mine) {
         commands.entity(tile).try_despawn();
     }
+    let turn = ship_gt.to_scale_rotation_translation().1;
+    lay_roof(&mut commands, &assets, ship, (camera.zoom, turn, alpha), &mine_hull, &mine_modules, scars, &paint.resolve(), false);
+}
 
-    let cells: Vec<(IVec2, HullLayer)> = mine_hull.iter().map(|(s, _)| (s.grid_position, s.hull_layer)).collect();
+/// Lay a ship's whole roof: plates, skin, layers, angles, art and edges.
+#[allow(clippy::too_many_arguments)]
+pub fn lay_roof(
+    commands: &mut Commands,
+    assets: &AssetServer,
+    ship: Entity,
+    (zoom, turn, alpha): (f32, Quat, f32),
+    mine_hull: &[&HullSegment],
+    mine_modules: &[&Module],
+    scars: &Scars,
+    paint: &Paintwork,
+    wrecked: bool,
+) {
+    let cells: Vec<(IVec2, HullLayer)> = mine_hull.iter().map(|s| (s.grid_position, s.hull_layer)).collect();
     let footprints: Vec<(Vec<IVec2>, bool, bool)> = mine_modules
         .iter()
         .map(|m| {
@@ -234,7 +242,7 @@ pub fn update_ship_roof(
     // AFTERLIGHT_ROOF_ALL=1 (a preview): the roof covers every part but the
     // guns and engines, which break through it.
     let roof_all = roof_all();
-    let hull_cells: HashSet<IVec2> = mine_hull.iter().map(|(s, _)| s.grid_position).collect();
+    let hull_cells: HashSet<IVec2> = mine_hull.iter().map(|s| s.grid_position).collect();
     let shown: Vec<bool> = mine_modules
         .iter()
         .zip(&footprints)
@@ -248,7 +256,7 @@ pub fn update_ship_roof(
     // between rooms, not rooms.
     let all_parts: Vec<(Vec<IVec2>, bool)> = footprints
         .iter()
-        .zip(&mine_modules)
+        .zip(mine_modules)
         .filter(|(_, m)| !roof_all || !flush(m.module_type))
         .map(|((c, above, _), _)| (c.clone(), *above))
         .collect();
@@ -258,7 +266,7 @@ pub fn update_ship_roof(
     let framed: Vec<(Vec<IVec2>, bool, bool)> = footprints.iter().zip(&shown).filter(|((_, _, armour), s)| **s || *armour).map(|(f, _)| f.clone()).collect();
     let frame = frame_cells(&cells, if roof_all { &framed } else { &footprints });
     // The ship's skin, cell by cell; the roof is the commonest of it.
-    let skin: HashMap<IVec2, HullMaterial> = mine_hull.iter().map(|(s, _)| (s.grid_position, s.material)).collect();
+    let skin: HashMap<IVec2, HullMaterial> = mine_hull.iter().map(|s| (s.grid_position, s.material)).collect();
     let mut counts: Vec<(HullMaterial, usize)> = Vec::new();
     for m in skin.values() {
         match counts.iter_mut().find(|(k, _)| k == m) {
@@ -316,10 +324,11 @@ pub fn update_ship_roof(
         kinds
     };
     let (lo, hi) = hull_cells.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
-    let livery = player_livery();
+    let livery = paint.livery;
+    let scheme = paint.scheme;
     let (blo, bhi) = bridge.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
     // A roof cell's colour, before the plate texture.
-    let colour = |cell: IVec2| -> Color {
+    let painted = |cell: IVec2| -> Color {
         let tone = plate_tone(cell.div_euclid(IVec2::splat(2)));
         if !roof_all {
             let tone = tone * DECK_LIGHTEN;
@@ -331,24 +340,33 @@ pub fn update_ship_roof(
                 return over_plate(glass(cell, blo, bhi), material);
             }
             // The bridge's frame: the lightest paint on the ship.
-            return over_plate(scheme().main * 0.98 * tone, material);
+            return over_plate(scheme.main * 0.98 * tone, material);
         }
         let layer = if frame.contains(&cell) && !roof.contains(&cell) { SKIN } else { height.get(&cell).copied().unwrap_or(ROOM) };
+        // A tile painted by hand in the builder wears that paint.
+        if let Some(slot) = paint.slots.get(&cell) {
+            return over_plate(scheme.colour(*slot, layer) * tone, material);
+        }
         let band = accent_at(&livery, cell, lo, hi);
         let slot = paint_slot(layer, band);
         // The hallways' trim warm too: sand, and burnt orange where the
         // band crosses -- the arms are mostly hallway.
-        if layer == TRIM && scheme().warm {
+        if layer == TRIM && scheme.warm {
             let paint = if band { Vec3::new(0.82, 0.44, 0.17) } else { Vec3::new(0.76, 0.67, 0.5) };
             return over_plate(paint * 0.66 * tone, material);
         }
         // Rooms in their own warm paints, by what they are.
         if slot == Slot::Main && matches!(layer, ROOM | PLATE) {
-            if let Some(warm) = rooms.get(&cell).and_then(|r| room_kind.get(r)).and_then(|k| scheme().room(*k)) {
+            if let Some(warm) = rooms.get(&cell).and_then(|r| room_kind.get(r)).and_then(|k| scheme.room(*k)) {
                 return over_plate(warm * if layer == PLATE { 0.9 } else { 0.82 } * tone, material);
             }
         }
-        over_plate(scheme().colour(slot, layer) * tone, material)
+        over_plate(scheme.colour(slot, layer) * tone, material)
+    };
+    // A wreck's roof is burnt dull.
+    let colour = |cell: IVec2| -> Color {
+        let c = painted(cell);
+        if wrecked { crate::ai_ship::components::wreck_shade(c) } else { c }
     };
     for &cell in &roof {
         let q = cell.rem_euclid(IVec2::splat(2));
@@ -406,7 +424,7 @@ pub fn update_ship_roof(
         ));
     }
     if roof_all {
-        let lay = Lay { ship, zoom: camera.zoom, turn: ship_gt.to_scale_rotation_translation().1, alpha };
+        let lay = Lay { ship, zoom, turn, alpha, trim: scheme.trim };
         let tri = assets.load(roof_path_tri(material));
         if let Some(path) = std::env::var_os("AFTERLIGHT_ROOF_DUMP") {
             // For mock-ups: every hull cell, what it is under the roof.
@@ -418,14 +436,14 @@ pub fn update_ship_roof(
                 let cat = kind.get(c).map(|t| format!("{:?}", t.category())).unwrap_or_default();
                 out += &format!("{} {} {} {} {} {}\n", c.x, c.y, class, rooms.get(c).copied().unwrap_or(0), t, cat);
             }
-            for m in &mine_modules {
+            for m in mine_modules {
                 if !hull_cells.contains(&m.grid_position) {
                     out += &format!("{} {} armour 0 {:?} {:?}\n", m.grid_position.x, m.grid_position.y, m.module_type, m.rotation);
                 }
             }
             let _ = std::fs::write(path, out);
         }
-        lay_marks(&mut commands, &lay, &assets, &footprints, &types, &rooms, &raised, &bridge);
+        lay_marks(commands, &lay, assets, (&footprints, &types, &scheme), &rooms, &raised, &bridge);
         // The hallway floors' grating.
         for (cell, h) in &height {
             if *h == FLOOR {
@@ -452,15 +470,15 @@ pub fn update_ship_roof(
             .flat_map(|c| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].map(|d| *c + d))
             .filter(|n| !shell.contains(n) && !occupied.contains(n))
             .collect();
-        let mut closed = lay_outline(&mut commands, &lay, &tri, &frame, &outside, &colour);
-        closed.extend(lay_angles(&mut commands, &lay, &tri, (&rooms, &room_size, &height), &surface, &colour));
+        let mut closed = lay_outline(commands, &lay, &tri, &frame, &outside, &colour);
+        closed.extend(lay_angles(commands, &lay, &tri, (&rooms, &room_size, &height), &surface, &colour));
         // Angled armour: where each sits and which way its slope faces.
         let wedges: Vec<(IVec2, Vec2)> = mine_modules
             .iter()
             .filter(|m| is_wedge(m.module_type))
             .map(|m| (m.grid_position, Vec2::from_angle(std::f32::consts::FRAC_PI_4 + m.rotation.to_radians())))
             .collect();
-        lay_depth(&mut commands, &lay, (&rooms, &bridge, &closed, &wedges), &height, &shell);
+        lay_depth(commands, &lay, (&rooms, &bridge, &closed, &wedges), &height, &shell);
     }
 }
 
@@ -504,6 +522,8 @@ pub struct Edge {
     kind: EdgeKind,
     /// How many layers it drops: a shadow falls further off a taller step.
     rise: f32,
+    /// The ship's trim paint, for its outline.
+    tint: Vec3,
 }
 
 impl Edge {
@@ -537,7 +557,7 @@ impl Edge {
             EdgeKind::Lip => (Vec3::ZERO, 0.75 * away),
             // The hull's outline in the trim paint, brighter where it faces
             // the light.
-            EdgeKind::Rim => (scheme().trim, 0.55 + 0.35 * facing.max(0.0)),
+            EdgeKind::Rim => (self.tint, 0.55 + 0.35 * facing.max(0.0)),
             EdgeKind::Step => (Vec3::ZERO, (0.45 + 0.06 * self.rise).min(0.72) * away),
             EdgeKind::Drop => (Vec3::ZERO, 0.7 * away),
             EdgeKind::Window => (Vec3::new(0.62, 0.9, 1.0), 0.9),
@@ -599,6 +619,8 @@ struct Lay {
     zoom: f32,
     turn: Quat,
     alpha: f32,
+    /// The ship's trim paint.
+    trim: Vec3,
 }
 
 impl Lay {
@@ -607,7 +629,7 @@ impl Lay {
     }
 
     fn edge_rise(&self, commands: &mut Commands, at: Vec2, normal: Vec2, length: f32, kind: EdgeKind, rise: f32, z: f32) {
-        let edge = Edge { at, normal, length, kind, rise };
+        let edge = Edge { at, normal, length, kind, rise, tint: self.trim };
         // Sized from the start: a sprite spawned at no size has no bounds to
         // draw within, and the renderer never shows it.
         let (mut sprite, mut tf) = (Sprite::default(), Transform::from_translation(at.extend(z)));
@@ -915,7 +937,7 @@ fn over_plate(want: Vec3, material: HullMaterial) -> Color {
 /// Which of the ship's paints a tile takes, Cosmoteer's way: each tile is
 /// painted on its own, so colours follow the structure rather than one
 /// flood over all of it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Slot {
     /// The ship's main colour.
     Main,
@@ -991,6 +1013,82 @@ pub fn scheme() -> Scheme {
         // Bone with charcoal panels and orange trim.
         _ => Scheme { main: Vec3::new(0.70, 0.68, 0.63), second: Vec3::new(0.33, 0.34, 0.37), trim: Vec3::new(0.86, 0.46, 0.18), warm: true },
     })
+}
+
+/// A ship's paint as the builder keeps it: its three colours and the tiles
+/// painted by hand. On your ship; saved with it.
+#[derive(Component, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShipPaint {
+    pub main: [f32; 3],
+    pub second: [f32; 3],
+    pub trim: [f32; 3],
+    /// Rooms in warm paints by what they are (the Salvager look).
+    #[serde(default)]
+    pub warm: bool,
+    /// Tiles painted by hand, and with what.
+    #[serde(default)]
+    pub slots: Vec<(IVec2, Slot)>,
+}
+
+impl Default for ShipPaint {
+    fn default() -> Self {
+        Self::from_scheme(scheme())
+    }
+}
+
+impl ShipPaint {
+    pub fn from_scheme(s: Scheme) -> Self {
+        Self { main: s.main.to_array(), second: s.second.to_array(), trim: s.trim.to_array(), warm: s.warm, slots: Vec::new() }
+    }
+
+    pub fn scheme(&self) -> Scheme {
+        Scheme { main: Vec3::from_array(self.main), second: Vec3::from_array(self.second), trim: Vec3::from_array(self.trim), warm: self.warm }
+    }
+
+    /// Changes whenever the paint does, so the roof is laid again.
+    pub fn stamp(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for v in self.main.iter().chain(&self.second).chain(&self.trim) {
+            v.to_bits().hash(&mut h);
+        }
+        self.warm.hash(&mut h);
+        for (c, s) in &self.slots {
+            (c.x, c.y, *s as u8).hash(&mut h);
+        }
+        h.finish()
+    }
+
+    /// What the roof is laid with.
+    pub fn resolve(&self) -> Paintwork {
+        Paintwork { scheme: self.scheme(), livery: player_livery(), slots: self.slots.iter().copied().collect() }
+    }
+}
+
+/// Everything a roof's paint is decided by.
+pub struct Paintwork {
+    pub scheme: Scheme,
+    /// Where the paint pattern's band runs.
+    pub livery: Livery,
+    /// Tiles painted by hand.
+    pub slots: HashMap<IVec2, Slot>,
+}
+
+/// A faction's ship paint from its livery: the main colour its map colour
+/// a little greyed toward plating, the second and the trim its accent.
+pub fn faction_paint(faction: crate::ai_ship::components::AiShipType) -> Paintwork {
+    let livery = crate::ai_ship::livery::livery(faction);
+    let v = |c: Color| {
+        let s = c.to_srgba();
+        Vec3::new(s.red, s.green, s.blue)
+    };
+    let base = v(livery.base);
+    let grey = Vec3::new(0.6, 0.6, 0.62);
+    // Its pattern (bands, chevrons, a painted bow...) in its accent, so a
+    // ship says whose it is from across the system.
+    let accent = v(livery.accent);
+    let scheme = Scheme { main: grey.lerp(base, 0.62), second: accent * 0.9, trim: accent, warm: false };
+    Paintwork { scheme, livery, slots: HashMap::new() }
 }
 
 /// A tile's paint from its layer and whether the paint pattern's band runs
@@ -1302,8 +1400,7 @@ fn lay_marks(
     commands: &mut Commands,
     lay: &Lay,
     assets: &AssetServer,
-    footprints: &[(Vec<IVec2>, bool, bool)],
-    types: &[crate::components::ModuleType],
+    (footprints, types, scheme): (&[(Vec<IVec2>, bool, bool)], &[crate::components::ModuleType], &Scheme),
     rooms: &HashMap<IVec2, usize>,
     raised: &HashSet<IVec2>,
     bridge: &HashSet<IVec2>,
@@ -1341,7 +1438,7 @@ fn lay_marks(
     for (cells, t) in rooms {
         let Some(t) = t else { continue };
         if let Some(art) = art_kind(t).filter(|_| roof_art()) {
-            let paint = scheme().room(Some(t.category())).unwrap_or(scheme().main) * 0.82;
+            let paint = scheme.room(Some(t.category())).unwrap_or(scheme.main) * 0.82;
             lay_art(commands, lay, assets, &cells, art, paint);
             continue;
         }
@@ -1459,14 +1556,14 @@ pub fn paint_guns(
     mut commands: Commands,
     assets: Res<AssetServer>,
     images: Res<Assets<Image>>,
-    ships: Query<Entity, With<Ship>>,
+    ships: Query<(Entity, Option<&ShipPaint>), With<Ship>>,
+    factions: Query<&crate::ai_ship::components::AiShipType, With<crate::ai_ship::components::AiShip>>,
     bodies: Query<(&crate::combat::turret_deck::TurretBody, &ChildOf)>,
     hull: Query<(&HullSegment, &ChildOf), Without<crate::combat::turret_deck::TurretPlate>>,
     mut blocks: Query<
         (Entity, &mut Sprite, &ChildOf, Option<&Module>, Has<crate::combat::turret_deck::OnTurret>, Has<crate::combat::turret_deck::TurretPlate>),
         (
             Without<GunPainted>,
-            Without<OwnedByAiShip>,
             Without<crate::combat::turret_deck::PendingTurretMount>,
             Or<(With<Module>, With<crate::combat::turret_deck::TurretPlate>)>,
         ),
@@ -1479,21 +1576,28 @@ pub fn paint_guns(
     if !roof_all() {
         return;
     }
-    let Ok(ship) = ships.single() else { return };
-    let mut extent: Option<(IVec2, IVec2)> = None;
-    let livery = player_livery();
+    let player = ships.single().ok();
+    // Each ship's paint and extent, looked up once a frame.
+    let mut paints: HashMap<Entity, (Paintwork, IVec2, IVec2)> = HashMap::new();
     for (entity, mut sprite, parent, module, on_turret, plate) in &mut blocks {
         // Whose it is, and the hull cell its paint pattern reads from.
-        let (mine, cell) = if parent.parent() == ship {
-            (true, module.map(|m| m.grid_position))
-        } else if let Ok((body, body_parent)) = bodies.get(parent.parent()) {
-            (body_parent.parent() == ship, Some(body.ring_cell))
+        let (owner, cell) = if let Ok((body, body_parent)) = bodies.get(parent.parent()) {
+            (body_parent.parent(), Some(body.ring_cell))
         } else {
-            (false, None)
+            (parent.parent(), module.map(|m| m.grid_position))
         };
-        if !mine {
+        let work = if player.is_some_and(|(p, _)| p == owner) {
+            player.and_then(|(_, p)| p).cloned().unwrap_or_default().resolve()
+        } else if let Ok(faction) = factions.get(owner) {
+            faction_paint(*faction)
+        } else {
             continue;
-        }
+        };
+        let (work, lo, hi) = paints.entry(owner).or_insert_with(|| {
+            let (lo, hi) = hull.iter().filter(|(_, p)| p.parent() == owner).fold((IVec2::MAX, IVec2::MIN), |(lo, hi), (h, _)| (lo.min(h.grid_position), hi.max(h.grid_position)));
+            (work, lo, hi)
+        });
+        let (scheme, livery, lo, hi) = (work.scheme, work.livery, *lo, *hi);
         let kind = module.map(|m| m.module_type);
         let gun = kind.is_some_and(|t| matches!(t.category(), ModuleCategory::Weapons | ModuleCategory::Guns) || matches!(t, ModuleType::LaserEmitter));
         enum Coat {
@@ -1519,11 +1623,8 @@ pub fn paint_guns(
             commands.entity(entity).try_insert(GunPainted);
             continue;
         }
-        let (lo, hi) = *extent.get_or_insert_with(|| {
-            hull.iter().filter(|(_, p)| p.parent() == ship).fold((IVec2::MAX, IVec2::MIN), |(lo, hi), (h, _)| (lo.min(h.grid_position), hi.max(h.grid_position)))
-        });
         let band = cell.is_some_and(|c| accent_at(&livery, c, lo, hi));
-        let paint = scheme().colour(paint_slot(ROOM, band), ROOM) / 0.82;
+        let paint = scheme.colour(paint_slot(ROOM, band), ROOM) / 0.82;
         let colour = match coat {
             Coat::House => {
                 // The gun house roof in the room roofs' own plates.
@@ -1545,8 +1646,8 @@ pub fn paint_guns(
                 };
                 let want = match coat {
                     Coat::HouseArt => paint * 0.86,
-                    Coat::Deck => scheme().colour(Slot::Main, SKIN),
-                    _ => scheme().main * 0.42,
+                    Coat::Deck => scheme.colour(Slot::Main, SKIN),
+                    _ => scheme.main * 0.42,
                 };
                 over_art(want, mean)
             }
@@ -1556,10 +1657,11 @@ pub fn paint_guns(
     }
 }
 
-/// AFTERLIGHT_ROOF_ALL=1: the full painted roof (a preview, read once).
+/// The full painted roof, on every ship. AFTERLIGHT_ROOF_ALL=0 goes back to
+/// the old plain decking over your corridors alone.
 pub fn roof_all() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("AFTERLIGHT_ROOF_ALL").ok().as_deref() == Some("1"))
+    *ON.get_or_init(|| std::env::var("AFTERLIGHT_ROOF_ALL").ok().as_deref() != Some("0"))
 }
 
 /// A weapon lifted over the roof, and the height it came from.
@@ -1576,17 +1678,27 @@ pub fn raise_weapons_over_roof(
     camera: Res<CameraState>,
     inside: Res<SeeInside>,
     ships: Query<(Entity, Has<PressureOverlayVisible>), With<Ship>>,
-    mut weapons: Query<(Entity, &Module, &ChildOf, &mut Transform, Option<&RaisedOverRoof>), Without<OwnedByAiShip>>,
+    ais: Query<(), With<crate::ai_ship::components::AiShip>>,
+    mut weapons: Query<(Entity, &Module, &ChildOf, &mut Transform, Option<&RaisedOverRoof>)>,
 ) {
-    let Ok((ship, air_view)) = ships.single() else { return };
-    let up = own_roof_alpha(camera.zoom, &inside, air_view) > 0.0;
+    let mine = ships.single().ok();
+    let own_up = mine.is_some_and(|(_, air)| own_roof_alpha(camera.zoom, &inside, air) > 0.0);
+    let ai_up = roof_all() && roof_alpha(camera.zoom) > 0.0;
     for (entity, module, parent, mut tf, raised) in weapons.iter_mut() {
+        let owner = parent.parent();
+        let up = if mine.is_some_and(|(s, _)| s == owner) {
+            own_up
+        } else if ais.contains(owner) {
+            ai_up
+        } else {
+            continue;
+        };
         let lifted = if roof_all() {
             (stands_above(module) && !is_bridge(module.module_type)) || is_angled(module.module_type)
         } else {
             stands_above(module)
         };
-        if parent.parent() != ship || !lifted {
+        if !lifted {
             continue;
         }
         match (up, raised) {
@@ -1608,6 +1720,116 @@ pub fn lower_weapons(mut commands: Commands, mut raised: Query<(Entity, &mut Tra
     for (entity, mut tf, RaisedOverRoof(z)) in raised.iter_mut() {
         tf.translation.z = *z;
         commands.entity(entity).try_remove::<RaisedOverRoof>();
+    }
+}
+
+/// On an AI ship whose full roof is laid, with what it was laid for.
+#[derive(Component)]
+pub struct RoofLaid(u64);
+
+/// Ships whose roof is laid in a frame at most: a fleet coming into view
+/// spreads its roofs over a few frames.
+const ROOFS_PER_FRAME: usize = 2;
+
+/// Every AI ship wears the full roof too, in its faction's paint and
+/// pattern: laid when the camera pulls out far enough to show it, laid
+/// again when the ship changes under it, taken away when it zooms back in.
+#[allow(clippy::type_complexity)]
+pub fn update_ai_ship_roofs(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    camera: Res<CameraState>,
+    roots: Query<
+        (Entity, Option<&RoofLaid>, &Scars, &GlobalTransform, &crate::ai_ship::components::AiShipType, Has<crate::ai_ship::components::AiShipWreck>),
+        With<crate::ai_ship::components::AiShip>,
+    >,
+    hull: Query<(&HullSegment, &OwnedByAiShip), (Without<HullDestroyed>, Without<crate::combat::turret_deck::TurretPlate>)>,
+    modules: Query<
+        (&Module, &OwnedByAiShip),
+        (Without<DestroyedModule>, Without<crate::combat::turret_deck::OnTurret>, Without<crate::combat::turret_deck::PendingTurretMount>),
+    >,
+    tiles: Query<(Entity, &ChildOf), With<RoofTile>>,
+) {
+    if !roof_all() {
+        return;
+    }
+    let alpha = roof_alpha(camera.zoom);
+    let despawn_on = |commands: &mut Commands, root: Entity| {
+        for (tile, parent) in tiles.iter() {
+            if parent.parent() == root {
+                commands.entity(tile).try_despawn();
+            }
+        }
+    };
+    if alpha <= 0.0 {
+        for (root, laid, ..) in roots.iter() {
+            if laid.is_some() {
+                despawn_on(&mut commands, root);
+                commands.entity(root).try_remove::<RoofLaid>();
+            }
+        }
+        return;
+    }
+    let mut hull_by: HashMap<Entity, Vec<&HullSegment>> = HashMap::new();
+    for (h, owner) in hull.iter() {
+        hull_by.entry(owner.root).or_default().push(h);
+    }
+    let mut mods_by: HashMap<Entity, Vec<&Module>> = HashMap::new();
+    for (m, owner) in modules.iter() {
+        mods_by.entry(owner.root).or_default().push(m);
+    }
+    let mut laid_now = 0;
+    for (root, laid, scars, gt, faction, wrecked) in roots.iter() {
+        let hulls = hull_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
+        let mods = mods_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
+        if hulls.is_empty() {
+            continue;
+        }
+        let key = (hulls.len() as u64) << 40 ^ (mods.len() as u64) << 20 ^ scars.0.len() as u64 ^ (wrecked as u64) << 63;
+        if laid.is_some_and(|l| l.0 == key) {
+            continue;
+        }
+        if laid_now >= ROOFS_PER_FRAME {
+            break;
+        }
+        laid_now += 1;
+        despawn_on(&mut commands, root);
+        let turn = gt.to_scale_rotation_translation().1;
+        lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &faction_paint(*faction), wrecked);
+        commands.entity(root).try_insert(RoofLaid(key));
+    }
+}
+
+/// Keep every ship's roof sized and lit: each edge's width held in screen
+/// pixels for the zoom, its shade following the light as the ship turns,
+/// and every tile faded with the zoom.
+#[allow(clippy::type_complexity)]
+pub fn fit_roofs(
+    camera: Res<CameraState>,
+    inside: Res<SeeInside>,
+    owners: Query<(&GlobalTransform, Has<Ship>, Has<PressureOverlayVisible>)>,
+    mut tiles: Query<(&mut Sprite, &RoofTile, Option<&Edge>, &mut Transform, &ChildOf)>,
+    mut seen: Local<HashMap<Entity, Option<(f32, Quat)>>>,
+) {
+    seen.clear();
+    for (mut sprite, tile, edge, mut tf, parent) in tiles.iter_mut() {
+        let owner = parent.parent();
+        let Some((alpha, turn)) = *seen.entry(owner).or_insert_with(|| {
+            owners.get(owner).ok().map(|(gt, mine, air)| {
+                let alpha = if mine { own_roof_alpha(camera.zoom, &inside, air) } else { roof_alpha(camera.zoom) };
+                (alpha, gt.to_scale_rotation_translation().1)
+            })
+        }) else {
+            continue;
+        };
+        if let Some(edge) = edge {
+            edge.fit(&mut sprite, &mut tf, camera.zoom, turn, alpha);
+            continue;
+        }
+        let want = alpha * tile.0;
+        if (sprite.color.alpha() - want).abs() > 0.001 {
+            sprite.color.set_alpha(want);
+        }
     }
 }
 
@@ -1833,9 +2055,12 @@ pub fn plate_tone(plate: IVec2) -> f32 {
 
 /// Off the flight screen (docked, building, paused) the roof comes off;
 /// update_ship_roof lays it again on return.
-pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTile>>) {
+pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTile>>, laid: Query<Entity, With<RoofLaid>>) {
     for tile in tiles.iter() {
         commands.entity(tile).try_despawn();
+    }
+    for root in laid.iter() {
+        commands.entity(root).try_remove::<RoofLaid>();
     }
 }
 
