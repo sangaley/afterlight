@@ -63,6 +63,11 @@ impl Livery {
     /// Whether this cell of a ship spanning `lo..=hi` (bow to +x) takes the
     /// accent.
     pub fn accent_at(&self, cell: IVec2, lo: IVec2, hi: IVec2) -> bool {
+        // No extent (a piece with no hull left: its bounds fold to MAX..MIN,
+        // and the sums below overflowed and crashed the game).
+        if lo.x > hi.x || lo.y > hi.y {
+            return false;
+        }
         let from_bow = hi.x - cell.x;
         let mid_y = (lo.y + hi.y) as f32 * 0.5;
         let off = cell.y as f32 - mid_y;
@@ -78,6 +83,15 @@ impl Livery {
                 (0.45..0.7).contains(&band)
             }
         }
+    }
+
+    #[cfg(test)]
+    pub fn test_all() -> Vec<Livery> {
+        use AiShipType::*;
+        [TerranHegemony, EternalHegemony, GildedThrone, BrokenChoir, SynthesisCollective, CorpseStars, StellarPreserve, TheSilence, Shepherd, RecursiveKingdom, MerchantPrinces, FreeHaulersCompact]
+            .into_iter()
+            .map(livery)
+            .collect()
     }
 
     /// The paint for this cell over a plate tinted `material`.
@@ -138,6 +152,13 @@ pub fn apply_paint(mut commands: Commands, mut painted: Query<(Entity, &Paint, &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ship_with_no_extent_has_no_pattern_and_no_crash() {
+        for l in Livery::test_all() {
+            assert!(!l.accent_at(IVec2::new(3, -2), IVec2::MAX, IVec2::MIN));
+        }
+    }
 
     #[test]
     fn every_faction_has_its_own_scheme() {

@@ -354,7 +354,9 @@ pub fn lay_roof(
         }
         kinds
     };
-    let (lo, hi) = hull_cells.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
+    // Over every roofed cell, loose parts too: a piece with no hull left has
+    // cells but no hull to measure.
+    let (lo, hi) = cells.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), (c, _)| (lo.min(*c), hi.max(*c)));
     let livery = paint.livery;
     let scheme = paint.scheme;
     let (blo, bhi) = bridge.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
