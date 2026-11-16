@@ -169,6 +169,34 @@ pub struct StarSystemInfo {
     pub planet_paths: Vec<super::orbits::PlanetPath>,
 }
 
+/// Where a warp being charged is going, loaded while the drive spools so it's
+/// all there the moment you arrive: the system's planets and star, its
+/// stations (their art baked), and the ships near where you'll come out.
+/// celestial::warp::preload_warp_destination keeps it; execute_warp_jump
+/// takes it.
+#[derive(Resource, Default)]
+pub struct WarpPreload {
+    pub target: Option<GalaxyWarpTarget>,
+    /// The system arrived in, if any, and the point the ship comes out at.
+    pub system: Option<u32>,
+    pub arrival: Option<Vec2>,
+    /// The system's contents, spawned ahead.
+    pub info: Option<StarSystemInfo>,
+    /// What the map knew of it before it was loaded, to put back on a cancel.
+    pub was: Option<SystemDiscovery>,
+    /// Put on the warm list by the preload (so taken off it on a cancel).
+    pub warmed: bool,
+    /// The charge finished: the jump will take it.
+    pub jumping: bool,
+}
+
+impl WarpPreload {
+    /// The system being loaded ahead, once it is.
+    pub fn incoming(&self) -> Option<u32> {
+        self.system.filter(|_| self.info.is_some())
+    }
+}
+
 /// Global galaxy state
 #[derive(Resource)]
 pub struct GalaxyState {

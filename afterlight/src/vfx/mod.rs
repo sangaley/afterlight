@@ -4,6 +4,7 @@ pub mod screen_effects;
 pub mod block_visuals;
 pub mod hull_seams;
 pub mod ship_roof;
+pub mod warp_light;
 pub mod far_view;
 pub mod far_art;
 pub mod block_height;
@@ -97,6 +98,10 @@ impl Plugin for VfxPlugin {
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),
             )
             .init_resource::<ship_roof::SeeInside>()
+            // The warp seen from outside (vfx::warp_light).
+            .init_resource::<warp_light::WarpLight>()
+            .add_systems(Update, (warp_light::warp_dash_test_hook, warp_light::warp_light).chain().run_if(in_state(GameState::Exploring)))
+            .add_systems(PostUpdate, warp_light::face_the_jump.before(bevy::transform::TransformSystems::Propagate).run_if(in_state(GameState::Exploring)))
             .add_systems(OnExit(GameState::Exploring), (ship_roof::clear_ship_roof, ship_roof::lower_weapons))
             // Far out, every enemy carries its faction and class.
             .add_systems(

@@ -258,6 +258,11 @@ pub fn station_sites(def: &StarSystemDef) -> Vec<StationSite> {
 pub struct SystemStations {
     pub system_id: Option<u32>,
     pub sites: Vec<StationSite>,
+    /// A system a warp is about to arrive in (celestial::warp's preload):
+    /// its stations are built and their art baked ahead, but they aren't
+    /// the loaded system's -- nothing docks at, lists or points to them yet.
+    pub incoming_id: Option<u32>,
+    pub incoming: Vec<StationSite>,
 }
 
 impl SystemStations {
@@ -319,8 +324,18 @@ pub fn refresh_system_stations(
     streaming: Res<crate::celestial::resources::SystemStreamingManager>,
     galaxy_map: Res<crate::celestial::resources::GalaxyMap>,
     mut stations: ResMut<SystemStations>,
+    preload: Option<Res<crate::celestial::resources::WarpPreload>>,
 ) {
     let current = streaming.loaded_system.or(if galaxy_map.systems.is_empty() { Some(0) } else { None });
+
+    let incoming = preload.and_then(|p| p.incoming()).filter(|id| Some(*id) != current);
+    if stations.incoming_id != incoming {
+        stations.incoming_id = incoming;
+        stations.incoming = incoming
+            .and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id))
+            .map(station_sites)
+            .unwrap_or_default();
+    }
 
     if stations.system_id == current && !(current.is_some() && stations.sites.is_empty()) {
         return;
@@ -361,8 +376,9 @@ pub fn sync_station_entities(
     let mut present: Vec<usize> = Vec::new();
     let owner_of = |system: u32| galaxy.systems.iter().find(|s| s.id == system).and_then(|s| s.faction);
     for (entity, station, raft, owner) in existing.iter() {
-        let still_here = stations.system_id == Some(station.system_id)
-            && stations.sites.iter().any(|s| s.index == station.index)
+        let listed = (stations.system_id == Some(station.system_id) && stations.sites.iter().any(|s| s.index == station.index))
+            || (stations.incoming_id == Some(station.system_id) && stations.incoming.iter().any(|s| s.index == station.index));
+        let still_here = listed
             && raft.is_none_or(|r| r.0 == seed && !(reload && station.index == 0))
             && owner.is_none_or(|o| station.index == 0 || o.0 == owner_of(station.system_id));
         if still_here {
@@ -372,7 +388,7 @@ pub fn sync_station_entities(
         }
     }
 
-    for site in stations.sites.iter() {
+    for site in stations.sites.iter().chain(stations.incoming.iter()) {
         if !present.contains(&site.index) {
             if site.index == 0 {
                 spawn_haven_raft(&mut commands, site, seed, &art, &mut bakes, roster.berths.as_deref());
@@ -1104,6 +1120,7 @@ mod station_size_tests {
                 name: "Haven Station".into(),
                 kind: station_type(0),
             }],
+            ..Default::default()
         };
         assert_eq!(stations.local_range(Vec2::new(HAVEN_RADIUS + 500.0, 0.0)), Some(500.0));
         assert_eq!(stations.local_range(Vec2::new(100.0, 0.0)), Some(0.0));

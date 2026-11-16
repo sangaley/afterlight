@@ -37,6 +37,7 @@ impl Plugin for CelestialPlugin {
             .init_resource::<resources::GalaxyMap>()
             .init_resource::<resources::SystemStreamingManager>()
             .init_resource::<resources::PendingGalaxyWarpTarget>()
+            .init_resource::<resources::WarpPreload>()
             .init_resource::<resources::LootedPois>()
             // Events
             .add_message::<events::RadiationFlare>()
@@ -92,6 +93,7 @@ impl Plugin for CelestialPlugin {
             // Warp system (runs during exploring)
             .add_systems(Update, (
                 warp::warp_input_system,
+                warp::preload_warp_destination.after(warp::warp_input_system).before(warp::execute_warp_jump),
                 warp::execute_warp_jump.after(warp::warp_input_system),
                 warp::on_warp_complete.after(warp::execute_warp_jump),
                 poi::mining_system,

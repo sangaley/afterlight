@@ -95,6 +95,7 @@ pub fn warp_input_system(
     mut jump_events: MessageWriter<WarpJumpStarted>,
     ward: Option<Res<crate::narrative::ward::WardState>>,
     overheard: Option<ResMut<crate::narrative::news::Overheard>>,
+    preload: Option<ResMut<WarpPreload>>,
 ) {
     // The key starts the charge and it runs on its own from there — no need
     // to hold it through the whole (up to 18s) charge. A second press while
@@ -199,6 +200,9 @@ pub fn warp_input_system(
             let target = charging.target;
             fuel_state.current_fuel = (fuel_state.current_fuel - charging.fuel_cost).max(0.0);
             commands.entity(entity).remove::<WarpCharging>();
+            if let Some(mut preload) = preload {
+                preload.jumping = true;
+            }
 
             jump_events.write(WarpJumpStarted { target });
         }
@@ -230,7 +234,14 @@ pub fn execute_warp_jump(
     time: Res<Time>,
     mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
     standing: Res<crate::diplomacy::FactionStanding>,
+    preload: Option<ResMut<WarpPreload>>,
 ) {
+    let mut no_preload = WarpPreload::default();
+    let mut preload_res = preload;
+    let preload: &mut WarpPreload = match preload_res.as_deref_mut() {
+        Some(p) => p,
+        None => &mut no_preload,
+    };
     let (mut pending, mut dash_target) = pending;
     let (textures, asset_server, looted) = spawn_assets;
     for event in jump_events.read() {
@@ -240,49 +251,36 @@ pub fn execute_warp_jump(
 
         let now = time.elapsed_secs_f64();
 
-        // Resolve the target into either a real system id (snapping a
-        // close-enough blind point onto it) or a raw empty-space position.
-        let resolved_system_id = match event.target {
-            GalaxyWarpTarget::System(id) => Some(id),
-            GalaxyWarpTarget::BlindPoint(pos) => galaxy::system_within_snap_tolerance(&galaxy_map, pos),
+        // Loaded while the drive charged (preload_warp_destination): where
+        // to come out, and the system already spawned. Otherwise worked out
+        // and loaded now.
+        let ready = (preload.target == Some(event.target) && preload.arrival.is_some()).then(|| std::mem::take(preload));
+        *preload = WarpPreload::default();
+        let (resolved_system_id, arrival_pos, ready_info) = match ready {
+            Some(p) => (p.system, p.arrival.unwrap_or_default(), p.info),
+            None => {
+                let (id, at) = plan_arrival(&galaxy_map, event.target);
+                (id, at, None)
+            }
         };
 
-        if let Some(old_id) = streaming.loaded_system {
+        if let Some(old_id) = streaming.loaded_system.filter(|old| Some(*old) != resolved_system_id) {
             galaxy::unload_system(&mut commands, &celestial_query, &mut galaxy_map, old_id, now);
         }
 
         let (new_galaxy_pos, arrival_name) = if let Some(new_id) = resolved_system_id {
-            let Some(system_info) = galaxy::load_system(&mut commands, &asset_server, &textures, &mut galaxy_map, new_id, now, &looted) else {
-                continue;
+            let system_info = match ready_info {
+                Some(info) => info,
+                None => {
+                    let Some(info) = galaxy::load_system(&mut commands, &asset_server, &textures, &mut galaxy_map, new_id, now, &looted) else {
+                        continue;
+                    };
+                    info
+                }
             };
             let Some(def) = galaxy_map.systems.iter().find(|s| s.id == new_id) else { continue };
-            let center = def.local_center;
             let galaxy_pos = def.galaxy_pos;
             let name = def.name.clone();
-
-            // Land IN the faction's population cluster, not just "somewhere
-            // safe near the star" — that flat 50k-100k distance used to put
-            // the player nowhere near a weak faction's tight cluster (e.g.
-            // Recursive Kingdom's whole territory is only 15k radius), landing them
-            // in what looked like empty space every time. The cluster is
-            // offset clear of the star itself (see
-            // celestial::galaxy::faction_cluster_center), so arriving near
-            // it can't accidentally drop the player inside/on top of the
-            // star regardless of faction or star size.
-            let arrival_pos = if def.faction.is_some() {
-                let cluster_center = galaxy::faction_cluster_center(def);
-                let territory_radius = def.faction
-                    .and_then(|f| crate::ai_ship::components::faction_territories().into_iter().find(|t| t.faction == f))
-                    .map(|t| t.radius)
-                    .unwrap_or(30_000.0);
-                let arrival_angle = rand::random::<f32>() * std::f32::consts::TAU;
-                cluster_center + Vec2::new(arrival_angle.cos(), arrival_angle.sin()) * territory_radius * 0.5
-            } else {
-                // Safe system (Haven) — no faction cluster, just clear the star.
-                let safe_distance = system_info.star_entity.map(|_| 100_000.0).unwrap_or(50_000.0);
-                let arrival_angle = rand::random::<f32>() * std::f32::consts::TAU;
-                center + Vec2::new(arrival_angle.cos(), arrival_angle.sin()) * safe_distance
-            };
             ship_transform.translation.x = arrival_pos.x;
             ship_transform.translation.y = arrival_pos.y;
 
@@ -294,10 +292,8 @@ pub fn execute_warp_jump(
         } else {
             // Genuinely empty space — nothing to spawn, nothing to load.
             let GalaxyWarpTarget::BlindPoint(pos) = event.target else { continue };
-            let arrival_pos = galaxy::blind_point_local_center(pos);
             ship_transform.translation.x = arrival_pos.x;
             ship_transform.translation.y = arrival_pos.y;
-
             streaming.loaded_system = None;
 
             (pos, "uncharted space".to_string())
@@ -319,34 +315,6 @@ pub fn execute_warp_jump(
         }
         for warm_id in streaming.warm_systems.clone() {
             crate::ai_ship::simulation::ensure_system_population(&mut sim, &galaxy_map, warm_id);
-        }
-
-        // Arrive at a station, inside docking range.
-        //
-        // Every system carries STATIONS_PER_SYSTEM full stations (world::
-        // home_base) — buy, sell, build and hire at all of them — so a jump
-        // now lands somewhere you can refit rather than somewhere you have to
-        // survive. The cluster-relative arrival computed above is a fallback
-        // for systems we can't place a station for.
-        //
-        // This replaces a "land the player IN the fight" re-drop that put you
-        // 5k from a live faction ship the moment you arrived. That solved a
-        // real problem — factions field 1-5 ships across a 15-80k territory,
-        // so a neutral arrival is usually empty space — but it meant every
-        // jump opened in an engagement you didn't choose, with no chance to
-        // sell a hold of salvage or repair first. Finding the fight is a
-        // short flight; being dropped into one isn't a decision.
-        let arrived_in = streaming
-            .loaded_system
-            .and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id));
-        if let Some(def) = arrived_in {
-            if let Some(site) = crate::world::home_base::station_sites(def).first() {
-                // Off to one side rather than on top of the structure.
-                let a = rand::random::<f32>() * std::f32::consts::TAU;
-                let arrival = site.pos + Vec2::new(a.cos(), a.sin()) * (site.radius() + STATION_ARRIVAL_STANDOFF);
-                ship_transform.translation.x = arrival.x;
-                ship_transform.translation.y = arrival.y;
-            }
         }
 
         // Arrival burst. The departure end is in a system that is about to be
@@ -379,6 +347,132 @@ pub fn execute_warp_jump(
     }
 }
 
+/// Where a jump to `target` comes out: the system it lands in (a blind point
+/// close enough to a system snaps onto it) and the point. Decided when the
+/// charge starts, so the destination can be loaded while the drive spools.
+///
+/// At a station, inside docking range, where the system has one -- every
+/// system carries STATIONS_PER_SYSTEM full stations (world::home_base), so a
+/// jump lands somewhere you can refit rather than somewhere you have to
+/// survive. (A "land the player IN the fight" drop it replaced put you 5k
+/// from a live faction ship on every arrival.) Otherwise in the faction's
+/// population cluster, clear of the star, or clear of the star in a safe
+/// system; a blind point with nothing there is empty space.
+pub(crate) fn plan_arrival(galaxy_map: &GalaxyMap, target: GalaxyWarpTarget) -> (Option<u32>, Vec2) {
+    let resolved = match target {
+        GalaxyWarpTarget::System(id) => Some(id),
+        GalaxyWarpTarget::BlindPoint(pos) => galaxy::system_within_snap_tolerance(galaxy_map, pos),
+    };
+    let a = rand::random::<f32>() * std::f32::consts::TAU;
+    let dir = Vec2::new(a.cos(), a.sin());
+    let Some(def) = resolved.and_then(|id| galaxy_map.systems.iter().find(|s| s.id == id)) else {
+        let at = match target {
+            GalaxyWarpTarget::BlindPoint(pos) => galaxy::blind_point_local_center(pos),
+            GalaxyWarpTarget::System(_) => Vec2::ZERO,
+        };
+        return (resolved, at);
+    };
+    if let Some(site) = crate::world::home_base::station_sites(def).first() {
+        // Out in its docking lane (east, kept clear for the berths), a little
+        // to one side: a random bearing put the ship on top of a starport's
+        // piers, for collision to shove it off. Still inside docking range.
+        let across = (rand::random::<f32>() - 0.5) * 3_000.0;
+        return (resolved, site.pos + Vec2::new(site.radius() + STATION_ARRIVAL_STANDOFF * 2.5, across));
+    }
+    let at = if def.faction.is_some() {
+        let cluster_center = galaxy::faction_cluster_center(def);
+        let territory_radius = def
+            .faction
+            .and_then(|f| crate::ai_ship::components::faction_territories().into_iter().find(|t| t.faction == f))
+            .map(|t| t.radius)
+            .unwrap_or(30_000.0);
+        cluster_center + dir * territory_radius * 0.5
+    } else {
+        def.local_center + dir * 100_000.0
+    };
+    (resolved, at)
+}
+
+/// Load where a charging warp is going while the drive spools: a jump
+/// between stars spawns the system it lands in (planets, star, its stations
+/// via world::home_base, its population on the warm list) once the charge is
+/// a little way in; any warp, a dash too, has the ships near where it comes
+/// out brought in (ai_ship::simulation treats that point as somewhere you
+/// are). Called off, it's all taken away again.
+#[allow(clippy::too_many_arguments)]
+pub fn preload_warp_destination(
+    mut commands: Commands,
+    mut preload: ResMut<WarpPreload>,
+    mut galaxy_map: ResMut<GalaxyMap>,
+    mut streaming: ResMut<SystemStreamingManager>,
+    mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
+    ship: Query<(Option<&WarpCharging>, Option<&crate::ui::MapWarpCharging>), With<Ship>>,
+    members: Query<(Entity, &StarSystemMember)>,
+    spawn_assets: (Res<crate::vfx::procedural_textures::CelestialTextures>, Res<AssetServer>, Res<LootedPois>),
+    time: Res<Time>,
+) {
+    let (stars, dash) = ship.single().map_or((None, None), |(s, d)| (s, d));
+    let now = time.elapsed_secs_f64();
+    if let Some(charge) = stars {
+        if preload.target != Some(charge.target) {
+            call_off(&mut commands, &mut preload, &mut galaxy_map, &mut streaming, &members, now);
+            let (system, arrival) = plan_arrival(&galaxy_map, charge.target);
+            *preload = WarpPreload { target: Some(charge.target), system, arrival: Some(arrival), ..default() };
+        }
+        // A little way in, so a jump called off at once costs nothing.
+        let due = charge.charge_timer.fraction() >= 0.12 || charge.charge_timer.duration().as_secs_f32() - charge.charge_timer.elapsed_secs() < 3.0;
+        if let (Some(id), None, true) = (preload.system, preload.info.as_ref(), due) {
+            if streaming.loaded_system != Some(id) {
+                let was = galaxy_map.systems.iter().find(|s| s.id == id).map(|s| s.discovery);
+                let (textures, assets, looted) = (&spawn_assets.0, &spawn_assets.1, &spawn_assets.2);
+                preload.info = galaxy::load_system(&mut commands, assets, textures, &mut galaxy_map, id, now, looted);
+                preload.was = was;
+                crate::ai_ship::simulation::ensure_system_population(&mut sim, &galaxy_map, id);
+                if !streaming.warm_systems.contains(&id) {
+                    streaming.warm_systems.push(id);
+                    preload.warmed = true;
+                }
+                info!("WARP preload: system {id} loaded ahead");
+            }
+        }
+        return;
+    }
+    if let Some(dash) = dash {
+        if preload.arrival != Some(dash.target_pos) {
+            *preload = WarpPreload { arrival: Some(dash.target_pos), ..default() };
+        }
+        return;
+    }
+    // Nothing charging. Jumped: the jump takes it. Called off: put it back.
+    if !preload.jumping && preload.arrival.is_some() {
+        call_off(&mut commands, &mut preload, &mut galaxy_map, &mut streaming, &members, now);
+    }
+}
+
+/// A preloaded destination taken away again: its contents despawned, the map
+/// as it was, the warm list as it was.
+fn call_off(
+    commands: &mut Commands,
+    preload: &mut WarpPreload,
+    galaxy_map: &mut GalaxyMap,
+    streaming: &mut SystemStreamingManager,
+    members: &Query<(Entity, &StarSystemMember)>,
+    now: f64,
+) {
+    if let (Some(id), Some(_)) = (preload.system, preload.info.as_ref()) {
+        if streaming.loaded_system != Some(id) {
+            galaxy::unload_system(commands, members, galaxy_map, id, now);
+            if let (Some(def), Some(was)) = (galaxy_map.systems.iter_mut().find(|s| s.id == id), preload.was) {
+                def.discovery = was;
+            }
+            if preload.warmed {
+                streaming.warm_systems.retain(|w| *w != id);
+            }
+        }
+    }
+    *preload = WarpPreload::default();
+}
+
 /// When warp completes, notify the player about the new system (skipped
 /// for a blind landing in empty space — nothing to scan).
 pub fn on_warp_complete(
@@ -407,8 +501,9 @@ mod arrival_tests {
     /// constants live in different files, so nothing but this connects them.
     #[test]
     fn arrival_standoff_is_inside_docking_range() {
+        // The farthest plan_arrival puts you: out along the lane, off to one side.
         assert!(
-            STATION_ARRIVAL_STANDOFF < crate::world::home_base::DOCK_MARGIN,
+            (STATION_ARRIVAL_STANDOFF * 2.5).hypot(1_500.0) < crate::world::home_base::DOCK_MARGIN,
             "arriving {STATION_ARRIVAL_STANDOFF} past a {} docking margin means you land next to a station you still have to fly to",
             crate::world::home_base::DOCK_MARGIN
         );

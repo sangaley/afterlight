@@ -943,6 +943,9 @@ pub fn sync_simulation_entities(
     asset_server: Res<AssetServer>,
     streaming: Res<crate::celestial::resources::SystemStreamingManager>,
     ship_query: Query<&Transform, With<Ship>>,
+    // Where a charging warp comes out: ships there are brought in ahead, so
+    // they're already flying when you arrive (celestial::warp's preload).
+    preload: Option<Res<crate::celestial::resources::WarpPreload>>,
     // Faction stations live outside the simulation (diplomacy::stations):
     // they neither use the block budget nor despawn with distance here.
     ai_ships: Query<
@@ -962,6 +965,9 @@ pub fn sync_simulation_entities(
 ) {
     let Ok(player_transform) = ship_query.single() else { return };
     let player_pos = player_transform.translation.truncate();
+    let ahead = preload.as_ref().and_then(|p| p.arrival);
+    // Distance to you, or to where you're about to be.
+    let near = |p: Vec2| ahead.map_or(p.distance(player_pos), |a| p.distance(player_pos).min(p.distance(a)));
     let block_count = |children: Option<&Children>| {
         children.map_or(0, |c| c.iter().filter(|e| blocks.contains(*e)).count())
     };
@@ -1009,7 +1015,7 @@ pub fn sync_simulation_entities(
         group.members.push(i);
         group.cost += cost;
         // A fleet that's already partly on screen brings the rest at once.
-        let d = if live_fleets.contains(&fleet) { 0.0 } else { s.position.distance(player_pos) };
+        let d = if live_fleets.contains(&fleet) { 0.0 } else { near(s.position) };
         group.dist = group.dist.min(d);
     }
     groups.retain(|g| g.dist < render_distance());
@@ -1093,7 +1099,7 @@ pub fn sync_simulation_entities(
     let near_fleets: std::collections::HashSet<u32> = ai_ships
         .iter()
         .filter(|(_, tf, _, state, ..)| {
-            !state.is_destroyed && tf.translation.truncate().distance(player_pos) <= despawn_distance()
+            !state.is_destroyed && near(tf.translation.truncate()) <= despawn_distance()
         })
         .filter_map(|(.., (_, _, _, member))| member.map(|m| m.fleet))
         .collect();
@@ -1133,7 +1139,7 @@ pub fn sync_simulation_entities(
         }
 
         let pos = transform.translation.truncate();
-        if pos.distance(player_pos) <= despawn_distance() {
+        if near(pos) <= despawn_distance() {
             continue;
         }
         if member.is_some_and(|m| near_fleets.contains(&m.fleet)) {
