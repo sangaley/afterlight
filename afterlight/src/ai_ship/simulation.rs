@@ -21,9 +21,19 @@ pub const RENDER_DISTANCE: f32 = 48_000.0;
 ///
 /// It counted ships (8) when every ship was about a hundred blocks. Classes
 /// now run from a 70-block skiff to a 2,300-block boss, so a ship count was
-/// either a thin swarm or a frame-rate cliff. 6,000 is about what eight of the
-/// old mid-size hulls cost, and holds a whole swarm or a few capitals.
-const MAX_LIVE_AI_BLOCKS: usize = 9_000;
+/// either a thin swarm or a frame-rate cliff.
+///
+/// 9,000 kept the capitals away: a battle group is 7-12k blocks, so with a
+/// few small ships already about it never fitted, and you only ever saw the
+/// small ones. 14,000 fits one with room to spare (measured 2026-11-16 on an
+/// M2: about 1.1 ms of simulation a frame per 1,000 live AI blocks), and a
+/// nearer fleet now makes room by sending far ships back (EVICT_CLEAR).
+const MAX_LIVE_AI_BLOCKS: usize = 14_000;
+
+/// A ship at least this far from you, and farther than a fleet waiting to
+/// come on screen, goes back into the simulation to make room for it: past
+/// the fighting band and a missile's reach, so nothing you're fighting.
+const EVICT_CLEAR: f32 = 20_000.0;
 
 /// Most AI blocks brought into being in one frame. Spawning is a whole ship's
 /// worth of entities at once, about a millisecond per hundred blocks: since
@@ -936,6 +946,33 @@ pub struct SimSettled;
 /// only once every member has left. Half a battle group popping in, or an
 /// escort left behind as its capital vanished, is what this replaced.
 #[allow(clippy::too_many_arguments)]
+/// What leaves the screen together: a fleet whole, or a ship flying alone.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Unit {
+    Fleet(u32),
+    Ship(Entity),
+}
+
+/// Which of the ships on screen (`by_far`: unit, nearest member's distance,
+/// blocks; farthest first) to send back to make `need` blocks of room for a
+/// fleet waiting `waiting` away: only ones farther than it and at least
+/// EVICT_CLEAR from you. What they free, and which.
+fn make_room(by_far: &[(Unit, f32, usize)], taken: &std::collections::HashSet<Unit>, waiting: f32, need: usize) -> (usize, Vec<Unit>) {
+    let mut freed = 0;
+    let mut chosen = Vec::new();
+    for &(unit, dist, cost) in by_far {
+        if freed >= need || dist <= waiting || dist < EVICT_CLEAR {
+            break;
+        }
+        if taken.contains(&unit) {
+            continue;
+        }
+        chosen.push(unit);
+        freed += cost;
+    }
+    (freed, chosen)
+}
+
 pub fn sync_simulation_entities(
     mut commands: Commands,
     mut sim: ResMut<WorldSimulation>,
@@ -1021,6 +1058,22 @@ pub fn sync_simulation_entities(
     groups.retain(|g| g.dist < render_distance());
     groups.sort_by(|a, b| a.dist.total_cmp(&b.dist));
 
+    // What's on screen, as the units that leave it: a fleet whole, or a ship
+    // that flies alone. Nearest member, and blocks.
+    let mut units: std::collections::HashMap<Unit, (f32, usize)> = std::collections::HashMap::new();
+    for (entity, tf, _, state, _, _, _, (_, mirror, children, member)) in ai_ships.iter() {
+        if state.is_destroyed || mirror {
+            continue;
+        }
+        let unit = member.map_or(Unit::Ship(entity), |m| Unit::Fleet(m.fleet));
+        let e = units.entry(unit).or_insert((f32::MAX, 0));
+        e.0 = e.0.min(near(tf.translation.truncate()));
+        e.1 += block_count(children);
+    }
+    let mut by_far: Vec<(Unit, f32, usize)> = units.into_iter().map(|(u, (d, c))| (u, d, c)).collect();
+    by_far.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let mut evicted: std::collections::HashSet<Unit> = std::collections::HashSet::new();
+
     let mut spawned_any = any_live;
     let mut this_frame = 0usize;
     'groups: for group in groups {
@@ -1031,7 +1084,17 @@ pub fn sync_simulation_entities(
         // SPAWN_BLOCKS_PER_FRAME) always finishes: held back by the budget,
         // the rest of it never came and the fleet stayed split for good.
         if spawned_any && !live_fleets.contains(&group.fleet) && live_blocks + group.cost > max_live_ai_blocks() {
-            break;
+            // Room for it: the farthest ships on screen, well clear of you
+            // and farther than it, go back into the simulation. A capital's
+            // battle group a few kilometres off used to wait for good behind
+            // a scatter of small ships at the edge of sight.
+            let need = live_blocks + group.cost - max_live_ai_blocks();
+            let (freed, chosen) = make_room(&by_far, &evicted, group.dist, need);
+            if freed < need {
+                break;
+            }
+            evicted.extend(chosen);
+            live_blocks -= freed;
         }
         let fleet = sim.fleet(group.fleet).cloned();
         // The leader: its first living member (the capital, the lead hauler),
@@ -1139,10 +1202,12 @@ pub fn sync_simulation_entities(
         }
 
         let pos = transform.translation.truncate();
-        if near(pos) <= despawn_distance() {
+        // Sent back to make room for a nearer fleet, or gone out of range.
+        let made_room = evicted.contains(&member.map_or(Unit::Ship(entity), |m| Unit::Fleet(m.fleet)));
+        if !made_room && near(pos) <= despawn_distance() {
             continue;
         }
-        if member.is_some_and(|m| near_fleets.contains(&m.fleet)) {
+        if !made_room && member.is_some_and(|m| near_fleets.contains(&m.fleet)) {
             continue;
         }
         // The doppelganger wears the player's design; it is not a ship of its
@@ -1664,6 +1729,64 @@ mod wreck_bookkeeping_tests {
         let mut s = AiShipState::default();
         s.is_destroyed = destroyed;
         s
+    }
+
+    #[test]
+    fn room_is_made_only_from_far_ships_farther_than_the_fleet_waiting() {
+        let far = |d: f32, c: usize, n: u32| (Unit::Fleet(n), d, c);
+        // Farthest first, as the spawner sorts them.
+        let on_screen = [far(45_000.0, 600, 1), far(30_000.0, 900, 2), far(25_000.0, 800, 3), far(12_000.0, 3_000, 4)];
+        let none = std::collections::HashSet::new();
+        // Enough from the two farthest.
+        let (freed, chosen) = make_room(&on_screen, &none, 8_000.0, 1_200);
+        assert_eq!(freed, 1_500);
+        assert_eq!(chosen, vec![Unit::Fleet(1), Unit::Fleet(2)]);
+        // Never one nearer than the fleet waiting, nor one close to you.
+        let (freed, _) = make_room(&on_screen, &none, 32_000.0, 5_000);
+        assert_eq!(freed, 600, "only what's farther than the fleet waiting");
+        let (freed, chosen) = make_room(&on_screen, &none, 1_000.0, 10_000);
+        assert!(!chosen.contains(&Unit::Fleet(4)), "the ship 12 km off is in reach of a fight");
+        assert_eq!(freed, 2_300);
+    }
+
+    /// A capital's battle group a few km off comes on screen even with small
+    /// ships scattered at the edge of sight: they make room for it.
+    #[test]
+    fn a_capital_near_you_comes_on_screen_past_a_scatter_of_small_ships() {
+        let mut app = app();
+        app.init_asset::<Image>();
+        let small = super::super::spawner::design_blocks(AiShipType::RecursiveKingdom, None);
+        let capital = super::super::spawner::design_blocks(AiShipType::TerranHegemony, Some("sovereign"));
+        // Fill most of the budget with small ships 35 km out.
+        let n = (MAX_LIVE_AI_BLOCKS - capital / 2) / small;
+        {
+            let mut sim = app.world_mut().resource_mut::<WorldSimulation>();
+            for i in 0..n {
+                let a = i as f32 / n as f32 * std::f32::consts::TAU;
+                let at = Vec2::from_angle(a) * 35_000.0;
+                sim.add(SimulatedShip::patrolling(0, AiShipType::RecursiveKingdom, at, at, 500.0, 0.0));
+            }
+        }
+        for _ in 0..20 {
+            app.update();
+        }
+        let live = |app: &mut App, f: AiShipType| app.world_mut().query::<&AiShipType>().iter(app.world()).filter(|t| **t == f).count();
+        assert_eq!(live(&mut app, AiShipType::RecursiveKingdom), n, "the small ships came first");
+        // Now a capital 8 km off.
+        {
+            let mut sim = app.world_mut().resource_mut::<WorldSimulation>();
+            let mut ship = SimulatedShip::patrolling(0, AiShipType::TerranHegemony, Vec2::new(8_000.0, 0.0), Vec2::new(8_000.0, 0.0), 500.0, 0.0);
+            ship.class = Some("sovereign");
+            sim.add(ship);
+        }
+        for _ in 0..20 {
+            app.update();
+        }
+        assert_eq!(live(&mut app, AiShipType::TerranHegemony), 1, "the capital never came on screen");
+        let left = live(&mut app, AiShipType::RecursiveKingdom);
+        assert!(left < n, "nothing made room");
+        let blocks = left * small + capital;
+        assert!(blocks <= MAX_LIVE_AI_BLOCKS, "over the budget: {blocks}");
     }
 
     fn add_spawned(app: &mut App, x: f32) -> u32 {
