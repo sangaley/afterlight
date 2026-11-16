@@ -56,10 +56,20 @@ impl Plugin for BuildingPlugin {
                 (
                     paint_mode::toggle_paint_mode,
                     paint_mode::paint_window_clicks,
+                    paint_mode::drag_picker,
                     paint_mode::paint_tiles,
                     paint_mode::sync_paint_window,
+                    paint_mode::live_paint_window,
                 )
                     .chain()
+                    .run_if(in_state(GameState::StationDocked)),
+            )
+            // Typing a colour number: the keys are the field's, before
+            // anything else in the builder hears them.
+            .add_systems(
+                PreUpdate,
+                paint_mode::type_colour_number
+                    .after(bevy::input::InputSystems)
                     .run_if(in_state(GameState::StationDocked)),
             )
             .add_systems(OnExit(BuildState::Inactive), paint_mode::spawn_paint_button)

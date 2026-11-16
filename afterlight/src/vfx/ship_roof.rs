@@ -355,6 +355,18 @@ pub fn lay_roof(
             let tone = tone * DECK_LIGHTEN;
             return Color::srgb(tone, tone, tone);
         }
+        // A tile painted by hand in the builder wears that paint, the
+        // bridge's too.
+        if let Some(slot) = paint.slots.get(&cell) {
+            let layer = if bridge.contains(&cell) {
+                BRIDGE
+            } else if frame.contains(&cell) && !roof.contains(&cell) {
+                SKIN
+            } else {
+                height.get(&cell).copied().unwrap_or(ROOM)
+            };
+            return over_plate(scheme.colour(*slot, layer) * tone, material);
+        }
         if bridge.contains(&cell) {
             let has_glass = height.values().any(|h| *h == GLASS);
             if !has_glass || height.get(&cell) == Some(&GLASS) {
@@ -364,10 +376,6 @@ pub fn lay_roof(
             return over_plate(scheme.main * 0.98 * tone, material);
         }
         let layer = if frame.contains(&cell) && !roof.contains(&cell) { SKIN } else { height.get(&cell).copied().unwrap_or(ROOM) };
-        // A tile painted by hand in the builder wears that paint.
-        if let Some(slot) = paint.slots.get(&cell) {
-            return over_plate(scheme.colour(*slot, layer) * tone, material);
-        }
         let band = accent_at(&livery, cell, lo, hi);
         let slot = paint_slot(layer, band);
         // The hallways' trim warm too: sand, and burnt orange where the
@@ -968,6 +976,8 @@ pub enum Slot {
     Trim,
     /// Bare deck, unpainted.
     Bare,
+    /// A colour of the player's own, picked in the builder (sRGB 0-255).
+    Custom([u8; 3]),
 }
 
 /// A ship's three paints.
@@ -989,6 +999,7 @@ impl Scheme {
             Slot::Second => self.second,
             Slot::Trim => self.trim,
             Slot::Bare => return Vec3::new(0.2, 0.21, 0.23),
+            Slot::Custom(c) => Vec3::new(c[0] as f32, c[1] as f32, c[2] as f32) / 255.0,
         };
         let shade = match layer {
             SKIN => 0.55,
@@ -1080,7 +1091,7 @@ impl ShipPaint {
         }
         self.warm.hash(&mut h);
         for (c, s) in &self.slots {
-            (c.x, c.y, *s as u8).hash(&mut h);
+            (c.x, c.y, s).hash(&mut h);
         }
         h.finish()
     }
@@ -1511,7 +1522,8 @@ pub fn dress_angled_armour(
         return;
     }
     let Ok((ship, ship_paint)) = ships.single() else { return };
-    let trim = ship_paint.cloned().unwrap_or_default().scheme().trim;
+    let work = ship_paint.cloned().unwrap_or_default().resolve();
+    let trim = work.scheme.trim;
     let mine: Vec<_> = plates.iter().filter(|(_, m, p, _)| p.parent() == ship && is_angled(m.module_type)).collect();
     if mine.is_empty() {
         return;
@@ -1523,8 +1535,12 @@ pub fn dress_angled_armour(
     let livery = player_livery();
     for (entity, module, _, children) in mine {
         let _ = (&livery, lo, hi);
-        // Angled armour is trim: the bright paint along the hull's slants.
-        let t = trim * 0.8;
+        // Angled armour is trim: the bright paint along the hull's slants,
+        // unless painted by hand.
+        let t = match work.slots.get(&module.grid_position) {
+            Some(slot) => work.scheme.colour(*slot, ROOM) / 0.82 * 0.8,
+            None => trim * 0.8,
+        };
         let body = Color::srgb(t.x, t.y, t.z);
         if is_wedge(module.module_type) {
             // Children not spawned yet: next frame.
@@ -1667,7 +1683,9 @@ pub fn paint_guns(
             continue;
         }
         let band = cell.is_some_and(|c| accent_at(&livery, c, lo, hi));
-        let paint = scheme.colour(paint_slot(ROOM, band), ROOM) / 0.82;
+        // A gun on a tile painted by hand wears that paint.
+        let slot = cell.and_then(|c| work.slots.get(&c).copied()).unwrap_or(paint_slot(ROOM, band));
+        let paint = scheme.colour(slot, ROOM) / 0.82;
         let colour = match coat {
             Coat::House => {
                 // The gun house roof in the room roofs' own plates.
