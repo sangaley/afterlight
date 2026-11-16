@@ -572,14 +572,16 @@ impl Edge {
         let (px, least, most) = match self.kind {
             EdgeKind::Lip => (2.0, 5.0, 16.0),
             EdgeKind::Rim => (1.5, 4.0, 12.0),
-            EdgeKind::Step => (1.75 * self.rise, 7.0 * self.rise, (17.0 * self.rise).min(60.0)),
+            // Capped both ends: a tall drop (bridge glass straight onto the
+            // skin, 10 layers) put the least past the most, and clamp panics.
+            EdgeKind::Step => (1.75 * self.rise, (7.0 * self.rise).min(60.0), (17.0 * self.rise).min(60.0)),
             EdgeKind::Drop => (5.0, 22.0, 70.0),
             EdgeKind::Window => (2.4, 7.0, 20.0),
             EdgeKind::Glint => (3.0, 8.0, 22.0),
             // For a cast shadow: how far it falls.
             EdgeKind::Cast => (10.0, 40.0, 120.0),
         };
-        (px * zoom).clamp(least, most)
+        (px * zoom).clamp(least.min(most), most)
     }
 
     fn inside(&self) -> bool {
@@ -2288,6 +2290,17 @@ pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTil
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_step_of_any_height_has_a_width_at_any_zoom() {
+        for rise in 1..=12 {
+            let edge = super::Edge { at: bevy::math::Vec2::ZERO, normal: bevy::math::Vec2::X, length: 66.0, kind: super::EdgeKind::Step, rise: rise as f32, tint: bevy::math::Vec3::ONE };
+            for zoom in [0.5, 1.0, 4.0, 9.0, 20.0, 90.0] {
+                let w = edge.width(zoom);
+                assert!(w.is_finite() && w > 0.0, "rise {rise} zoom {zoom}: {w}");
+            }
+        }
+    }
+
     #[test]
     fn a_wound_glows_at_its_edge_and_not_all_over() {
         let standing: HashSet<IVec2> = (0..5).map(|x| IVec2::new(x, 0)).collect();
