@@ -428,6 +428,62 @@ pub fn cut_test_hook(
     info!("CUT {cut} blocks across the waist of {ship:?}");
 }
 
+/// AFTERLIGHT_SHOOT_AT=<secs> (filming): from then, every 0.4s for six
+/// seconds, knock a small crater (a block or two each way) out of the nearest
+/// AI ship -- or your own with AFTERLIGHT_SHOOT=player -- the way rounds do:
+/// health to zero, and the game's own damage systems take it from there.
+pub fn shoot_hook_on() -> bool {
+    std::env::var_os("AFTERLIGHT_SHOOT_AT").is_some()
+}
+
+#[allow(clippy::type_complexity)]
+pub fn shoot_test_hook(
+    time: Res<Time>,
+    player: Query<(Entity, &Transform, &Children), With<Ship>>,
+    ai: Query<(Entity, &Transform, &Children), With<crate::ai_ship::components::AiShip>>,
+    mut hulls: Query<&mut HullSegment, Without<HullDestroyed>>,
+    mut modules: Query<&mut Module, Without<DestroyedModule>>,
+    mut next: Local<f32>,
+    mut shots: Local<u32>,
+) {
+    let at = std::env::var("AFTERLIGHT_SHOOT_AT").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+    let now = time.elapsed_secs();
+    if now < at || now > at + 6.0 || now < *next {
+        return;
+    }
+    *next = now + 0.4;
+    let Ok((own, own_tf, own_children)) = player.single() else { return };
+    let target = if std::env::var("AFTERLIGHT_SHOOT").is_ok_and(|v| v == "player") {
+        Some((own, own_children))
+    } else {
+        ai.iter().min_by_key(|(_, t, _)| t.translation.distance(own_tf.translation) as i64).map(|(e, _, c)| (e, c))
+    };
+    let Some((ship, children)) = target else { return };
+    let ship_at = player.get(ship).or(ai.get(ship)).map(|(_, t, _)| t.translation.truncate()).unwrap_or_default();
+    let cells: Vec<IVec2> = children.iter().filter_map(|c| hulls.get(c).ok().map(|h| h.grid_position)).collect();
+    if cells.is_empty() {
+        return;
+    }
+    // A fixed scatter, so a film shows the same craters every time.
+    *shots += 1;
+    let pick = cells[(*shots as usize * 7919) % cells.len()];
+    let mut hit = 0;
+    for child in children.iter() {
+        if let Ok(mut h) = hulls.get_mut(child) {
+            if (h.grid_position - pick).abs().max_element() <= 1 {
+                h.health = 0.0;
+                hit += 1;
+            }
+        } else if let Ok(mut m) = modules.get_mut(child) {
+            if (m.grid_position - pick).abs().max_element() <= 1 {
+                m.health = 0.0;
+                hit += 1;
+            }
+        }
+    }
+    info!("SHOOT {hit} blocks at {pick} on {ship:?} (ship at {:.0},{:.0})", ship_at.x, ship_at.y);
+}
+
 /// A turret's blocks hang off its turret, not the deck, so when its ring goes
 /// off with a section (`turret_deck` moves the turret) they still name the
 /// ship they left, and would go on counting as its guns.

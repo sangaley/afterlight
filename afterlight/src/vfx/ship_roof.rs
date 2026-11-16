@@ -1810,6 +1810,7 @@ pub fn update_ai_ship_roofs(
         (Without<DestroyedModule>, Without<crate::combat::turret_deck::OnTurret>, Without<crate::combat::turret_deck::PendingTurretMount>),
     >,
     tiles: Query<(Entity, &ChildOf), With<RoofTile>>,
+    mut turn_of: Local<usize>,
 ) {
     if !roof_all() {
         return;
@@ -1839,7 +1840,10 @@ pub fn update_ai_ship_roofs(
     for (m, owner) in modules.iter() {
         mods_by.entry(owner.root).or_default().push(m);
     }
-    let mut laid_now = 0;
+    // The ships whose roof is out of date. Taken in turns, a few a frame: in
+    // a big fight the same few ships being hit every frame used to take every
+    // turn, and the rest kept the roof they had before they were shot up.
+    let mut stale = Vec::new();
     for (root, laid, scars, gt, faction, wrecked) in roots.iter() {
         let hulls = hull_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
         let mods = mods_by.get(&root).map(|v| v.as_slice()).unwrap_or(&[]);
@@ -1850,14 +1854,67 @@ pub fn update_ai_ship_roofs(
         if laid.is_some_and(|l| l.0 == key) {
             continue;
         }
-        if laid_now >= ROOFS_PER_FRAME {
-            break;
-        }
-        laid_now += 1;
+        stale.push((root, key, scars, gt, faction, wrecked, hulls, mods));
+    }
+    if stale.is_empty() {
+        return;
+    }
+    stale.sort_by_key(|s| s.0);
+    let first = *turn_of % stale.len();
+    *turn_of = turn_of.wrapping_add(ROOFS_PER_FRAME);
+    for i in 0..ROOFS_PER_FRAME.min(stale.len()) {
+        let (root, key, scars, gt, faction, wrecked, hulls, mods) = stale[(first + i) % stale.len()];
         despawn_on(&mut commands, root);
         let turn = gt.to_scale_rotation_translation().1;
         lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &faction_paint(*faction), wrecked);
         commands.entity(root).try_insert(RoofLaid(key));
+    }
+}
+
+/// On a wrecked block hidden under the roof, with the visibility it had.
+#[derive(Component)]
+pub struct WreckageHidden(Visibility);
+
+/// Under the roof, what's been shot away is gone. A block shot away leaves a
+/// rebuild ghost where it stood (your ship's crew rebuild from it), and a
+/// part takes half a second to go -- zoomed out, over the roof, those read as
+/// whole plating, so a ship that had been hit looked untouched. While a
+/// ship's roof shows they're hidden: the hit is a hole, open to space where
+/// the plating went, burnt floor where it held. Close in they're back, ghosts
+/// and all.
+#[allow(clippy::type_complexity)]
+pub fn hide_wreckage_under_roof(
+    mut commands: Commands,
+    camera: Res<CameraState>,
+    inside: Res<SeeInside>,
+    view: PlayerRoofView,
+    player: Query<(Entity, Has<PressureOverlayVisible>), With<Ship>>,
+    mut wreckage: Query<
+        (Entity, &mut Visibility, &ChildOf, Has<crate::ai_ship::components::OwnedByAiShip>, Option<&WreckageHidden>, Has<crate::ship::rebuild::RebuildGhostSprite>),
+        Or<(With<DestroyedModule>, With<HullDestroyed>, With<WreckageHidden>, With<crate::ship::rebuild::RebuildGhostSprite>)>,
+    >,
+    alive: Query<(), (Without<DestroyedModule>, Without<HullDestroyed>)>,
+) {
+    let own = player.single().ok();
+    let own_alpha = own.map_or(0.0, |(_, air)| view.alpha(own_roof_alpha(camera.zoom, &inside, air)));
+    let ai_alpha = if roof_all() { roof_alpha(camera.zoom) } else { 0.0 };
+    for (block, mut visibility, parent, ai, hidden, ghost) in &mut wreckage {
+        let mine = !ai && own.is_some_and(|(ship, _)| parent.parent() == ship);
+        let alpha = if mine { own_alpha } else { ai_alpha };
+        // Rebuilt (no longer wreckage): back as it was.
+        let wrecked = ghost || alive.get(block).is_err();
+        let hide = wrecked && alpha >= 0.5;
+        match (hide, hidden) {
+            (true, None) => {
+                commands.entity(block).try_insert(WreckageHidden(*visibility));
+                *visibility = Visibility::Hidden;
+            }
+            (false, Some(was)) => {
+                *visibility = was.0;
+                commands.entity(block).try_remove::<WreckageHidden>();
+            }
+            _ => {}
+        }
     }
 }
 

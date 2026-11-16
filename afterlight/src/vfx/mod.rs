@@ -87,6 +87,7 @@ impl Plugin for VfxPlugin {
                     ship_roof::repaint_on_paint_change,
                     ship_roof::update_ship_roof,
                     ship_roof::fit_roofs.after(ship_roof::update_ai_ship_roofs),
+                    ship_roof::hide_wreckage_under_roof,
                     ship_roof::dress_angled_armour,
                     ship_roof::paint_guns,
                 )
