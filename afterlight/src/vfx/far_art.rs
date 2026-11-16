@@ -583,7 +583,7 @@ struct Layer<'q> {
     z: f32,
     block: Entity,
     sprite: &'q Sprite,
-    transform: &'q Transform,
+    transform: Transform,
     left: f32,
     /// The hull cell it is, for what's standing.
     cell: Option<IVec2>,
@@ -628,6 +628,7 @@ pub fn bake_far_art(
     mut sprites: Query<(&mut Sprite, &mut Transform), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
     mut cache: Local<MipCache>,
     mut was_far: Local<bool>,
+    frames: Query<(&Transform, &Children), (With<super::ship_roof::RoofFrame>, Without<FarArtSprite>)>,
 ) {
     let alpha = art_alpha(camera.zoom);
     if alpha <= 0.0 {
@@ -676,11 +677,24 @@ pub fn bake_far_art(
         if art.picture.is_none() && baked_whole {
             continue;
         }
-        let drawn: Vec<(Entity, _)> = children
-            .iter()
-            .flat_map(|c| c.iter())
-            .filter_map(|c| pictured.get(c).ok().filter(|(_, _, v, ..)| **v != Visibility::Hidden).map(|p| (c, p)))
-            .collect();
+        // A broken-off piece's roof hangs off a frame of its own (ship_roof::
+        // RoofFrame): its tiles are painted where the frame puts them.
+        let mut drawn: Vec<(Entity, (&Sprite, Transform, &Visibility, Option<&HullSegment>, Option<&Module>, bool))> = Vec::new();
+        for child in children.iter().flat_map(|c| c.iter()) {
+            if let Ok((frame_tf, kids)) = frames.get(child) {
+                for kid in kids.iter() {
+                    if let Ok((s, t, v, h, m, f)) = pictured.get(kid) {
+                        if *v != Visibility::Hidden {
+                            drawn.push((kid, (s, frame_tf.mul_transform(*t), v, h, m, f)));
+                        }
+                    }
+                }
+            } else if let Ok((s, t, v, h, m, f)) = pictured.get(child) {
+                if *v != Visibility::Hidden {
+                    drawn.push((child, (s, *t, v, h, m, f)));
+                }
+            }
+        }
         looked += drawn.len().max(1);
         // Damage shows through the roof: the plating over a hurt block is
         // what you actually see of it from out here.
@@ -695,7 +709,7 @@ pub fn bake_far_art(
                 } else {
                     wear_of(*hull, *module)
                 };
-                Layer { z: transform.translation.z, block: *block, sprite, transform, left, cell: hull.map(|h| h.grid_position), hidden: *hidden }
+                Layer { z: transform.translation.z, block: *block, sprite, transform: *transform, left, cell: hull.map(|h| h.grid_position), hidden: *hidden }
             })
             .collect();
         layers.sort_by(|a, b| a.z.total_cmp(&b.z));

@@ -252,7 +252,7 @@ pub fn lay_roof(
     paint: &Paintwork,
     wrecked: bool,
 ) {
-    let cells: Vec<(IVec2, HullLayer)> = mine_hull.iter().map(|s| (s.grid_position, s.hull_layer)).collect();
+    let mut cells: Vec<(IVec2, HullLayer)> = mine_hull.iter().map(|s| (s.grid_position, s.hull_layer)).collect();
     let footprints: Vec<(Vec<IVec2>, bool, bool)> = mine_modules
         .iter()
         .map(|m| {
@@ -260,6 +260,16 @@ pub fn lay_roof(
             (cells, stands_above(m), is_armour(m.module_type))
         })
         .collect();
+    // A part still standing where the floor under it was shot away is still
+    // under the roof: left out, it showed its bare block art in the middle of
+    // the shell.
+    {
+        let floor: HashSet<IVec2> = cells.iter().map(|(c, _)| *c).collect();
+        let mut loose: Vec<IVec2> = footprints.iter().flat_map(|(c, _, _)| c.iter().copied()).filter(|c| !floor.contains(c)).collect();
+        loose.sort_by_key(|c| (c.x, c.y));
+        loose.dedup();
+        cells.extend(loose.into_iter().map(|c| (c, HullLayer::Inner)));
+    }
     // AFTERLIGHT_ROOF_ALL=1 (a preview): the roof covers every part but the
     // guns and engines, which break through it.
     let roof_all = roof_all();
@@ -1868,6 +1878,99 @@ pub fn update_ai_ship_roofs(
         let turn = gt.to_scale_rotation_translation().1;
         lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &faction_paint(*faction), wrecked);
         commands.entity(root).try_insert(RoofLaid(key));
+    }
+}
+
+/// The roof of a piece broken off a ship: laid on a frame of its own, set
+/// back by where the piece's blocks were moved to (a piece turns about its
+/// own middle, so its blocks no longer sit at their cells).
+#[derive(Component)]
+pub struct RoofFrame;
+
+/// On a broken-off piece with its roof laid: what it was laid for, and on what.
+#[derive(Component)]
+pub struct SectionRoof {
+    key: u64,
+    frame: Entity,
+}
+
+/// A broken-off piece's paint: its ship's, kept when the ship is gone.
+#[derive(Component)]
+pub struct SectionPaint(Paintwork);
+
+/// A piece broken off a ship keeps the shell: the roof of the ship it came
+/// off, in that ship's paint, burnt dull like a wreck -- not a tumble of bare
+/// blocks.
+#[allow(clippy::type_complexity)]
+pub fn update_section_roofs(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    camera: Res<CameraState>,
+    sections: Query<
+        (Entity, &crate::combat::severance::SeveredFrom, &Children, &GlobalTransform, Option<&SectionRoof>, Option<&SectionPaint>),
+        With<crate::combat::severance::DetachedSection>,
+    >,
+    hulls: Query<(&HullSegment, &Transform), Without<HullDestroyed>>,
+    modules: Query<(&Module, &Transform), Without<DestroyedModule>>,
+    player: Query<Option<&ShipPaint>, With<Ship>>,
+    factions: Query<&crate::ai_ship::components::AiShipType>,
+) {
+    if !roof_all() {
+        return;
+    }
+    let alpha = roof_alpha(camera.zoom);
+    if alpha <= 0.0 {
+        for (section, _, _, _, roof, _) in sections.iter() {
+            if let Some(roof) = roof {
+                commands.entity(roof.frame).try_despawn();
+                commands.entity(section).try_remove::<SectionRoof>();
+            }
+        }
+        return;
+    }
+    let none = Scars::default();
+    let mut laid_now = 0;
+    for (section, from, children, gt, roof, kept) in sections.iter() {
+        let mine_hull: Vec<(&HullSegment, &Transform)> = children.iter().filter_map(|c| hulls.get(c).ok()).collect();
+        let mine_modules: Vec<&Module> = children.iter().filter_map(|c| modules.get(c).ok().map(|(m, _)| m)).collect();
+        // Where the blocks were moved to, against their cells.
+        let Some(offset) = mine_hull
+            .first()
+            .map(|(h, t)| t.translation.truncate() - grid_to_local(h.grid_position))
+            .or_else(|| children.iter().find_map(|c| modules.get(c).ok()).map(|(m, t)| t.translation.truncate() - grid_to_local(m.grid_position)))
+        else {
+            continue;
+        };
+        let key = (mine_hull.len() as u64) << 32 ^ mine_modules.len() as u64;
+        if roof.is_some_and(|r| r.key == key) {
+            continue;
+        }
+        if laid_now >= ROOFS_PER_FRAME {
+            break;
+        }
+        laid_now += 1;
+        if let Some(roof) = roof {
+            commands.entity(roof.frame).try_despawn();
+        }
+        // The ship's paint, looked up the first time (it may be gone later).
+        let fresh = kept.is_none().then(|| {
+            if let Ok(own) = player.get(from.0) {
+                own.cloned().unwrap_or_default().resolve()
+            } else if let Ok(faction) = factions.get(from.0) {
+                faction_paint(*faction)
+            } else {
+                ShipPaint::default().resolve()
+            }
+        });
+        let Some(paint) = kept.map(|p| &p.0).or(fresh.as_ref()) else { continue };
+        let frame = commands.spawn((Transform::from_translation(offset.extend(0.0)), Visibility::default(), RoofFrame, ChildOf(section))).id();
+        let hull_only: Vec<&HullSegment> = mine_hull.iter().map(|(h, _)| *h).collect();
+        let turn = gt.to_scale_rotation_translation().1;
+        lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), &hull_only, &mine_modules, &none, paint, true);
+        commands.entity(section).try_insert(SectionRoof { key, frame });
+        if let Some(fresh) = fresh {
+            commands.entity(section).try_insert(SectionPaint(fresh));
+        }
     }
 }
 

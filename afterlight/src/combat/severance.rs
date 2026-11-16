@@ -27,6 +27,10 @@ pub struct DetachedSection {
     pub ours: bool,
 }
 
+/// On a severed section: the ship it came off, for its paint.
+#[derive(Component)]
+pub struct SeveredFrom(pub Entity);
+
 /// Blocks a section needs before it holds together: a smaller one with a
 /// reactor or ammo aboard is a bomb, a bigger one is half a ship adrift.
 const BOMB_BLOCKS_MAX: f32 = 40.0;
@@ -197,6 +201,7 @@ pub fn check_section_severance(
             let module_types: Vec<ModuleType> = group.iter().filter_map(|e| modules.get(*e).ok().map(|(m, _)| m.module_type)).collect();
             let recoil = break_off(
                 &mut commands,
+                ship,
                 if ai_state.is_none() { Some(&mut notifications) } else { None },
                 ai_state.is_some(),
                 ship_transform,
@@ -272,8 +277,10 @@ fn touching_groups(
 /// Re-root one severed group under a new body, in place, and send it off.
 /// Returns the main body's recoil.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn break_off(
     commands: &mut Commands,
+    from: Entity,
     notifications: Option<&mut MessageWriter<ShowNotification>>,
     from_ai: bool,
     ship_transform: &Transform,
@@ -326,6 +333,7 @@ fn break_off(
             age: 0.0,
             ours: !from_ai,
         },
+        SeveredFrom(from),
         Velocity(velocity),
         GravityAffected { mass },
         GravityForce::default(),

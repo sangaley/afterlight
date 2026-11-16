@@ -468,6 +468,82 @@ pub fn refresh_player_shield_skin(
     *job = Some((ship, task));
 }
 
+/// An AI ship's outline follows its hull as it's shot away or breaks up. It
+/// used to be drawn once, so a ship cut in two kept glowing round the half it
+/// had lost. Redrawn in the background, one ship at a time, each at most once
+/// a second.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn refresh_ai_shield_skins(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    time: Res<Time<Real>>,
+    ships: Query<(Entity, Ref<Children>), (With<AiShip>, With<ShipShield>)>,
+    modules: Query<&Module, Without<DestroyedModule>>,
+    hulls: Query<&HullSegment, Without<HullDestroyed>>,
+    skins: Query<(Entity, &ChildOf), With<ShieldBubble>>,
+    // Per ship: changed since drawn, when last drawn, the cells it was drawn for.
+    mut drawn: Local<std::collections::HashMap<Entity, (bool, f32, u64)>>,
+    mut job: Local<Option<(Entity, u64, bevy::tasks::Task<Option<BuiltSkin>>)>>,
+) {
+    let now = time.elapsed_secs();
+    if let Some((owner, hash, task)) = job.as_mut() {
+        let Some(built) = bevy::tasks::futures::check_ready(task) else { return };
+        let (owner, hash) = (*owner, *hash);
+        *job = None;
+        if let Some(built) = built {
+            for (e, p) in skins.iter() {
+                if p.parent() == owner {
+                    commands.entity(e).try_despawn();
+                }
+            }
+            spawn_built_skin(&mut commands, &mut images, owner, built, false);
+        }
+        if let Some(d) = drawn.get_mut(&owner) {
+            d.2 = hash;
+        }
+        return;
+    }
+    let mut next = None;
+    for (ship, children) in ships.iter() {
+        // A ship just met keeps the skin attach_ai_shields gave it.
+        let d = drawn.entry(ship).or_insert((false, now, 0));
+        if children.is_changed() && !children.is_added() {
+            d.0 = true;
+        }
+        if d.0 && now - d.1 >= 1.0 && next.is_none() {
+            next = Some(ship);
+        }
+    }
+    if drawn.len() > ships.iter().len() + 64 {
+        drawn.retain(|e, _| ships.contains(*e));
+    }
+    let Some(ship) = next else { return };
+    let Ok((_, children)) = ships.get(ship) else { return };
+    let mut cells = HashSet::new();
+    for child in children.iter() {
+        if let Ok(m) = modules.get(child) {
+            for dx in 0..m.size.x.max(1) {
+                for dy in 0..m.size.y.max(1) {
+                    cells.insert(m.grid_position + IVec2::new(dx, dy));
+                }
+            }
+        } else if let Ok(h) = hulls.get(child) {
+            cells.insert(h.grid_position);
+        }
+    }
+    let hash = cells.iter().fold(0u64, |acc, c| {
+        acc.wrapping_add((c.x as i64 as u64).wrapping_mul(73856093) ^ (c.y as i64 as u64).wrapping_mul(19349663))
+    });
+    let d = drawn.get_mut(&ship).expect("just entered");
+    d.0 = false;
+    d.1 = now;
+    if cells.is_empty() || hash == d.2 {
+        return;
+    }
+    let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { build_shield_skin(&cells) });
+    *job = Some((ship, hash, task));
+}
+
 /// Attach shields to AI ships as they spawn, sized by faction.
 pub fn attach_ai_shields(
     mut commands: Commands,
