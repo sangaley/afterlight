@@ -2231,6 +2231,9 @@ pub fn update_ai_ship_roofs(
         let turn = gt.to_scale_rotation_translation().1;
         lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &ship_paint_for(*faction, root), wrecked);
         commands.entity(root).try_insert(RoofLaid(key));
+        if std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some() {
+            info!("ROOF laid on {root}: {} hull, {} parts, wrecked {wrecked}", hulls.len(), mods.len());
+        }
     }
 }
 

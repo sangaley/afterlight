@@ -51,7 +51,7 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //   AFTERLIGHT_NO_SHIELD_FX=1 — no shield outline glow or facing arcs (shields still work).
 //   AFTERLIGHT_STANDOFF=<u> — fighting AI ships hold this far off (before hull sizes).
 //   AFTERLIGHT_HOLD_LINES=1 — fighting AI ships hold where they are (placed battle lines).
-//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] — point the camera there instead of at
+//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] | ai — point the camera there instead of at
 //                          the ship ("station": the nearest station core; ">d"
 //                          slides d units toward its world).
 //   AFTERLIGHT_SHOTS_AFTER=<secs> — with AFTERLIGHT_SHOTS, don't start capturing
@@ -558,6 +558,24 @@ impl Plugin for DemoPlugin {
                                 _ => station,
                             }
                         });
+                });
+            } else if spec.trim() == "ai" {
+                // "ai": follow the nearest AI ship (whole ships, not broken-off
+                // pieces), for filming what happens to it.
+                app.add_systems(Update, |ai: Query<(&GlobalTransform, Has<crate::ai_ship::components::AiShipWreck>), (With<crate::ai_ship::components::AiShip>, Without<crate::combat::severance::DetachedSection>)>,
+                                         ship: Query<&Transform, With<crate::components::Ship>>,
+                                         mut pin: ResMut<crate::camera::CameraPin>,
+                                         mut chosen: Local<Option<Vec2>>| {
+                    // The nearest to where it was (to your ship at first),
+                    // a wreck first: AFTERLIGHT_WRECK_AT's wreck stays in frame.
+                    let at = chosen.or_else(|| ship.single().ok().map(|t| t.translation.truncate())).unwrap_or(Vec2::ZERO);
+                    let next = ai
+                        .iter()
+                        .map(|(t, wreck)| (t.translation().truncate(), wreck))
+                        .min_by(|a, b| b.1.cmp(&a.1).then(a.0.distance(at).total_cmp(&b.0.distance(at))))
+                        .map(|(p, _)| p);
+                    *chosen = next.or(*chosen);
+                    pin.0 = *chosen;
                 });
             } else if let Some((x, y)) = spec.split_once(',').and_then(|(x, y)| Some((x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?))) {
                 app.insert_resource(crate::camera::CameraPin(Some(Vec2::new(x, y))));

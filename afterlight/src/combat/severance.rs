@@ -436,6 +436,36 @@ pub fn cut_test_hook(
     info!("CUT {cut} blocks across the waist of {ship:?}");
 }
 
+/// AFTERLIGHT_WRECK_AT=<secs> (filming): the nearest AI ship strikes its colours
+/// then and is left a wreck, the way a crippled ship is.
+pub fn wreck_hook_on() -> bool {
+    std::env::var_os("AFTERLIGHT_WRECK_AT").is_some()
+}
+
+pub fn wreck_test_hook(
+    time: Res<Time>,
+    player: Query<&Transform, With<Ship>>,
+    ai: Query<(Entity, &Transform, &crate::ai_ship::components::AiShipType), (With<crate::ai_ship::components::AiShip>, Without<crate::ai_ship::components::AiShipWreck>, Without<DetachedSection>)>,
+    mut dead: MessageWriter<crate::events::AiShipDestroyed>,
+    mut done: Local<bool>,
+) {
+    let at = std::env::var("AFTERLIGHT_WRECK_AT").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+    if *done || time.elapsed_secs() < at {
+        return;
+    }
+    let Ok(own) = player.single() else { return };
+    let Some((ship, tf, faction)) = ai.iter().min_by_key(|(_, t, _)| t.translation.distance(own.translation) as i64) else { return };
+    *done = true;
+    dead.write(crate::events::AiShipDestroyed {
+        entity: ship,
+        ship_type: *faction,
+        position: tf.translation.truncate(),
+        bounty_id: None,
+        cause: crate::events::ShipDeathCause::Struck,
+    });
+    info!("WRECK {ship:?}");
+}
+
 /// AFTERLIGHT_SHOOT_AT=<secs> (filming): from then, every 0.4s for six
 /// seconds, knock a small crater (a block or two each way) out of the nearest
 /// AI ship -- or your own with AFTERLIGHT_SHOOT=player -- the way rounds do:

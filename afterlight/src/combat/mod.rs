@@ -572,6 +572,7 @@ impl Plugin for CombatPlugin {
                 (
                     severance::check_section_severance,
                     severance::cut_test_hook.run_if(severance::cut_hook_on),
+                    severance::wreck_test_hook.run_if(severance::wreck_hook_on),
                     severance::shoot_test_hook.run_if(severance::shoot_hook_on),
                     severance::severed_turrets_change_hands,
                     severance::move_detached_sections,
