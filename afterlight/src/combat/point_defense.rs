@@ -199,11 +199,12 @@ pub fn pd_missile_collision(
                 let Ok((t, m, built)) = missile_query.get_mut(e) else { continue };
                 if !enemy(m) || t.translation.truncate().distance(proj_pos) > flak.burst { continue; }
                 let at = t.translation.truncate();
+                let yours = built.as_ref().is_some_and(|b| b.player);
                 if hurt_missile(built, flak.damage) {
                     commands.entity(e).try_despawn();
                     spawn_hit_effect(&mut commands, at, Color::srgb(1.0, 0.6, 0.2), 15.0);
                     if super::gun_assembly::trace() {
-                        info!("FLAK downed a missile");
+                        info!("FLAK downed a missile{}", if yours { " of yours" } else { "" });
                     }
                 }
             }
@@ -220,7 +221,11 @@ pub fn pd_missile_collision(
             commands.entity(proj_entity).try_despawn();
             // A built gun's round does its own damage; the old PD rounds 25.
             let damage = if proj.effect.is_some() { proj.damage } else { PD_HIT };
+            let yours = built.as_ref().is_some_and(|b| b.player);
             if hurt_missile(built, damage) {
+                if super::gun_assembly::trace() {
+                    info!("PD downed a missile{}", if yours { " of yours" } else { "" });
+                }
                 commands.entity(missile_entity).try_despawn();
                 spawn_hit_effect(&mut commands, missile_pos, Color::srgb(1.0, 0.6, 0.2), 15.0);
             } else {

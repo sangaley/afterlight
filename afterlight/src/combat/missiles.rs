@@ -263,6 +263,16 @@ pub fn fire_missiles_system(
         });
         let homing_target = locked.or(next_marked).or(selection.target).or(auto)
             .filter(|e| target_query.get(*e).is_ok());
+        // A radar or heat seeker with nothing to seek holds its fire. It
+        // used to launch anyway and fly out unguided until it burned out:
+        // a seeker only ever chases the target it left the tube with, so
+        // every such shot was a missile thrown away (seen 2026-11-17: a
+        // salvo at nothing with a hostile patrol 12 km off). A command
+        // link (it follows your aim) and a dumb nose still fire at the
+        // cursor.
+        if homing_target.is_none() && design.as_ref().is_some_and(|(d, _)| needs_a_target(d.head)) {
+            continue;
+        }
 
         // The tube points where the tube points.
         //
@@ -497,6 +507,13 @@ pub fn launch_missiles(commands: &mut Commands, l: &MissileLaunch) -> u32 {
     volley
 }
 
+/// Whether a missile with this head is worth launching only at a target: a
+/// seeker that locks on what it was sent at, and on nothing else.
+pub(crate) fn needs_a_target(head: super::missile_design::MissileHead) -> bool {
+    use super::missile_design::MissileHead;
+    !matches!(head, MissileHead::CommandLink | MissileHead::DumbNose)
+}
+
 /// A missile built from a design (combat::missile_design): its numbers and
 /// what its seeker is doing. It flies on the same `MissileProjectile` as the
 /// fixed-list missiles; `move_missiles` and `check_missile_hits` read this
@@ -573,6 +590,9 @@ pub fn launch_built(
         GravityAffected { mass: 1.0 + s.mass_t },
         GravityForce::default(),
     ));
+    if player && super::gun_assembly::trace() {
+        info!("MISSILE launched by you: HE {:.0} over {:.0}, frag {:.0}, shaped {:.0}, toughness {:.0}", s.he_damage, s.he_radius, s.frag_damage, s.shaped_damage, s.toughness);
+    }
 }
 
 /// Per-missile exhaust bookkeeping.
@@ -771,6 +791,9 @@ pub fn move_missiles(
         missile.age += dt;
         missile.life -= dt;
         if missile.life <= 0.0 {
+            if super::gun_assembly::trace() && built.as_ref().is_some_and(|b| b.player) {
+                info!("MISSILE of yours burned out after {:.1}s, {:.0} u flown", missile.age, missile.traveled);
+            }
             commands.entity(entity).try_despawn();
             continue;
         }
@@ -807,6 +830,9 @@ pub fn move_missiles(
                 missile.eject_time -= dt;
             } else if fly_built(&mut missile, &mut built, &mut velocity, pos, dt, in_channel, &target_query, ships_seen, blocks_seen, player_aim, decoys) {
                 // Stalled: out of speed and out of the fight.
+                if super::gun_assembly::trace() && built.player {
+                    info!("MISSILE of yours stalled after {:.1}s, {:.0} u flown", missile.age, missile.traveled);
+                }
                 commands.entity(entity).try_despawn();
                 continue;
             }
@@ -1235,6 +1261,28 @@ fn blast_damage(warhead: f32, d: f32, radius: f32, block: &crate::building::Bloc
     (impact.to_block + impact.through).max(0.0)
 }
 
+/// What a shield does to a warhead: takes what it has left, up to all of it,
+/// and says what share of the warhead gets through (0 when it holds).
+pub(crate) fn warhead_through(shield: &mut crate::combat::shields::ShipShield, warhead: f32) -> f32 {
+    if warhead <= 0.0 {
+        return 0.0;
+    }
+    let held = shield.current.min(warhead);
+    shield.absorb(held);
+    if held >= warhead { 0.0 } else { (warhead - held) / warhead }
+}
+
+/// A missile through a shield carries on with what's left of its warhead.
+fn weaken(missile: &mut MissileProjectile, built: Option<&mut BuiltMissile>, left: f32) {
+    missile.damage *= left;
+    if let Some(b) = built {
+        b.stats.he_damage *= left;
+        b.stats.frag_damage *= left;
+        b.stats.shaped_damage *= left;
+        b.stats.ram_damage *= left;
+    }
+}
+
 pub fn check_missile_hits(
     mut commands: Commands,
     fx: Res<crate::vfx::effect_textures::EffectTextures>,
@@ -1242,8 +1290,8 @@ pub fn check_missile_hits(
     // lives in energy_weapons::emp_detonation. Resolved here it went off as a
     // 5-damage plain warhead the moment it reached the target's bubble, so
     // the disable never happened at all.
-    missile_query: Query<
-        (Entity, &MissileProjectile, &Transform, Option<&BuiltMissile>),
+    mut missile_query: Query<
+        (Entity, &mut MissileProjectile, &Transform, Option<&mut BuiltMissile>),
         Without<super::energy_weapons::EmpWarhead>,
     >,
     mut creature_query: Query<(&Transform, &mut Creature), Without<Ship>>,
@@ -1278,7 +1326,7 @@ pub fn check_missile_hits(
         (With<Ship>, Without<crate::ai_ship::components::AiShip>),
     >,
 ) {
-    'missiles: for (missile_entity, missile, missile_transform, built) in missile_query.iter() {
+    'missiles: for (missile_entity, mut missile, missile_transform, mut built) in missile_query.iter_mut() {
         // === HULLS ===
         //
         // Missiles are the exception to the rule that a round ignores the
@@ -1310,9 +1358,16 @@ pub fn check_missile_hits(
                         && missile_pos_now.distance(center) < shield.radius
                         && shield.covers_arc(missile_pos_now - center)
                     {
-                        shield.absorb(missile.damage);
-                        spawn_explosion(&mut commands, &fx, missile_pos_now, missile.blast_radius * 0.7, Color::srgb(0.5, 0.8, 1.0));
-                        commands.entity(missile_entity).try_despawn();
+                        let through = warhead_through(&mut shield, missile.damage);
+                        if through <= 0.0 {
+                            spawn_explosion(&mut commands, &fx, missile_pos_now, missile.blast_radius * 0.7, Color::srgb(0.5, 0.8, 1.0));
+                            commands.entity(missile_entity).try_despawn();
+                            continue 'missiles;
+                        }
+                        // Too much warhead for what was left of it: the
+                        // shield goes down and the missile flies on through.
+                        weaken(&mut missile, built.as_deref_mut(), through);
+                        spawn_explosion(&mut commands, &fx, missile_pos_now, missile.blast_radius * 0.35, Color::srgb(0.5, 0.8, 1.0));
                         continue 'missiles;
                     }
                 }
@@ -1323,7 +1378,7 @@ pub fn check_missile_hits(
 
             // An enemy's designed missile on the player's ship: its own fuse
             // and warheads, the same as one of ours on theirs.
-            if let Some(built) = built.filter(|_| !own) {
+            if let Some(built) = built.as_deref().filter(|_| !own) {
                 let s = &built.stats;
                 let contact = grid.get(cell);
                 let fused = contact.is_some() || (s.proximity && near_a_block(grid, ship_gt, cell, missile_pos_now, s.fuse_radius));
@@ -1364,6 +1419,9 @@ pub fn check_missile_hits(
             }
 
             let Some(hit) = grid.get(cell) else { continue };
+            if super::gun_assembly::trace() && own {
+                info!("MISSILE ran into its own ship after {:.1}s ({:.0} u flown, armed {})", missile.age, missile.traveled, missile.armed);
+            }
 
             if own {
                 // Not the tube it is leaving, and not its own plating: one
@@ -1456,14 +1514,28 @@ pub fn check_missile_hits(
             let dist_to_ship = missile_pos.distance(center);
 
             if shield.is_up() && dist_to_ship < shield.radius && shield.covers_arc(missile_pos - center) {
-                shield.absorb(missile.damage);
-                spawn_explosion(&mut commands, &fx, missile_pos, missile.blast_radius * 0.7, Color::srgb(0.5, 0.8, 1.0));
-                commands.entity(missile_entity).try_despawn();
+                let had = shield.current;
+                let through = warhead_through(&mut shield, missile.damage);
+                if super::gun_assembly::trace() {
+                    info!("MISSILE met the shield of {:?} ({:.0} left of it): {:.0} warhead, {:.0}% through", ai_entity, had, missile.damage, through * 100.0);
+                }
+                if through <= 0.0 {
+                    spawn_explosion(&mut commands, &fx, missile_pos, missile.blast_radius * 0.7, Color::srgb(0.5, 0.8, 1.0));
+                    commands.entity(missile_entity).try_despawn();
+                    continue 'missiles;
+                }
+                // A shield with less left in it than the warhead carries goes
+                // down, and the missile flies on through to the hull, spent by
+                // what the shield took. It used to swallow the whole missile:
+                // a 2,500 warhead stopped dead by a shield with 13 left in it,
+                // half of every salvo lost to shields already all but gone.
+                weaken(&mut missile, built.as_deref_mut(), through);
+                spawn_explosion(&mut commands, &fx, missile_pos, missile.blast_radius * 0.35, Color::srgb(0.5, 0.8, 1.0));
                 continue 'missiles;
             }
 
             // A designed missile's own fuse and warheads (missile_design).
-            if let Some(built) = built {
+            if let Some(built) = built.as_deref() {
                 let Ok((ship_gt, grid)) = parent_hulls.get(ai_entity) else { continue };
                 let s = &built.stats;
                 let here = crate::building::world_to_cell(ship_gt, missile_pos);
@@ -1484,7 +1556,8 @@ pub fn check_missile_hits(
                     spawn_floating_damage(&mut commands, missile_pos, dealt, Color::srgb(1.0, 0.4, 0.1));
                 }
                 if super::gun_assembly::trace() {
-                    info!("MISSILE burst on {:?} ({}): {:.0} damage", ai_entity, if contact.is_some() { "contact" } else { "proximity" }, dealt);
+                    let gone = children.iter().filter(|c| ai_module_query.get(*c).is_ok_and(|(m, _)| m.health <= 0.0) || ai_hull_query.get(*c).is_ok_and(|(h, _)| h.health <= 0.0)).count();
+                    info!("MISSILE burst on {:?} ({}): {:.0} damage, {} blocks at nothing", ai_entity, if contact.is_some() { "contact" } else { "proximity" }, dealt, gone);
                 }
                 ai_damage_events.write(crate::events::AiShipDamaged {
                     target: ai_entity,
@@ -1772,6 +1845,34 @@ mod missile_hits_blocks_tests {
             arc_traverse: 0.0,
             arc_active: false,
         }
+    }
+
+    /// A shield stops what it has strength left for. A warhead bigger than
+    /// that takes the shield down and goes on with the rest; before, a
+    /// shield with 13 left in it ate a 2,500 missile whole.
+    #[test]
+    fn a_spent_shield_lets_a_heavy_warhead_through() {
+        let mut strong = ShipShield { current: 500.0, max: 500.0, ..shield_down() };
+        assert_eq!(warhead_through(&mut strong, 75.0), 0.0, "a light warhead on a strong shield stops");
+        assert!((strong.current - 425.0).abs() < 1e-3);
+
+        let mut spent = ShipShield { current: 13.0, max: 88.0, ..shield_down() };
+        let through = warhead_through(&mut spent, 2_496.0);
+        assert!((through - (2_483.0 / 2_496.0)).abs() < 1e-4, "{through}");
+        assert!(!spent.is_up(), "the shield goes down");
+
+        let mut missile = MissileProjectile { damage: 2_496.0, ..default() };
+        weaken(&mut missile, None, 0.5);
+        assert_eq!(missile.damage, 1_248.0);
+    }
+
+    #[test]
+    fn only_a_seeker_waits_for_a_target() {
+        use crate::combat::missile_design::MissileHead;
+        assert!(needs_a_target(MissileHead::Radar));
+        assert!(needs_a_target(MissileHead::Heat));
+        assert!(!needs_a_target(MissileHead::CommandLink));
+        assert!(!needs_a_target(MissileHead::DumbNose));
     }
 
     fn plate(material: HullMaterial, cell: IVec2) -> HullSegment {
