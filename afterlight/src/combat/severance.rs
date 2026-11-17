@@ -366,7 +366,7 @@ fn break_off(
     }
 
     if crate::combat::gun_assembly::trace() {
-        info!("SEVERED {} blocks off a ship of {}: parting {:.0} u/s, recoil {:.1}, spin {:.2}, blast of {:.0} blocks", blocks.len(), main_blocks, section_speed, main_speed, spin, blast.blocks);
+        info!("SEVERED {} blocks off {from:?} (a ship of {}): parting {:.0} u/s, recoil {:.1}, spin {:.2}, blast of {:.0} blocks", blocks.len(), main_blocks, section_speed, main_speed, spin, blast.blocks);
     }
 
     if let Some(notifications) = notifications {

@@ -35,6 +35,12 @@ const MAX_LIVE_AI_BLOCKS: usize = 14_000;
 /// the fighting band and a missile's reach, so nothing you're fighting.
 const EVICT_CLEAR: f32 = 20_000.0;
 
+/// And farther than the waiting fleet by this much. Without it two fleets
+/// about as far off as each other, with room for only one, traded places
+/// whenever they crossed: each vanished and was built again every few
+/// seconds (seen 2026-11-17 beside the Terran fleet, every 4 to 30 s).
+const EVICT_MARGIN: f32 = 10_000.0;
+
 /// Most AI blocks brought into being in one frame. Spawning is a whole ship's
 /// worth of entities at once, about a millisecond per hundred blocks: since
 /// the ships were drawn twice as big a fleet arriving in one frame froze the
@@ -955,13 +961,13 @@ enum Unit {
 
 /// Which of the ships on screen (`by_far`: unit, nearest member's distance,
 /// blocks; farthest first) to send back to make `need` blocks of room for a
-/// fleet waiting `waiting` away: only ones farther than it and at least
-/// EVICT_CLEAR from you. What they free, and which.
+/// fleet waiting `waiting` away: only ones farther than it by EVICT_MARGIN
+/// and at least EVICT_CLEAR from you. What they free, and which.
 fn make_room(by_far: &[(Unit, f32, usize)], taken: &std::collections::HashSet<Unit>, waiting: f32, need: usize) -> (usize, Vec<Unit>) {
     let mut freed = 0;
     let mut chosen = Vec::new();
     for &(unit, dist, cost) in by_far {
-        if freed >= need || dist <= waiting || dist < EVICT_CLEAR {
+        if freed >= need || dist <= waiting + EVICT_MARGIN || dist < EVICT_CLEAR {
             break;
         }
         if taken.contains(&unit) {
@@ -1747,6 +1753,18 @@ mod wreck_bookkeeping_tests {
         let (freed, chosen) = make_room(&on_screen, &none, 1_000.0, 10_000);
         assert!(!chosen.contains(&Unit::Fleet(4)), "the ship 12 km off is in reach of a fight");
         assert_eq!(freed, 2_300);
+    }
+
+    /// Two fleets about as far off as each other don't trade places: the one
+    /// waiting has to be well nearer than the one it would send back.
+    #[test]
+    fn fleets_about_as_far_off_do_not_trade_places() {
+        let none = std::collections::HashSet::new();
+        let on_screen = [(Unit::Fleet(1), 31_000.0, 9_000)];
+        let (freed, _) = make_room(&on_screen, &none, 26_000.0, 5_000);
+        assert_eq!(freed, 0, "5 km nearer is not reason enough");
+        let (freed, chosen) = make_room(&on_screen, &none, 15_000.0, 5_000);
+        assert_eq!((freed, chosen), (9_000, vec![Unit::Fleet(1)]), "16 km nearer is");
     }
 
     /// A capital's battle group a few km off comes on screen even with small
