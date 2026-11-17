@@ -5,6 +5,7 @@ pub mod block_visuals;
 pub mod hull_seams;
 pub mod ship_roof;
 pub mod warp_light;
+pub mod paint_gen;
 pub mod far_view;
 pub mod far_art;
 pub mod block_height;

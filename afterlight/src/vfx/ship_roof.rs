@@ -313,7 +313,7 @@ pub fn lay_roof(
     // every cell top to bottom and read as corrugated sheet; one flat colour
     // read as no surface at all. Painted, the plates are a quieter print of
     // the same art: full-contrast seams and rivets under paint read as a grid.
-    let image = assets.load(if roof_all { roof_path_quiet(material) } else { roof_path(material) });
+    let image = assets.load(if cosmo() { roof_path_worn(material) } else if roof_all { roof_path_quiet(material) } else { roof_path(material) });
     let types: Vec<crate::components::ModuleType> = mine_modules.iter().map(|m| m.module_type).collect();
     let bridge = bridge_cells(&footprints, &types);
     let raised: HashSet<IVec2> = roof.iter().copied().filter(|c| !low.contains(c)).collect();
@@ -360,6 +360,14 @@ pub fn lay_roof(
     let livery = paint.livery;
     let scheme = paint.scheme;
     let (blo, bhi) = bridge.iter().fold((IVec2::MAX, IVec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
+    // Under a room drawn as one machine, the deck is dark: the machine's
+    // shape stands out on it (AFTERLIGHT_COSMO).
+    let piece_cells: HashSet<IVec2> = footprints
+        .iter()
+        .zip(&types)
+        .filter(|(_, t)| piece_kind(**t).is_some())
+        .flat_map(|((c, _, _), _)| c.iter().copied())
+        .collect();
     // A roof cell's colour, before the plate texture.
     let painted = |cell: IVec2| -> Color {
         let tone = plate_tone(cell.div_euclid(IVec2::splat(2)));
@@ -396,6 +404,13 @@ pub fn lay_roof(
             let paint = if band { Vec3::new(0.82, 0.44, 0.17) } else { Vec3::new(0.76, 0.67, 0.5) };
             return over_plate(paint * 0.66 * tone, material);
         }
+        if piece_cells.contains(&cell) {
+            return over_plate(Vec3::new(0.15, 0.155, 0.17) * tone, material);
+        }
+        // The Cosmoteer look's corridors: dark channels between the parts.
+        if cosmo() && matches!(layer, FLOOR | TRIM) {
+            return over_plate(scheme.colour(slot, layer) * 0.55 * tone, material);
+        }
         // Rooms in their own warm paints, by what they are.
         if slot == Slot::Main && matches!(layer, ROOM | PLATE) {
             if let Some(warm) = rooms.get(&cell).and_then(|r| room_kind.get(r)).and_then(|k| scheme.room(*k)) {
@@ -425,6 +440,40 @@ pub fn lay_roof(
             RoofTile(1.0),
             ChildOf(ship),
         ));
+    }
+    // The paint editor's decals, layer over layer, on whatever surface they
+    // sit on.
+    let ship_cells: HashSet<IVec2> = hull_cells.iter().copied().chain(footprints.iter().flat_map(|(c, _, _)| c.iter().copied())).collect();
+    let generated;
+    let decals: &[Decal] = match paint.generate {
+        Some((seed, palette)) if roof_all && paint.decals.is_empty() => {
+            generated = super::paint_gen::livery_decals(seed, &palette, &ship_cells);
+            &generated
+        }
+        _ => &paint.decals,
+    };
+    if roof_all && !decals.is_empty() {
+        for d in decals {
+            if !ship_cells.contains(&d.cell) {
+                continue;
+            }
+            let lifted = lift(height.get(&d.cell).copied().unwrap_or(ROOM));
+            let c = Color::srgb_u8(d.colour[0], d.colour[1], d.colour[2]);
+            let c = if wrecked { crate::ai_ship::components::wreck_shade(c) } else { c };
+            commands.spawn((
+                Sprite {
+                    image: assets.load(d.shape.path()),
+                    color: c.with_alpha(0.96 * alpha),
+                    custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
+                    flip_y: d.flip,
+                    ..default()
+                },
+                Transform::from_translation(grid_to_local(d.cell).extend(ROOF_Z + lifted + 0.016 + d.layer.min(3) as f32 * 0.0004))
+                    .with_rotation(Quat::from_rotation_z(d.turn as f32 * std::f32::consts::FRAC_PI_2)),
+                RoofTile(0.96),
+                ChildOf(ship),
+            ));
+        }
     }
     for cell in burnt {
         commands.spawn((
@@ -520,6 +569,63 @@ pub fn lay_roof(
             .map(|m| (m.grid_position, Vec2::from_angle(std::f32::consts::FRAC_PI_4 + m.rotation.to_radians())))
             .collect();
         lay_depth(commands, &lay, (&rooms, &bridge, &closed, &wedges), &height, &shell);
+        if cosmo() {
+            lay_parts(commands, &lay, assets, (&footprints, &types, &shown), &raised, &height);
+        }
+    }
+}
+
+/// The Cosmoteer look's parts (AFTERLIGHT_COSMO): a dark joint and a bevel
+/// round every part under the roof, so the ship reads as pieces bolted
+/// together, and each system's indicator light -- the points of colour the
+/// eye lands on.
+fn lay_parts(
+    commands: &mut Commands,
+    lay: &Lay,
+    assets: &AssetServer,
+    (footprints, types, shown): (&[(Vec<IVec2>, bool, bool)], &[crate::components::ModuleType], &[bool]),
+    raised: &HashSet<IVec2>,
+    height: &HashMap<IVec2, u8>,
+) {
+    let g = crate::building::GRID_SIZE;
+    let light = assets.load("sprites/roof_marks/light.png");
+    for (((cells, _, armour), t), shows) in footprints.iter().zip(types).zip(shown) {
+        if *shows || *armour || piece_kind(*t).is_some() || !cells.iter().any(|c| raised.contains(c)) {
+            continue;
+        }
+        let part: HashSet<IVec2> = cells.iter().copied().collect();
+        let top = cells.iter().map(|c| height.get(c).copied().unwrap_or(ROOM)).max().unwrap_or(ROOM);
+        for c in cells.iter().filter(|c| raised.contains(*c)) {
+            for d in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
+                if !part.contains(&(*c + d)) {
+                    lay.side(commands, *c, d, EdgeKind::Lip, ROOF_Z + 0.0125 + lift(top));
+                    lay.side(commands, *c, d, EdgeKind::Seam, ROOF_Z + 0.013 + lift(top));
+                }
+            }
+        }
+        // Its light, in its system's colour, on the corner nearest the light.
+        use crate::components::ModuleCategory as C;
+        let colour = match t.category() {
+            C::Power => Some(Color::srgb(1.0, 0.62, 0.18)),
+            C::LifeSupport => Some(Color::srgb(0.35, 1.0, 0.5)),
+            C::Control => Some(Color::srgb(0.55, 0.8, 1.0)),
+            C::Detection => Some(Color::srgb(0.3, 0.95, 1.0)),
+            C::Crew => Some(Color::srgb(1.0, 0.86, 0.55)),
+            C::Storage => Some(Color::srgb(1.0, 0.75, 0.25)),
+            C::Utility => Some(Color::srgb(1.0, 0.35, 0.85)),
+            _ => None,
+        };
+        let Some(colour) = colour else { continue };
+        let Some(corner) = cells.iter().filter(|c| raised.contains(*c)).min_by_key(|c| (c.x, -c.y)) else { continue };
+        let at = grid_to_local(*corner) + Vec2::new(-0.28, 0.28) * g;
+        for (size, share) in [(g * 0.95, 0.32), (g * 0.34, 1.0)] {
+            commands.spawn((
+                Sprite { image: light.clone(), color: colour.with_alpha(share * lay.alpha), custom_size: Some(Vec2::splat(size)), ..default() },
+                Transform::from_translation(at.extend(ROOF_Z + 0.045)),
+                RoofTile(share),
+                ChildOf(lay.ship),
+            ));
+        }
     }
 }
 
@@ -546,6 +652,9 @@ pub enum EdgeKind {
     Glint,
     /// A whole cell's shadow thrown off a tall part, away from the light.
     Cast,
+    /// The dark joint round each part (AFTERLIGHT_COSMO): parts read as
+    /// pieces bolted together, not one poured surface.
+    Seam,
 }
 
 /// One edge of the full roof: a strip along a straight edge, square to the
@@ -582,12 +691,13 @@ impl Edge {
             EdgeKind::Glint => (3.0, 8.0, 22.0),
             // For a cast shadow: how far it falls.
             EdgeKind::Cast => (10.0, 40.0, 120.0),
+            EdgeKind::Seam => (1.1, 3.0, 9.0),
         };
         (px * zoom).clamp(least.min(most), most)
     }
 
     fn inside(&self) -> bool {
-        matches!(self.kind, EdgeKind::Lip | EdgeKind::Rim | EdgeKind::Window)
+        matches!(self.kind, EdgeKind::Lip | EdgeKind::Rim | EdgeKind::Window | EdgeKind::Seam)
     }
 
     /// Colour and how much of it, facing the light by `facing` (1 straight
@@ -606,6 +716,7 @@ impl Edge {
             EdgeKind::Window => (Vec3::new(0.62, 0.9, 1.0), 0.9),
             EdgeKind::Glint => (Vec3::new(0.85, 0.95, 1.0), 0.16),
             EdgeKind::Cast => (Vec3::ZERO, 0.5),
+            EdgeKind::Seam => (Vec3::new(0.02, 0.02, 0.03), 0.72),
         }
     }
 
@@ -1051,7 +1162,16 @@ impl Scheme {
 /// The default paint for your ship (AFTERLIGHT_ROOF_PAINT picks another).
 pub fn scheme() -> Scheme {
     static ON: std::sync::OnceLock<Scheme> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| scheme_named(std::env::var("AFTERLIGHT_ROOF_PAINT").ok().as_deref().unwrap_or("salvager")))
+    *ON.get_or_init(|| scheme_named(std::env::var("AFTERLIGHT_ROOF_PAINT").ok().as_deref().unwrap_or(if cosmo() { "foundry" } else { "salvager" })))
+}
+
+/// AFTERLIGHT_COSMO=1 (a preview): the roof the way Cosmoteer's ships look
+/// from outside -- weathered plates, grey metal with the colour saved for an
+/// accent, a dark joint round every part, art on most parts, and their
+/// indicator lights.
+pub fn cosmo() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("AFTERLIGHT_COSMO").ok().as_deref() == Some("1"))
 }
 
 /// The ready-made schemes, by name: "salvager", "raider", "navy".
@@ -1059,6 +1179,9 @@ pub fn scheme_named(name: &str) -> Scheme {
     match name {
         // Gunmetal with deep red panels and bright red trim.
         "raider" => Scheme { main: Vec3::new(0.34, 0.34, 0.38), second: Vec3::new(0.52, 0.13, 0.13), trim: Vec3::new(0.95, 0.22, 0.18), warm: false },
+        // Grey metal, a darker grey for panels, and rust red kept for the
+        // trim: frames, edges, the angled armour (Cosmoteer's Io ships).
+        "foundry" => Scheme { main: Vec3::new(0.5, 0.51, 0.53), second: Vec3::new(0.33, 0.34, 0.37), trim: Vec3::new(0.66, 0.22, 0.12), warm: false },
         // Navy with white panels and cyan trim.
         "navy" => Scheme { main: Vec3::new(0.24, 0.31, 0.47), second: Vec3::new(0.86, 0.88, 0.9), trim: Vec3::new(0.42, 0.85, 1.0), warm: false },
         // Bone with charcoal panels and orange trim.
@@ -1079,6 +1202,88 @@ pub struct ShipPaint {
     /// Tiles painted by hand, and with what.
     #[serde(default)]
     pub slots: Vec<(IVec2, Slot)>,
+    /// Shapes painted over the tiles, on three layers (the paint editor's
+    /// decals).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decals: Vec<Decal>,
+    /// Decal layers hidden in the editor, a bit each (1, 2, 4).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub hidden: u8,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+/// A shape a decal is cut in (assets/sprites/decals, tools/art/gen_decals.py).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub enum DecalShape {
+    Full,
+    Half,
+    Diagonal,
+    Corner,
+    Quarter,
+    Edge,
+    Stripe,
+    Slash,
+    Circle,
+    Arc,
+    Chevron,
+    Dot,
+}
+
+impl DecalShape {
+    pub const ALL: [DecalShape; 12] = [
+        DecalShape::Full,
+        DecalShape::Half,
+        DecalShape::Diagonal,
+        DecalShape::Corner,
+        DecalShape::Quarter,
+        DecalShape::Edge,
+        DecalShape::Stripe,
+        DecalShape::Slash,
+        DecalShape::Circle,
+        DecalShape::Arc,
+        DecalShape::Chevron,
+        DecalShape::Dot,
+    ];
+
+    pub fn path(self) -> &'static str {
+        match self {
+            DecalShape::Full => "sprites/decals/full.png",
+            DecalShape::Half => "sprites/decals/half.png",
+            DecalShape::Diagonal => "sprites/decals/diagonal.png",
+            DecalShape::Corner => "sprites/decals/corner.png",
+            DecalShape::Quarter => "sprites/decals/quarter.png",
+            DecalShape::Edge => "sprites/decals/edge.png",
+            DecalShape::Stripe => "sprites/decals/stripe.png",
+            DecalShape::Slash => "sprites/decals/slash.png",
+            DecalShape::Circle => "sprites/decals/circle.png",
+            DecalShape::Arc => "sprites/decals/arc.png",
+            DecalShape::Chevron => "sprites/decals/chevron.png",
+            DecalShape::Dot => "sprites/decals/dot.png",
+        }
+    }
+}
+
+/// One decal: a shape on a tile, turned in quarter turns (and flipped, for
+/// a mirror's copy), in a colour, on layer 1-3.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Decal {
+    pub cell: IVec2,
+    pub shape: DecalShape,
+    pub turn: u8,
+    #[serde(default)]
+    pub flip: bool,
+    pub colour: [u8; 3],
+    pub layer: u8,
+}
+
+impl Decal {
+    /// Its copy across the ship's middle (symmetry, y -> -y).
+    pub fn mirrored(&self, cell: IVec2) -> Decal {
+        Decal { cell, turn: (4 - self.turn % 4) % 4, flip: !self.flip, ..*self }
+    }
 }
 
 impl Default for ShipPaint {
@@ -1089,7 +1294,7 @@ impl Default for ShipPaint {
 
 impl ShipPaint {
     pub fn from_scheme(s: Scheme) -> Self {
-        Self { main: s.main.to_array(), second: s.second.to_array(), trim: s.trim.to_array(), warm: s.warm, slots: Vec::new() }
+        Self { main: s.main.to_array(), second: s.second.to_array(), trim: s.trim.to_array(), warm: s.warm, slots: Vec::new(), decals: Vec::new(), hidden: 0 }
     }
 
     pub fn scheme(&self) -> Scheme {
@@ -1107,12 +1312,15 @@ impl ShipPaint {
         for (c, s) in &self.slots {
             (c.x, c.y, s).hash(&mut h);
         }
+        self.decals.hash(&mut h);
+        self.hidden.hash(&mut h);
         h.finish()
     }
 
     /// What the roof is laid with.
     pub fn resolve(&self) -> Paintwork {
-        Paintwork { scheme: self.scheme(), livery: player_livery(), slots: self.slots.iter().copied().collect() }
+        let decals = self.decals.iter().filter(|d| self.hidden & (1 << (d.layer.clamp(1, 3) - 1)) == 0).copied().collect();
+        Paintwork { scheme: self.scheme(), livery: player_livery(), slots: self.slots.iter().copied().collect(), decals, generate: None }
     }
 }
 
@@ -1123,6 +1331,11 @@ pub struct Paintwork {
     pub livery: Livery,
     /// Tiles painted by hand.
     pub slots: HashMap<IVec2, Slot>,
+    /// Decals over the tiles, the hidden layers left out.
+    pub decals: Vec<Decal>,
+    /// A livery generated over the ship's shape when it's laid, from this
+    /// seed in this palette (vfx::paint_gen), where there are no decals.
+    pub generate: Option<(u64, super::paint_gen::Palette)>,
 }
 
 /// A faction's ship paint from its livery: the main colour its map colour
@@ -1139,7 +1352,33 @@ pub fn faction_paint(faction: crate::ai_ship::components::AiShipType) -> Paintwo
     // ship says whose it is from across the system.
     let accent = v(livery.accent);
     let scheme = Scheme { main: grey.lerp(base, 0.62), second: accent * 0.9, trim: accent, warm: false };
-    Paintwork { scheme, livery, slots: HashMap::new() }
+    Paintwork { scheme, livery, slots: HashMap::new(), decals: Vec::new(), generate: None }
+}
+
+/// An AI ship's paint. With the Cosmoteer look each ship wears a livery of
+/// its own: its faction's colour and accent, two accents more and a pattern
+/// from its seed, so no two ships of a fleet are painted alike.
+pub fn ship_paint_for(faction: crate::ai_ship::components::AiShipType, ship: Entity) -> Paintwork {
+    let mut work = faction_paint(faction);
+    if cosmo() {
+        let u8s = |c: Color| {
+            let s = c.to_srgba();
+            [(s.red * 255.0) as u8, (s.green * 255.0) as u8, (s.blue * 255.0) as u8]
+        };
+        let seed = super::paint_gen::seed_of(ship);
+        let palette = super::paint_gen::faction_palette(seed, u8s(work.livery.base), u8s(work.livery.accent));
+        work.scheme = palette.scheme();
+        work.generate = Some((seed, palette));
+    }
+    work
+}
+
+/// Every cell of a ship: its hull and its parts' footprints.
+pub fn ship_cells(hull: &[&HullSegment], modules: &[&Module]) -> HashSet<IVec2> {
+    hull.iter()
+        .map(|h| h.grid_position)
+        .chain(modules.iter().flat_map(|m| ShipGrid::cells_for(m.grid_position, m.size, m.rotation, footprints::footprint_override(m.module_type)).to_vec()))
+        .collect()
 }
 
 /// A tile's paint from its layer and whether the paint pattern's band runs
@@ -1381,6 +1620,30 @@ pub fn art_kind(t: crate::components::ModuleType) -> Option<&'static str> {
     // vents, intakes and hatches. Batteries, cabins, the mess, sick bay and
     // the like are inside the ship and keep plain plating -- zoomed out is
     // the shell.
+    if cosmo() {
+        // Cosmoteer's way: nearly every part shows what it is from outside.
+        let kind = match name.as_str() {
+            n if n.contains("Reactor") && !n.contains("Cooling") && !n.contains("FuelRod") => "reactor",
+            "BasicQuarters" | "Barracks" | "CrewQuarters" | "OfficerQuarters" => "quarters",
+            "FuelTank" | "OxygenTank" => "fuel",
+            "RepairBay" | "AdvancedRepairBay" => "repair",
+            "MemoryCore" | "TargetingComputer" => "memory",
+            "MessHall" | "GalleyMess" => "galley",
+            "BatteryBank" => "battery",
+            "SurgicalBay" | "MedBay" | "Infirmary" => "surgical",
+            "SmallCargo" | "BulkCargoHold" | "LargeCargo" | "SpecimenVault" => "cargo",
+            "OxygenScrubber" => "scrubber",
+            "CoolingPump" | "ReactorCooling" => "cooling",
+            "HeatVent" => "vent",
+            "RadarArray" | "AdvancedRadar" | "PassiveRadar" | "DepthScanner" | "CreatureScanner" | "MineralScanner" | "HydrophoneArray" | "MissileWarner" | "SignalBuoy" => "sensor",
+            "ShieldEmitter" | "IonDisruptor" | "EMPPulse" | "StealthCoating" => "shield",
+            "VlsSilo" | "DecoyLauncher" | "ChaffDispenser" => "launcher",
+            "TractorBeam" | "SalvageArm" | "DockingPort" | "AirlockChamber" => "crane",
+            "CreatureContainment" => "containment",
+            _ => return None,
+        };
+        return Some(kind);
+    }
     Some(match t {
         BulkCargoHold | SmallCargo => "cargo",
         OxygenScrubber => "scrubber",
@@ -1395,6 +1658,15 @@ pub fn art_kind(t: crate::components::ModuleType) -> Option<&'static str> {
 /// reads as fittings pressed into the hull rather than a picture on it.
 const ART_SHARE: f32 = 0.62;
 const DECAL_SHARE: f32 = 0.7;
+
+/// The Cosmoteer look shows parts for what they are, at full strength.
+fn art_share() -> f32 {
+    if cosmo() { 0.95 } else { ART_SHARE }
+}
+
+fn decal_share() -> f32 {
+    if cosmo() { 1.0 } else { DECAL_SHARE }
+}
 
 /// Lay a room's roof art: two-by-two pieces wherever a square of the room
 /// fits, single-cell pieces in what's left. Each piece is the art tinted
@@ -1415,15 +1687,15 @@ fn lay_art(commands: &mut Commands, lay: &Lay, assets: &AssetServer, cells: &[IV
     let mut put = |at: Vec2, n: u32| {
         let size = Some(Vec2::splat(g * n as f32));
         commands.spawn((
-            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}.png")), color: tint.with_alpha(ART_SHARE * lay.alpha), custom_size: size, ..default() },
+            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}{}.png", if cosmo() { "_worn" } else { "" })), color: tint.with_alpha(art_share() * lay.alpha), custom_size: size, ..default() },
             Transform::from_translation(at.extend(ROOF_Z + 0.003)),
-            RoofTile(ART_SHARE),
+            RoofTile(art_share()),
             ChildOf(lay.ship),
         ));
         commands.spawn((
-            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}_decal.png")), color: Color::WHITE.with_alpha(DECAL_SHARE * lay.alpha), custom_size: size, ..default() },
+            Sprite { image: assets.load(format!("sprites/roof_art/{kind}_{n}_decal.png")), color: Color::WHITE.with_alpha(decal_share() * lay.alpha), custom_size: size, ..default() },
             Transform::from_translation(at.extend(ROOF_Z + 0.0035)),
-            RoofTile(DECAL_SHARE),
+            RoofTile(decal_share()),
             ChildOf(lay.ship),
         ));
     };
@@ -1488,6 +1760,10 @@ fn lay_marks(
     rooms.sort_by_key(|(cells, _)| cells.iter().min_by_key(|c| (c.x, c.y)).copied().map(|c| (c.x, c.y)));
     for (cells, t) in rooms {
         let Some(t) = t else { continue };
+        if let Some(kind) = piece_kind(t) {
+            lay_pieces(commands, lay, assets, &cells, kind);
+            continue;
+        }
         if let Some(art) = art_kind(t).filter(|_| roof_art()) {
             let paint = scheme.room(Some(t.category())).unwrap_or(scheme.main) * 0.82;
             lay_art(commands, lay, assets, &cells, art, paint);
@@ -1514,6 +1790,67 @@ fn lay_marks(
             ModuleCategory::Crew => stamp(commands, centre, g * 0.85, "sprites/roof_marks/hatch_door.png", DARK, 0.35),
             _ => {}
         }
+    }
+}
+
+/// Rooms drawn as one machine the size of the room (AFTERLIGHT_COSMO,
+/// tools/art/gen_part_pieces.py) -- so far reactors, quarters and batteries.
+pub fn piece_kind(t: crate::components::ModuleType) -> Option<&'static str> {
+    use crate::components::ModuleType::*;
+    if !cosmo() {
+        return None;
+    }
+    match t {
+        SmallReactor | StandardReactor | LargeReactor | FusionReactor => Some("reactor"),
+        BasicQuarters | Barracks => Some("quarters"),
+        BatteryBank => Some("battery"),
+        _ => None,
+    }
+}
+
+/// The biggest pieces a room makes: rectangles up to 6 cells long, taken
+/// from its lowest, leftmost cell each time.
+pub fn room_rects(cells: &[IVec2]) -> Vec<(IVec2, IVec2)> {
+    let mut left: HashSet<IVec2> = cells.iter().copied().collect();
+    let mut out = Vec::new();
+    while let Some(start) = left.iter().copied().min_by_key(|c| (c.y, c.x)) {
+        let mut w = 1;
+        while w < 6 && left.contains(&(start + IVec2::new(w, 0))) {
+            w += 1;
+        }
+        let mut h = 1;
+        while h < 6 && (0..w).all(|x| left.contains(&(start + IVec2::new(x, h)))) {
+            h += 1;
+        }
+        for x in 0..w {
+            for y in 0..h {
+                left.remove(&(start + IVec2::new(x, y)));
+            }
+        }
+        out.push((start, IVec2::new(w, h)));
+    }
+    out
+}
+
+/// Lay a room as its pieces: each rectangle one piece of art, drawn long
+/// side across and turned to stand upright where the rectangle does.
+fn lay_pieces(commands: &mut Commands, lay: &Lay, assets: &AssetServer, cells: &[IVec2], kind: &str) {
+    let g = crate::building::GRID_SIZE;
+    for (lo, size) in room_rects(cells) {
+        let (long, short) = (size.x.max(size.y), size.x.min(size.y));
+        let centre = (grid_to_local(lo) + grid_to_local(lo + size - IVec2::ONE)) * 0.5;
+        let turn = if size.y > size.x { std::f32::consts::FRAC_PI_2 } else { 0.0 };
+        commands.spawn((
+            Sprite {
+                image: assets.load(format!("sprites/part_art/{kind}_{long}x{short}.png")),
+                color: Color::WHITE.with_alpha(lay.alpha),
+                custom_size: Some(Vec2::new(long as f32 * g, short as f32 * g)),
+                ..default()
+            },
+            Transform::from_translation(centre.extend(ROOF_Z + 0.02)).with_rotation(Quat::from_rotation_z(turn)),
+            RoofTile(1.0),
+            ChildOf(lay.ship),
+        ));
     }
 }
 
@@ -1662,7 +1999,7 @@ pub fn paint_guns(
         let work = if player.is_some_and(|(p, _)| p == owner) {
             player.and_then(|(_, p)| p).cloned().unwrap_or_default().resolve()
         } else if let Ok(faction) = factions.get(owner) {
-            faction_paint(*faction)
+            ship_paint_for(*faction, owner)
         } else {
             continue;
         };
@@ -1880,7 +2217,7 @@ pub fn update_ai_ship_roofs(
         let (root, key, scars, gt, faction, wrecked, hulls, mods) = stale[(first + i) % stale.len()];
         despawn_on(&mut commands, root);
         let turn = gt.to_scale_rotation_translation().1;
-        lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &faction_paint(*faction), wrecked);
+        lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &ship_paint_for(*faction, root), wrecked);
         commands.entity(root).try_insert(RoofLaid(key));
     }
 }
@@ -1961,7 +2298,7 @@ pub fn update_section_roofs(
             if let Ok(own) = player.get(from.0) {
                 own.cloned().unwrap_or_default().resolve()
             } else if let Ok(faction) = factions.get(from.0) {
-                faction_paint(*faction)
+                ship_paint_for(*faction, from.0)
             } else {
                 ShipPaint::default().resolve()
             }
@@ -2243,6 +2580,17 @@ pub fn update_ai_roofs(
 }
 
 /// The plates printed quieter, for paint.
+/// The weathered plates (AFTERLIGHT_COSMO; tools/art/gen_roof_worn.py), with
+/// the quiet plates' average so plate_mean still holds.
+fn roof_path_worn(material: HullMaterial) -> &'static str {
+    match material {
+        HullMaterial::Steel => "sprites/hull/roof_steel_worn.png",
+        HullMaterial::Titanium => "sprites/hull/roof_titanium_worn.png",
+        HullMaterial::Composite => "sprites/hull/roof_composite_worn.png",
+        HullMaterial::AbyssalAlloy => "sprites/hull/roof_abyssal_worn.png",
+    }
+}
+
 fn roof_path_quiet(material: HullMaterial) -> &'static str {
     match material {
         HullMaterial::Steel => "sprites/hull/roof_steel_quiet.png",
@@ -2292,6 +2640,29 @@ pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTil
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_room_is_cut_into_pieces_that_cover_it_once() {
+        use bevy::math::IVec2;
+        // A 2x4 block, an L, and a lone cell.
+        let mut cells: Vec<IVec2> = (0..2).flat_map(|x| (0..4).map(move |y| IVec2::new(x, y))).collect();
+        cells.extend([IVec2::new(10, 0), IVec2::new(11, 0), IVec2::new(10, 1), IVec2::new(20, 20)]);
+        let rects = super::room_rects(&cells);
+        let mut covered = Vec::new();
+        for (lo, size) in &rects {
+            assert!(size.x >= 1 && size.y >= 1 && size.x <= 6 && size.y <= 6);
+            for x in 0..size.x {
+                for y in 0..size.y {
+                    covered.push(*lo + IVec2::new(x, y));
+                }
+            }
+        }
+        covered.sort_by_key(|c| (c.x, c.y));
+        let mut want = cells.clone();
+        want.sort_by_key(|c| (c.x, c.y));
+        assert_eq!(covered, want);
+        assert!(rects.iter().any(|(_, s)| *s == IVec2::new(2, 4)), "the block is one piece: {rects:?}");
+    }
+
     #[test]
     fn a_step_of_any_height_has_a_width_at_any_zoom() {
         for rise in 1..=12 {

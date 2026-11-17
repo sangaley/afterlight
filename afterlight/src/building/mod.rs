@@ -56,6 +56,7 @@ impl Plugin for BuildingPlugin {
                 (
                     paint_mode::toggle_paint_mode,
                     paint_mode::paint_window_clicks,
+                    paint_mode::decal_window_clicks,
                     paint_mode::drag_picker,
                     paint_mode::paint_tiles,
                     paint_mode::sync_paint_window,
@@ -72,6 +73,7 @@ impl Plugin for BuildingPlugin {
                     .after(bevy::input::InputSystems)
                     .run_if(in_state(GameState::StationDocked)),
             )
+            .add_systems(Update, paint_mode::demo_paint_in_flight.run_if(in_state(GameState::Exploring)))
             .add_systems(OnExit(BuildState::Inactive), paint_mode::spawn_paint_button)
             .add_systems(OnEnter(BuildState::Inactive), paint_mode::despawn_paint_ui)
             .add_systems(OnExit(GameState::StationDocked), paint_mode::despawn_paint_ui)

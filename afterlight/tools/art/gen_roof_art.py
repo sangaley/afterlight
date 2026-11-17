@@ -16,6 +16,7 @@ bold: from the zoom you fly at, a cell is about eleven pixels on screen.
 """
 import math
 import os
+import random
 from PIL import Image, ImageDraw, ImageFilter, ImageStat
 
 CELL = 48          # pixels per cell in the output
@@ -115,6 +116,26 @@ class Piece:
         roof = Image.merge("RGBA", (*rgb.split(), alpha))
         roof.save(os.path.join(OUT, f"{kind}_{self.n}.png"))
         decal.save(os.path.join(OUT, f"{kind}_{self.n}_decal.png"))
+        # The worn piece (AFTERLIGHT_COSMO): the same, grimy and scratched,
+        # brought back to the same average.
+        rng = random.Random(hash(kind) & 0xffff ^ self.n)
+        worn = roof.convert("RGB")
+        g = Image.new("L", (size, size))
+        g.putdata([rng.randint(0, 255) for _ in range(size * size)])
+        g = g.resize((max(2, size // 12),) * 2, Image.BILINEAR).resize((size, size), Image.BICUBIC).filter(ImageFilter.GaussianBlur(2))
+        dirt = Image.new("RGB", (size, size), (20, 18, 16))
+        worn = Image.composite(dirt, worn, g.point(lambda v: int(min(255, max(0, v - 60) * 1.15))))
+        wd = ImageDraw.Draw(worn, "RGBA")
+        for _ in range(int(size / 6)):
+            x, y = rng.uniform(0, size), rng.uniform(0, size)
+            a = rng.uniform(0, math.pi)
+            ln = rng.uniform(2, size / 6)
+            wd.line([(x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln)], fill=(240, 240, 240, 70), width=1)
+        stat = ImageStat.Stat(worn.convert("L"), mask=alpha)
+        k = MEAN * 255 / max(stat.mean[0], 1)
+        worn = worn.point(lambda v: min(255, int(v * k)))
+        worn = Image.merge("RGBA", (*worn.split(), alpha))
+        worn.save(os.path.join(OUT, f"{kind}_{self.n}_worn.png"))
 
 
 def frange(a, b, step):
@@ -285,6 +306,86 @@ def memory(p):
             p.glow("rectangle", p.box(x + 3, y + w - 9, x + w * 0.45, y + w - 6), (90, 230, 255, 255), blur=1.2)
 
 
+# --- Added for the Cosmoteer look: parts that had no art of their own. ----
+
+def sensor(p):
+    """A dish on a turntable, a small array of pickups beside it."""
+    housing(p)
+    p.plate(6, 6, 94, 94, SUNK, raised=False)
+    p.disc(42, 46, 34, RAISED)
+    p.disc(42, 46, 26, SUNK, raised=False)
+    for k in range(3):
+        p.disc(42, 46, 20 - k * 6, FACE if k % 2 == 0 else SUNK, raised=k % 2 == 0, bevel=1.4)
+    p.line([(42, 46), (66, 22)], 3, SHADE)
+    p.disc(42, 46, 5, RAISED)
+    for k in range(3):
+        y = 20 + k * 22
+        p.plate(80, y, 92, y + 14, RAISED, bevel=1.2, radius=1)
+    p.glow("ellipse", p.box(38.5, 42.5, 45.5, 49.5), (90, 220, 255, 255), blur=2.0, core=(220, 250, 255, 255))
+    p.glow("ellipse", p.box(84, 86, 89, 91), (90, 220, 255, 255), blur=1.2)
+
+
+def shield(p):
+    """An emitter coil in a ring, energy showing between the windings."""
+    housing(p)
+    p.plate(6, 6, 94, 94, DEEP, raised=False)
+    p.disc(50, 50, 40, SUNK, raised=False)
+    p.glow("ellipse", p.box(16, 16, 84, 84), (210, 80, 255, 255), blur=5, core=(150, 50, 200, 180))
+    for a in range(0, 360, 30):
+        t = math.radians(a)
+        x0, y0 = 50 + math.cos(t) * 22, 50 + math.sin(t) * 22
+        x1, y1 = 50 + math.cos(t) * 38, 50 + math.sin(t) * 38
+        p.line([(x0, y0), (x1, y1)], 6, RAISED)
+    p.disc(50, 50, 16, RAISED)
+    p.glow("ellipse", p.box(44, 44, 56, 56), (240, 140, 255, 255), blur=2.5, core=(255, 225, 255, 255))
+    for cx, cy in ((10, 10), (90, 10), (10, 90), (90, 90)):
+        p.disc(cx, cy, 4.5, RAISED, bevel=1.2)
+
+
+def launcher(p):
+    """Launch tubes under hatches, hazard paint round the well."""
+    housing(p)
+    p.plate(6, 6, 94, 94, SUNK, raised=False)
+    p.stripes(6, 6, 94, 12, width=4)
+    p.stripes(6, 88, 94, 94, width=4)
+    n = 3 if p.n == 2 else 2
+    w = 80 / n
+    for i in range(n):
+        for j in range(n if p.n == 2 else 1):
+            x = 10 + i * w
+            y = 18 + j * (66 / n) if p.n == 2 else 24
+            h = 66 / n - 4 if p.n == 2 else 52
+            p.plate(x, y, x + w - 4, y + h, RAISED, bevel=1.6, radius=2)
+            p.line([(x + (w - 4) / 2, y + 2), (x + (w - 4) / 2, y + h - 2)], 1.6, SHADE)
+            p.glow("ellipse", p.box(x + 3, y + 3, x + 7, y + 7), (255, 70, 50, 255), blur=1.2)
+
+
+def crane(p):
+    """A boom on a slewing ring, folded down across its cradle."""
+    housing(p)
+    p.plate(6, 6, 94, 94, SUNK, raised=False)
+    p.stripes(6, 6, 18, 94, width=4)
+    p.disc(30, 70, 18, RAISED)
+    p.disc(30, 70, 10, SUNK, raised=False)
+    p.line([(30, 70), (82, 20)], 10, RAISED)
+    p.line([(30, 70), (82, 20)], 3, SHADE)
+    p.disc(82, 20, 7, FACE)
+    p.glow("ellipse", p.box(79, 17, 85, 23), (255, 180, 60, 255), blur=1.4)
+
+
+def containment(p):
+    """A sealed tank behind bars, lit green from inside."""
+    housing(p)
+    p.plate(8, 8, 92, 92, RAISED, radius=4)
+    p.plate(18, 18, 82, 82, DEEP, raised=False, radius=10)
+    p.glow("rounded_rectangle" if hasattr(ImageDraw.ImageDraw, "rounded_rectangle") else "rectangle",
+           p.box(24, 24, 76, 76), (90, 255, 140, 255), blur=4, core=(40, 140, 80, 210))
+    for k in range(5):
+        x = 26 + k * 12
+        p.line([(x, 20), (x, 80)], 3, RAISED)
+    p.rivets(12, 12, 88, 88, step=19)
+
+
 PIECES = {
     "reactor": reactor,
     "battery": battery,
@@ -298,6 +399,11 @@ PIECES = {
     "cooling": cooling,
     "vent": vent,
     "memory": memory,
+    "sensor": sensor,
+    "shield": shield,
+    "launcher": launcher,
+    "crane": crane,
+    "containment": containment,
 }
 
 
