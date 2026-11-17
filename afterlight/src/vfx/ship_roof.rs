@@ -610,7 +610,19 @@ impl Edge {
     }
 
     /// Size, place and shade the strip for this zoom and ship heading.
-    pub fn fit(&self, sprite: &mut Sprite, tf: &mut Transform, zoom: f32, turn: Quat, alpha: f32) {
+    ///
+    /// Takes the sprite and transform behind anything that derefs to them, so
+    /// fit_roofs can hand it Bevy's `Mut`s and only what really moves is marked
+    /// changed. Taking `&mut Sprite` marked every edge changed every frame,
+    /// and every far picture (far_art) was looked over ten times a second.
+    pub fn fit(
+        &self,
+        sprite: &mut impl std::ops::DerefMut<Target = Sprite>,
+        tf: &mut impl std::ops::DerefMut<Target = Transform>,
+        zoom: f32,
+        turn: Quat,
+        alpha: f32,
+    ) {
         let w = self.width(zoom);
         if self.kind == EdgeKind::Cast {
             // The cell's square, slid away from the light (world-fixed, so
@@ -676,7 +688,7 @@ impl Lay {
         // Sized from the start: a sprite spawned at no size has no bounds to
         // draw within, and the renderer never shows it.
         let (mut sprite, mut tf) = (Sprite::default(), Transform::from_translation(at.extend(z)));
-        edge.fit(&mut sprite, &mut tf, self.zoom, self.turn, self.alpha);
+        edge.fit(&mut &mut sprite, &mut &mut tf, self.zoom, self.turn, self.alpha);
         commands.spawn((sprite, tf, RoofTile(1.0), edge, ChildOf(self.ship)));
     }
 
@@ -2029,6 +2041,20 @@ pub fn hide_wreckage_under_roof(
 /// pixels for the zoom, its shade following the light as the ship turns,
 /// and every tile faded with the zoom.
 #[allow(clippy::type_complexity)]
+/// The heading the roof is lit for. Close in it follows the ship exactly.
+/// Out where the far pictures (far_art) stand in, it moves in steps: every
+/// edge's shade and cast shadow changes as a ship turns, and each change
+/// repainted the whole picture, several times a second for every ship on a
+/// turn. That was 40% of a frame beside a big fleet.
+pub fn shading_heading(turn: Quat, zoom: f32) -> Quat {
+    if super::far_art::art_alpha(zoom) <= 0.0 {
+        return turn;
+    }
+    let step = std::f32::consts::PI / 15.0;
+    let angle = turn.to_euler(EulerRot::ZYX).0;
+    Quat::from_rotation_z((angle / step).round() * step)
+}
+
 pub fn fit_roofs(
     camera: Res<CameraState>,
     inside: Res<SeeInside>,
@@ -2043,7 +2069,7 @@ pub fn fit_roofs(
         let Some((alpha, turn)) = *seen.entry(owner).or_insert_with(|| {
             owners.get(owner).ok().map(|(gt, mine, air)| {
                 let alpha = if mine { view.alpha(own_roof_alpha(camera.zoom, &inside, air)) } else { roof_alpha(camera.zoom) };
-                (alpha, gt.to_scale_rotation_translation().1)
+                (alpha, shading_heading(gt.to_scale_rotation_translation().1, camera.zoom))
             })
         }) else {
             continue;
@@ -2292,6 +2318,19 @@ pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTil
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn far_out_the_roof_is_lit_for_a_heading_in_steps() {
+        let close = 1.0;
+        let far = 400.0;
+        assert!(super::super::far_art::art_alpha(far) > 0.0 && super::super::far_art::art_alpha(close) == 0.0);
+        let a = Quat::from_rotation_z(0.25);
+        let b = Quat::from_rotation_z(0.27);
+        assert_eq!(shading_heading(a, close), a);
+        assert_eq!(shading_heading(a, far), shading_heading(b, far));
+        let snapped = shading_heading(Quat::from_rotation_z(1.0), far).to_euler(EulerRot::ZYX).0;
+        assert!((snapped - 1.0).abs() <= std::f32::consts::PI / 30.0 + 1e-4);
+    }
+
     #[test]
     fn a_step_of_any_height_has_a_width_at_any_zoom() {
         for rise in 1..=12 {

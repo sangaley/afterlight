@@ -252,7 +252,6 @@ impl Plugin for ShipPlugin {
                 (
                     subsystems::update_capacitors,
                     subsystems::update_fire_suppression,
-                    subsystems::update_radiation_shielding,
                     subsystems::update_drone_bays,
                     subsystems::apply_torpedo_loader_bonus,
                     subsystems::apply_weapon_power_scaling,

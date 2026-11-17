@@ -77,31 +77,8 @@ pub fn update_fire_suppression(
 // RADIATION SHIELDING — boosts radiation tolerance of adjacent hull segments
 // ============================================================================
 
-/// Radiation shielding modules increase the radiation_shielding of adjacent hull segments.
-/// Applied additively each frame (idempotent because hull segments reset to base each tick).
-pub fn update_radiation_shielding(
-    reinforcements: Query<(&RadiationShieldingComp, &Module), Without<DestroyedModule>>,
-    mut hull_segments: Query<&mut HullSegment>,
-) {
-    // First, reset all hull segments to their base radiation shielding
-    for mut hull in hull_segments.iter_mut() {
-        hull.radiation_shielding = hull.material.radiation_shielding();
-    }
-
-    // Then apply bonuses from active shielding modules
-    for (reinforcement, module) in reinforcements.iter() {
-        if !module.is_active {
-            continue;
-        }
-
-        for mut hull in hull_segments.iter_mut() {
-            let dist = (hull.grid_position - module.grid_position).as_vec2().length();
-            if dist <= 2.5 {
-                hull.radiation_shielding += reinforcement.shielding_bonus;
-            }
-        }
-    }
-}
+// Radiation shielding modules: their bonus is applied with the other hull
+// enhancers (building::multiblock::enhancers::apply_hull_enhancers).
 
 // ============================================================================
 // DRONE BAY — passive repair effect on nearby damaged modules

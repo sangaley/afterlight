@@ -141,35 +141,48 @@ pub fn apply_weapon_enhancers(
 pub fn apply_hull_enhancers(
     module_query: Query<(&Module, &ChildOf), Without<DestroyedModule>>,
     mut hull_query: Query<(&mut HullSegment, &BaseHullStats, &ChildOf)>,
+    shielding: Query<(&RadiationShieldingComp, &Module, &ChildOf), Without<DestroyedModule>>,
 ) {
-    for (mut hull, base, _) in hull_query.iter_mut() {
-        hull.max_health = base.max_health;
-        hull.radiation_shielding = base.radiation_shielding;
-    }
-
-    let enhancers: Vec<(Entity, IVec2, ModuleType)> = module_query.iter()
-        .filter(|(m, _)| m.is_active)
-        .map(|(m, parent)| (parent.parent(), m.grid_position, m.module_type))
+    // Radiation shielding modules add their bonus to the plates within 2.5
+    // cells, on their own ship. (This was ship::subsystems::
+    // update_radiation_shielding, which reset every plate on every ship every
+    // frame and fought this system over the same number.)
+    let shields: Vec<(Entity, IVec2, f32)> = shielding
+        .iter()
+        .filter(|(_, m, _)| m.is_active)
+        .map(|(r, m, parent)| (parent.parent(), m.grid_position, r.shielding_bonus))
         .collect();
-
-    for (ship, pos, module_type) in &enhancers {
-        match module_type {
-            ModuleType::RadiationHardening => {
-                for (mut hull, _, hp) in hull_query.iter_mut() {
-                    if hp.parent() == *ship && is_adjacent(pos, &hull.grid_position) {
-                        hull.radiation_shielding *= 1.50;
-                    }
-                }
-            }
-            ModuleType::HullReinforcePlate | ModuleType::StructuralBrace => {
-                let bonus_mult = if *module_type == ModuleType::HullReinforcePlate { 1.30 } else { 1.25 };
-                for (mut hull, _, hp) in hull_query.iter_mut() {
-                    if hp.parent() == *ship && is_adjacent(pos, &hull.grid_position) {
-                        hull.max_health *= bonus_mult;
-                    }
-                }
-            }
-            _ => {}
+    // Each enhancer's bonus on the four cells beside it, per ship (grid
+    // positions collide across ships), as (radiation, health) multipliers.
+    let mut boost: bevy::platform::collections::HashMap<(Entity, IVec2), (f32, f32)> = Default::default();
+    for (m, parent) in module_query.iter().filter(|(m, _)| m.is_active) {
+        let (rad, hp) = match m.module_type {
+            ModuleType::RadiationHardening => (1.50, 1.0),
+            ModuleType::HullReinforcePlate => (1.0, 1.30),
+            ModuleType::StructuralBrace => (1.0, 1.25),
+            _ => continue,
+        };
+        for step in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
+            let cell = boost.entry((parent.parent(), m.grid_position + step)).or_insert((1.0, 1.0));
+            cell.0 *= rad;
+            cell.1 *= hp;
+        }
+    }
+    // Written only where it differs: writing every tile every frame marked
+    // every hull block on every ship changed, and the far pictures
+    // (vfx::far_art) re-read a whole fleet ten times a second for it.
+    for (mut hull, base, parent) in hull_query.iter_mut() {
+        let (rad, hp) = boost.get(&(parent.parent(), hull.grid_position)).copied().unwrap_or((1.0, 1.0));
+        let ship = parent.parent();
+        let added: f32 = shields
+            .iter()
+            .filter(|(on, at, _)| *on == ship && (hull.grid_position - *at).as_vec2().length() <= 2.5)
+            .map(|(.., bonus)| bonus)
+            .sum();
+        let (max_health, shielding) = (base.max_health * hp, base.radiation_shielding * rad + added);
+        if hull.max_health != max_health || hull.radiation_shielding != shielding {
+            hull.max_health = max_health;
+            hull.radiation_shielding = shielding;
         }
     }
 }
@@ -314,4 +327,66 @@ pub fn afterburner_system(
 fn is_adjacent(a: &IVec2, b: &IVec2) -> bool {
     let diff = *a - *b;
     (diff.x.abs() + diff.y.abs()) == 1
+}
+
+#[cfg(test)]
+mod hull_enhancer_tests {
+    use super::*;
+
+    fn hull(world: &mut World, ship: Entity, cell: IVec2) -> Entity {
+        world
+            .spawn((
+                HullSegment {
+                    health: 100.0,
+                    max_health: 100.0,
+                    radiation_shielding: 0.2,
+                    is_depressurized: false,
+                    depressurization_level: 0.0,
+                    hull_layer: HullLayer::Inner,
+                    material: HullMaterial::default(),
+                    grid_position: cell,
+                },
+                BaseHullStats { max_health: 100.0, radiation_shielding: 0.2 },
+                ChildOf(ship),
+            ))
+            .id()
+    }
+
+    #[test]
+    fn a_plate_beside_a_reinforcer_is_stronger_and_nothing_is_touched_twice() {
+        let mut world = World::new();
+        let ship = world.spawn_empty().id();
+        let other = world.spawn_empty().id();
+        world.spawn((
+            Module {
+                module_type: ModuleType::HullReinforcePlate,
+                health: 50.0,
+                max_health: 50.0,
+                power_consumption: 0.0,
+                power_generation: 0.0,
+                is_active: true,
+                grid_position: IVec2::ZERO,
+                size: IVec2::ONE,
+                rotation: Rotation::North,
+            },
+            ChildOf(ship),
+        ));
+        let beside = hull(&mut world, ship, IVec2::X);
+        let apart = hull(&mut world, ship, IVec2::new(2, 0));
+        let other_ship = hull(&mut world, other, IVec2::X);
+        let mut schedule = Schedule::default();
+        schedule.add_systems(apply_hull_enhancers);
+        schedule.run(&mut world);
+        assert!((world.get::<HullSegment>(beside).unwrap().max_health - 130.0).abs() < 1e-3);
+        assert_eq!(world.get::<HullSegment>(apart).unwrap().max_health, 100.0);
+        assert_eq!(world.get::<HullSegment>(other_ship).unwrap().max_health, 100.0);
+
+        // A second frame with nothing new must leave every plate unchanged,
+        // or everything watching for changed blocks redoes its work.
+        world.clear_trackers();
+        schedule.run(&mut world);
+        let mut changed = world.query_filtered::<Entity, Changed<HullSegment>>();
+        assert_eq!(changed.iter(&world).count(), 0);
+        assert!((world.get::<HullSegment>(beside).unwrap().max_health - 130.0).abs() < 1e-3);
+    }
 }
