@@ -5,6 +5,7 @@ pub mod block_visuals;
 pub mod hull_seams;
 pub mod ship_roof;
 pub mod warp_light;
+pub mod roof_wear;
 pub mod paint_gen;
 pub mod far_view;
 pub mod far_art;
@@ -99,6 +100,15 @@ impl Plugin for VfxPlugin {
                     .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),
             )
             .init_resource::<ship_roof::SeeInside>()
+            // Hits that don't break a block still mark the roof over it.
+            .init_resource::<roof_wear::WearImages>()
+            .add_systems(
+                Update,
+                roof_wear::wear_roofs
+                    .after(ship_roof::update_ai_ship_roofs)
+                    .run_if(in_state(GameState::Exploring).or_else(in_state(GameState::StationDocked))),
+            )
+            .add_systems(Update, roof_wear::fade_wear.after(roof_wear::wear_roofs))
             // The warp seen from outside (vfx::warp_light).
             .init_resource::<warp_light::WarpLight>()
             .add_systems(Update, (warp_light::warp_dash_test_hook, warp_light::warp_light).chain().run_if(in_state(GameState::Exploring)))

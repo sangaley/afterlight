@@ -440,6 +440,9 @@ pub fn cut_test_hook(
 /// seconds, knock a small crater (a block or two each way) out of the nearest
 /// AI ship -- or your own with AFTERLIGHT_SHOOT=player -- the way rounds do:
 /// health to zero, and the game's own damage systems take it from there.
+/// AFTERLIGHT_SHOOT_LEAVE=<0..1>: leave the blocks that much health instead,
+/// over a wider splash (hits that don't break anything), the inner blocks
+/// harder hit than the rim.
 pub fn shoot_hook_on() -> bool {
     std::env::var_os("AFTERLIGHT_SHOOT_AT").is_some()
 }
@@ -475,16 +478,25 @@ pub fn shoot_test_hook(
     // A fixed scatter, so a film shows the same craters every time.
     *shots += 1;
     let pick = cells[(*shots as usize * 7919) % cells.len()];
+    let leave = std::env::var("AFTERLIGHT_SHOOT_LEAVE").ok().and_then(|v| v.parse::<f32>().ok());
+    let reach = if leave.is_some() { 2 } else { 1 };
+    let left = |d: i32, max: f32| match leave {
+        // The middle of the splash takes the most.
+        Some(l) => (max * (l + (1.0 - l) * d as f32 * 0.35)).min(max * 0.97),
+        None => 0.0,
+    };
     let mut hit = 0;
     for child in children.iter() {
         if let Ok(mut h) = hulls.get_mut(child) {
-            if (h.grid_position - pick).abs().max_element() <= 1 {
-                h.health = 0.0;
+            let d = (h.grid_position - pick).abs().max_element();
+            if d <= reach {
+                h.health = h.health.min(left(d, h.max_health));
                 hit += 1;
             }
         } else if let Ok(mut m) = modules.get_mut(child) {
-            if (m.grid_position - pick).abs().max_element() <= 1 {
-                m.health = 0.0;
+            let d = (m.grid_position - pick).abs().max_element();
+            if d <= reach {
+                m.health = m.health.min(left(d, m.max_health));
                 hit += 1;
             }
         }
