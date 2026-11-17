@@ -32,7 +32,9 @@ use crate::components::Ship;
 use crate::events::{NotificationType, ShowNotification};
 use crate::states::BuildState;
 use crate::ui::theme::{Sheet, ThemeColors, ThemeFonts};
-use crate::vfx::ship_roof::{scheme_named, ShipPaint, Slot};
+use crate::components::{HullSegment, Module};
+use crate::vfx::paint_gen;
+use crate::vfx::ship_roof::{scheme_named, ship_cells, Decal, DecalShape, ShipPaint, Slot};
 
 /// The key that turns paint mode on and off in the builder.
 pub const PAINT_KEY: KeyCode = KeyCode::KeyN;
@@ -60,6 +62,12 @@ pub struct PaintMode {
     pub typing: Option<String>,
     /// The wheel or brightness bar being dragged.
     pub dragging: Option<Drag>,
+    /// Painting decals (shapes over the tiles) rather than tiles.
+    pub decals: bool,
+    /// The decal brush: its shape, quarter turns (R), and layer 1-3.
+    pub shape: DecalShape,
+    pub turn: u8,
+    pub layer: u8,
 }
 
 impl Default for PaintMode {
@@ -74,6 +82,10 @@ impl Default for PaintMode {
             recent: Vec::new(),
             typing: None,
             dragging: None,
+            decals: false,
+            shape: DecalShape::Diagonal,
+            turn: 0,
+            layer: 1,
         }
     }
 }
@@ -294,6 +306,18 @@ pub struct PaintHexText;
 pub struct PaintRgbText;
 #[derive(Component)]
 pub struct PaintCountText;
+/// Tiles or decals.
+#[derive(Component)]
+pub struct PaintTabButton(bool);
+#[derive(Component)]
+pub struct PaintShapeButton(DecalShape);
+/// A shape button's picture, tinted with the brush colour.
+#[derive(Component)]
+pub struct PaintShapeIcon;
+#[derive(Component)]
+pub struct PaintLayerButton(u8);
+#[derive(Component)]
+pub struct PaintLayerEye(u8);
 
 const WHEEL: f32 = 112.0;
 const BAR_W: f32 = 16.0;
@@ -361,6 +385,8 @@ pub fn toggle_paint_mode(
     ships: Query<(Entity, Has<ShipPaint>), With<Ship>>,
     toggles: Query<&Interaction, (Changed<Interaction>, With<PaintToggleButton>)>,
     mut notifications: MessageWriter<ShowNotification>,
+    hull: Query<(&HullSegment, &ChildOf)>,
+    modules: Query<(&Module, &ChildOf)>,
 ) {
     if *state.get() == BuildState::Inactive {
         if paint.on {
@@ -383,6 +409,14 @@ pub fn toggle_paint_mode(
             // AFTERLIGHT_PAINT_DEMO=1 (filming): a few tiles brushed by hand
             // -- a trim stripe down the middle, second-colour bars, and tiles
             // in colours of their own -- as a player might.
+            if starts_in_livery() {
+                roll_livery(&mut fresh, demo_seed(), &own_cells(ship, &hull, &modules));
+            }
+            if std::env::var("AFTERLIGHT_PAINT_DEMO").ok().as_deref() == Some("2") {
+                paint.decals = true;
+                paint.own = [170, 44, 28];
+                paint.shape = DecalShape::Slash;
+            }
             if std::env::var("AFTERLIGHT_PAINT_DEMO").ok().as_deref() == Some("1") {
                 paint.recent = PALETTE[12..18].to_vec();
                 for x in -30i32..30 {
@@ -574,6 +608,39 @@ pub fn paint_tiles(
         }
         return;
     }
+    if paint.decals {
+        let decal = Decal { cell, shape: paint.shape, turn: paint.turn, flip: false, colour: paint.own, layer: paint.layer };
+        let mut put = vec![decal];
+        if symmetry.enabled {
+            let m = super::symmetry::mirror_position(cell);
+            if m != cell {
+                put.push(decal.mirrored(m));
+            }
+        }
+        let mut painted = false;
+        for d in put {
+            let at = ship_paint.decals.iter().position(|e| e.cell == d.cell && e.layer == d.layer);
+            match (at, right) {
+                (Some(i), true) => {
+                    ship_paint.decals.remove(i);
+                }
+                (Some(i), false) if ship_paint.decals[i] != d => {
+                    ship_paint.decals[i] = d;
+                    painted = true;
+                }
+                (None, false) => {
+                    ship_paint.decals.push(d);
+                    painted = true;
+                }
+                _ => {}
+            }
+        }
+        if painted {
+            let own = paint.own;
+            paint.remember(own);
+        }
+        return;
+    }
     let want = if right {
         None
     } else {
@@ -667,16 +734,23 @@ pub fn paint_window_clicks(
         if let Some(s) = swatch {
             paint.set(&mut ship_paint, s.0, None);
         }
-        if let Some(name) = scheme {
-            let slots = std::mem::take(&mut ship_paint.slots);
+        if let Some(name) = scheme.filter(|n| n.0 != "random") {
+            let (slots, decals, hidden) = (std::mem::take(&mut ship_paint.slots), std::mem::take(&mut ship_paint.decals), ship_paint.hidden);
             *ship_paint = ShipPaint::from_scheme(scheme_named(name.0));
             ship_paint.slots = slots;
+            ship_paint.decals = decals;
+            ship_paint.hidden = hidden;
         }
         if warm {
             ship_paint.warm = !ship_paint.warm;
         }
         if clear {
-            ship_paint.slots.clear();
+            if paint.decals {
+                let layer = paint.layer;
+                ship_paint.decals.retain(|d| d.layer != layer);
+            } else {
+                ship_paint.slots.clear();
+            }
         }
     }
 }
@@ -691,6 +765,11 @@ pub struct Layout {
     warm: bool,
     typing: bool,
     recent: Vec<[u8; 3]>,
+    decals: bool,
+    shape: DecalShape,
+    turn: u8,
+    layer: u8,
+    hidden: u8,
 }
 
 /// Show the paint window while paint mode is on.
@@ -699,13 +778,25 @@ pub fn sync_paint_window(
     paint: Res<PaintMode>,
     ships: Query<&ShipPaint, With<Ship>>,
     open: Query<Entity, With<PaintWindow>>,
+    assets: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut picker: Local<Option<PickerImages>>,
     mut laid: Local<Option<Layout>>,
 ) {
     let ship_paint = ships.single().ok();
     let want = match (paint.on, ship_paint) {
-        (true, Some(p)) => Some(Layout { brush: paint.brush, editing: paint.editing, warm: p.warm, typing: paint.typing.is_some(), recent: paint.recent.clone() }),
+        (true, Some(p)) => Some(Layout {
+            brush: paint.brush,
+            editing: paint.editing,
+            warm: p.warm,
+            typing: paint.typing.is_some(),
+            recent: paint.recent.clone(),
+            decals: paint.decals,
+            shape: paint.shape,
+            turn: paint.turn,
+            layer: paint.layer,
+            hidden: p.hidden,
+        }),
         _ => None,
     };
     if want == *laid && want.is_some() == !open.is_empty() {
@@ -717,7 +808,7 @@ pub fn sync_paint_window(
     *laid = want.clone();
     let (Some(_), Some(ship_paint)) = (want, ship_paint) else { return };
     let pics = picker.get_or_insert_with(|| PickerImages::make(&mut images)).clone();
-    spawn_paint_window(&mut commands, &paint, ship_paint, &pics);
+    spawn_paint_window(&mut commands, &paint, ship_paint, &pics, &assets);
 }
 
 /// Keep the window's colours, marks and numbers up to date.
@@ -799,7 +890,11 @@ pub fn live_paint_window(
         } else if is_rgb {
             format!("RGB {} {} {}", current[0], current[1], current[2])
         } else if is_count {
-            format!("{} tiles painted by hand", ship.slots.len())
+            if paint.decals {
+                format!("{} decals ({} on layer {})", ship.decals.len(), ship.decals.iter().filter(|d| d.layer == paint.layer).count(), paint.layer)
+            } else {
+                format!("{} tiles painted by hand", ship.slots.len())
+            }
         } else {
             continue;
         };
@@ -854,7 +949,7 @@ fn button_node(width: f32, height: f32, picked: bool) -> impl Bundle {
     )
 }
 
-fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &ShipPaint, pics: &PickerImages) {
+fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &ShipPaint, pics: &PickerImages, assets: &AssetServer) {
     let row = || Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(4.0), flex_wrap: FlexWrap::Wrap, row_gap: Val::Px(4.0), ..default() };
     // A tight shadow: the labels sit on any colour the player picks.
     let shadowed = |text: &str| {
@@ -880,11 +975,43 @@ fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &S
             PaintWindow,
         ))
         .with_children(|w| {
-            w.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(8.0), align_items: AlignItems::Baseline, ..default() }).with_children(|t| {
-                t.spawn(label("PAINT", ThemeFonts::BODY, Sheet::TITLE));
-                t.spawn(label("BRUSH", ThemeFonts::CAPTION, Sheet::LABEL));
+            w.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), align_items: AlignItems::Center, ..default() }).with_children(|t| {
+                t.spawn((label("PAINT", ThemeFonts::BODY, Sheet::TITLE), Node { margin: UiRect::right(Val::Px(6.0)), ..default() }));
+                for (decals, name) in [(false, "Tiles"), (true, "Decals")] {
+                    t.spawn((button_node(72.0, 22.0, paint.decals == decals), BackgroundColor(Sheet::ROW_PICKED), PaintTabButton(decals))).with_children(|b| {
+                        b.spawn(label(name, ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
+                    });
+                }
             });
-            w.spawn(row()).with_children(|r| {
+            if paint.decals {
+                // Decals: the shape, turned with R, and which layer it goes on.
+                w.spawn(label("SHAPE  (R turns it)", ThemeFonts::CAPTION, Sheet::LABEL));
+                w.spawn(Node { column_gap: Val::Px(4.0), row_gap: Val::Px(4.0), ..row() }).with_children(|r| {
+                    for shape in DecalShape::ALL {
+                        r.spawn((button_node(41.0, 27.0, paint.shape == shape), BackgroundColor(Color::srgb(0.07, 0.08, 0.11)), PaintShapeButton(shape))).with_children(|b| {
+                            b.spawn((
+                                Node { width: Val::Px(22.0), height: Val::Px(22.0), ..default() },
+                                ImageNode::new(assets.load(shape.path())).with_color(colour8(paint.own)),
+                                UiTransform { rotation: Rot2::radians(-(paint.turn as f32) * std::f32::consts::FRAC_PI_2), ..default() },
+                                PaintShapeIcon,
+                            ));
+                        });
+                    }
+                });
+                w.spawn(label("LAYER  (the eye shows or hides it)", ThemeFonts::CAPTION, Sheet::LABEL));
+                w.spawn(row()).with_children(|r| {
+                    for layer in 1..=3u8 {
+                        let shown = ship_paint.hidden & (1 << (layer - 1)) == 0;
+                        r.spawn((button_node(56.0, 22.0, paint.layer == layer), BackgroundColor(Sheet::ROW_PICKED), PaintLayerButton(layer))).with_children(|b| {
+                            b.spawn(label(format!("Layer {layer}"), ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
+                        });
+                        r.spawn((button_node(26.0, 22.0, false), BackgroundColor(if shown { Sheet::ROW_PICKED } else { Color::srgb(0.05, 0.05, 0.07) }), PaintLayerEye(layer))).with_children(|b| {
+                            b.spawn(label(if shown { "o" } else { "-" }, ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
+                        });
+                    }
+                });
+            }
+            w.spawn(Node { display: if paint.decals { Display::None } else { Display::Flex }, ..row() }).with_children(|r| {
                 let brushes = [
                     (Brush::Own, "Colour", 56.0),
                     (Brush::Paint(Slot::Main), "Main", 38.0),
@@ -901,9 +1028,10 @@ fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &S
                 }
             });
 
-            // Which colour the picker sets.
-            w.spawn(label("PICKING THE COLOUR OF", ThemeFonts::CAPTION, Sheet::LABEL));
-            w.spawn(row()).with_children(|r| {
+            // Which colour the picker sets (decals take the brush colour).
+            let tiles_only = || Node { display: if paint.decals { Display::None } else { Display::Flex }, ..default() };
+            w.spawn((label("PICKING THE COLOUR OF", ThemeFonts::CAPTION, Sheet::LABEL), tiles_only()));
+            w.spawn(Node { display: if paint.decals { Display::None } else { Display::Flex }, ..row() }).with_children(|r| {
                 for channel in [Channel::Own, Channel::Main, Channel::Second, Channel::Trim] {
                     r.spawn((button_node(64.0, 22.0, paint.editing == channel), BackgroundColor(Sheet::ROW_PICKED), PaintChannelButton(channel)))
                         .with_children(|b| {
@@ -998,8 +1126,8 @@ fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &S
             }
 
             w.spawn(row()).with_children(|r| {
-                for (name, key) in [("Salvager", "salvager"), ("Raider", "raider"), ("Navy", "navy")] {
-                    r.spawn((button_node(87.0, 22.0, false), BackgroundColor(Sheet::ROW_PICKED), PaintSchemeButton(key)))
+                for (name, key) in [("Salvager", "salvager"), ("Raider", "raider"), ("Navy", "navy"), ("Random", "random")] {
+                    r.spawn((button_node(64.0, 22.0, false), BackgroundColor(Sheet::ROW_PICKED), PaintSchemeButton(key)))
                         .with_children(|b| {
                             b.spawn(label(name, ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
                         });
@@ -1010,16 +1138,136 @@ fn spawn_paint_window(commands: &mut Commands, paint: &PaintMode, ship_paint: &S
                     b.spawn(label(if ship_paint.warm { "Warm rooms: on" } else { "Warm rooms: off" }, ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
                 });
                 r.spawn((button_node(133.0, 22.0, false), BackgroundColor(Sheet::ROW_PICKED), PaintClearButton)).with_children(|b| {
-                    b.spawn(label("Clear hand paint", ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
+                    b.spawn(label(if paint.decals { format!("Clear layer {}", paint.layer) } else { "Clear hand paint".to_string() }, ThemeFonts::CAPTION, ThemeColors::TEXT_PRIMARY));
                 });
             });
             let full = || Node { width: Val::Px(270.0), ..default() };
             w.spawn((label("", ThemeFonts::CAPTION, ThemeColors::TEXT_SECONDARY), PaintCountText, full()));
             w.spawn((
-                label("Drag: paint.  Right-click: auto.\nAlt+click: take a tile's colour.\nY: mirror.  N: leave.", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED),
+                label(
+                    if paint.decals { "Click: place.  Right-click: remove (this layer).\nR: turn.  Y: mirror.  N: leave." } else { "Drag: paint.  Right-click: auto.\nAlt+click: take a tile's colour.\nY: mirror.  N: leave." },
+                    ThemeFonts::CAPTION,
+                    ThemeColors::TEXT_MUTED,
+                ),
                 full(),
             ));
         });
+}
+
+/// The decal side of the paint window: tabs, shapes, layers and their eyes,
+/// and R to turn the shape.
+#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity)]
+pub fn decal_window_clicks(
+    mut paint: ResMut<PaintMode>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut ships: Query<(Entity, &mut ShipPaint), With<Ship>>,
+    clicks: Query<
+        (&Interaction, Option<&PaintTabButton>, Option<&PaintShapeButton>, Option<&PaintLayerButton>, Option<&PaintLayerEye>, Option<&PaintSchemeButton>),
+        Changed<Interaction>,
+    >,
+    mut icons: Query<&mut ImageNode, With<PaintShapeIcon>>,
+    hull: Query<(&HullSegment, &ChildOf)>,
+    modules: Query<(&Module, &ChildOf)>,
+) {
+    if !paint.on {
+        return;
+    }
+    if paint.decals && paint.typing.is_none() && keyboard.just_pressed(KeyCode::KeyR) {
+        paint.turn = (paint.turn + 1) % 4;
+    }
+    for (interaction, tab, shape, layer, eye, scheme) in clicks.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let Some(t) = tab {
+            paint.decals = t.0;
+            if t.0 {
+                paint.editing = Channel::Own;
+            }
+        }
+        if let Some(s) = shape {
+            paint.shape = s.0;
+        }
+        if let Some(l) = layer {
+            paint.layer = l.0;
+        }
+        if let Some(e) = eye {
+            if let Ok((_, mut ship_paint)) = ships.single_mut() {
+                ship_paint.hidden ^= 1 << (e.0 - 1);
+            }
+        }
+        // Random: a livery of its own -- palette and pattern -- every press.
+        if scheme.is_some_and(|s| s.0 == "random") {
+            if let Ok((ship, mut ship_paint)) = ships.single_mut() {
+                let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0);
+                roll_livery(&mut ship_paint, seed, &own_cells(ship, &hull, &modules));
+            }
+        }
+    }
+    // The shape buttons wear the brush colour.
+    let tint = colour8(paint.own);
+    for mut icon in &mut icons {
+        if icon.color != tint {
+            icon.color = tint;
+        }
+    }
+}
+
+/// Your ship's cells, for a livery laid over its shape.
+fn own_cells(ship: Entity, hull: &Query<(&HullSegment, &ChildOf)>, modules: &Query<(&Module, &ChildOf)>) -> bevy::platform::collections::HashSet<IVec2> {
+    let h: Vec<&HullSegment> = hull.iter().filter(|(_, p)| p.parent() == ship).map(|(h, _)| h).collect();
+    let m: Vec<&Module> = modules.iter().filter(|(_, p)| p.parent() == ship).map(|(m, _)| m).collect();
+    ship_cells(&h, &m)
+}
+
+/// A generated livery (vfx::paint_gen) on your ship: its palette for the
+/// three paints and its pattern in decals, replacing the decals it had.
+/// Tiles painted by hand stay.
+pub fn roll_livery(paint: &mut ShipPaint, seed: u64, cells: &bevy::platform::collections::HashSet<IVec2>) {
+    let palette = paint_gen::palette(seed);
+    let s = palette.scheme();
+    paint.main = s.main.to_array();
+    paint.second = s.second.to_array();
+    paint.trim = s.trim.to_array();
+    paint.warm = false;
+    paint.decals = paint_gen::livery_decals(seed, &palette, cells);
+    paint.hidden = 0;
+}
+
+/// Your ship's livery until you paint it: by default livery 8 -- ice blue
+/// plating, cyan flanks and a white pinstripe, the one picked from the
+/// first preview. AFTERLIGHT_PAINT_SEED picks another (filming).
+fn demo_seed() -> u64 {
+    std::env::var("AFTERLIGHT_PAINT_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(8)
+}
+
+/// Whether your ship starts in a generated livery: with the Cosmoteer look,
+/// or AFTERLIGHT_PAINT_DEMO=2.
+fn starts_in_livery() -> bool {
+    crate::vfx::ship_roof::cosmo() || std::env::var("AFTERLIGHT_PAINT_DEMO").ok().as_deref() == Some("2")
+}
+
+/// In flight, a ship never painted wears its starting livery (`demo_seed`)
+/// when `starts_in_livery`. Painted once, it keeps its own paint.
+pub fn demo_paint_in_flight(
+    mut commands: Commands,
+    ships: Query<Entity, (With<Ship>, Without<ShipPaint>)>,
+    hull: Query<(&HullSegment, &ChildOf)>,
+    modules: Query<(&Module, &ChildOf)>,
+) {
+    if !starts_in_livery() {
+        return;
+    }
+    for ship in &ships {
+        let cells = own_cells(ship, &hull, &modules);
+        if cells.is_empty() {
+            continue;
+        }
+        let mut paint = ShipPaint::default();
+        roll_livery(&mut paint, demo_seed(), &cells);
+        commands.entity(ship).insert(paint);
+    }
 }
 
 /// The Paint button, beside the build panel's hints: paint mode for those
