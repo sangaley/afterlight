@@ -13,7 +13,7 @@ at once on the 8 GB Mac; start the next job when one finishes.
 Paint: every faction from its in-game livery (refit.py LIVERY). Story: each brief carries the
 faction's lore from space-empire-story-bible.md and capital_worlds.rs.
 
-Status 2026-11-18 later: merchants_v5b and choir_v5b done + committed (e850519); preserve_v5b, compact_v5a, compact_v5b, gilded_v5a, synthesis_v5a, corpse_v5a, corpse_v5b, synthesis_v5b, terran_v5a, gilded_v5b, terran_v5b, eternal_v5a done. Running: eternal_v5b, shepherd_v5a, shepherd_v5b.
+Status 2026-11-18: ALL DRAWING DONE and committed (12 factions, ~260 ships). Refit done for all. Renders running (render_stream.sh in the session scratchpad, out/<slug>). Next: site.py (all factions), publish in two batches (file limit 255/publish), user verdicts. RK verdicts: 17 approved; hive, parliament, sierpinski, spiral unreviewed. Open: RK Ram shares a name with the approved Shepherd Ram (rename the RK one before integration).
 Left to launch: none.
 
 ## Done (older notes)
