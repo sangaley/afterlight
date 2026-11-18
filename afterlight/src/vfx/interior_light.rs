@@ -26,27 +26,34 @@ pub fn gain() -> f32 {
 #[derive(Component)]
 pub struct Lifted(Color);
 
-fn lift(c: Color, g: f32) -> Color {
+fn lift(c: Color, g: Vec3) -> Color {
     let l = c.to_linear();
-    Color::LinearRgba(LinearRgba::new(l.red * g, l.green * g, l.blue * g, l.alpha))
+    Color::LinearRgba(LinearRgba::new(l.red * g.x, l.green * g.y, l.blue * g.z, l.alpha))
 }
 
 #[allow(clippy::type_complexity)]
 pub fn light_interiors(
     mut commands: Commands,
-    mut blocks: Query<(Entity, &mut BaseSpriteColor, &mut Sprite, Option<&Lifted>), (Changed<BaseSpriteColor>, Or<(With<HullSegment>, With<Module>)>)>,
+    mut blocks: Query<(Entity, &mut BaseSpriteColor, &mut Sprite, Option<&Lifted>, Option<&Module>), (Changed<BaseSpriteColor>, Or<(With<HullSegment>, With<Module>)>)>,
 ) {
     let g = gain();
     if (g - 1.0).abs() < 1e-3 {
         return;
     }
-    for (entity, mut base, mut sprite, lifted) in &mut blocks {
+    for (entity, mut base, mut sprite, lifted, module) in &mut blocks {
         if lifted.is_some_and(|l| l.0 == base.0) {
             continue;
         }
-        let new = lift(base.0, g);
+        // A module's plate leans toward its system's light (vfx::deck), so
+        // its room reads as a zone of its own.
+        let tint = module.and_then(|m| super::deck::room_tint(m.module_type)).map_or(Vec3::ONE, |c| {
+            let l = c.to_linear();
+            Vec3::new(l.red, l.green, l.blue)
+        });
+        let gv = Vec3::splat(g) * tint;
+        let new = lift(base.0, gv);
         base.0 = new;
-        sprite.color = lift(sprite.color, g);
+        sprite.color = lift(sprite.color, gv);
         commands.entity(entity).try_insert(Lifted(new));
     }
 }

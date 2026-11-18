@@ -19,7 +19,7 @@ OUT = Path(__file__).resolve().parents[2] / "assets/sprites/path_light"
 
 def save(rgba: np.ndarray, name: str) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8), "RGBA").save(OUT / name)
+    Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8)).save(OUT / name)
 
 
 def post(n: int = 48) -> np.ndarray:
@@ -57,3 +57,34 @@ if __name__ == "__main__":
     save(pool(), "pool.png")
     save(strip(), "strip.png")
     print("wrote", OUT)
+
+
+# --- Deck variation (src/vfx/deck.rs) -----------------------------------
+
+def runner(n: int = 64) -> np.ndarray:
+    """A corridor's centre lane, running along x: a darker inset band with a
+    worn, lighter line down each edge. Tinted and faded in game."""
+    y, x = np.mgrid[0:n, 0:n] + 0.5
+    d = np.abs(y - n / 2) / (n / 2)  # 0 at the lane's centre, 1 at the cell edge
+    band = np.clip((0.42 - d) * 30, 0, 1)
+    edge = np.clip(1 - np.abs(d - 0.42) * 40, 0, 1)
+    v = 255 * edge  # the edges light, the band dark
+    a = np.maximum(band * 0.85, edge * 0.6)
+    return np.dstack([v, v, v, a * 255])
+
+
+def shade(w: int = 64, h: int = 24) -> np.ndarray:
+    """Shadow at the foot of a wall: dark at row 0 (the wall), gone by the
+    bottom."""
+    y, x = np.mgrid[0:h, 0:w] + 0.5
+    a = np.clip(1 - y / h, 0, 1) ** 1.8
+    z = np.zeros_like(a)
+    return np.dstack([z, z, z, a * 255])
+
+
+if __name__ == "__main__":
+    out = Path(__file__).resolve().parents[2] / "assets/sprites/deck"
+    out.mkdir(parents=True, exist_ok=True)
+    for name, img in (("runner.png", runner()), ("shade.png", shade())):
+        Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).save(out / name)
+    print("wrote", out)

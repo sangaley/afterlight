@@ -10,6 +10,7 @@ pub mod paint_gen;
 pub mod interior_light;
 pub mod module_glow;
 pub mod path_lights;
+pub mod deck;
 pub mod far_view;
 pub mod far_art;
 pub mod block_height;
@@ -81,6 +82,8 @@ impl Plugin for VfxPlugin {
             .add_systems(Update, (module_glow::add_module_glow, module_glow::put_out_module_glow))
             // Path lights at the walkways' turns and junctions.
             .add_systems(Update, path_lights::lay_path_lights)
+            // Corridors, open deck and rooms told apart.
+            .add_systems(Update, deck::lay_deck)
             // Zoomed out, the ship shows plating instead of its insides.
             .add_systems(
                 Update,
