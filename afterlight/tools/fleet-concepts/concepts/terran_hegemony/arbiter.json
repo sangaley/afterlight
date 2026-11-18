@@ -4,6 +4,14 @@
   {
    "grid_pos": [
     -34,
+    -13
+   ],
+   "layer": "Outer",
+   "material": "Titanium"
+  },
+  {
+   "grid_pos": [
+    -34,
     -12
    ],
    "layer": "Outer",
@@ -28,6 +36,22 @@
   {
    "grid_pos": [
     -34,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Titanium"
+  },
+  {
+   "grid_pos": [
+    -34,
+    9
+   ],
+   "layer": "Outer",
+   "material": "Titanium"
+  },
+  {
+   "grid_pos": [
+    -34,
     10
    ],
    "layer": "Outer",
@@ -45,6 +69,14 @@
    "grid_pos": [
     -34,
     12
+   ],
+   "layer": "Outer",
+   "material": "Titanium"
+  },
+  {
+   "grid_pos": [
+    -34,
+    13
    ],
    "layer": "Outer",
    "material": "Titanium"
@@ -462,7 +494,7 @@
     -28,
     -11
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Titanium"
   },
   {
@@ -590,7 +622,7 @@
     -28,
     11
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Titanium"
   },
   {
@@ -7852,6 +7884,38 @@
    "rotation": "North"
   },
   {
+   "module_type": "LargeEngine",
+   "grid_pos": [
+    -34,
+    13
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "LargeEngine",
+   "grid_pos": [
+    -34,
+    11
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "LargeEngine",
+   "grid_pos": [
+    -34,
+    -10
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "LargeEngine",
+   "grid_pos": [
+    -34,
+    -12
+   ],
+   "rotation": "East"
+  },
+  {
    "module_type": "Gatling",
    "grid_pos": [
     -22,
@@ -7882,22 +7946,6 @@
     11
    ],
    "rotation": "North"
-  },
-  {
-   "module_type": "LargeEngine",
-   "grid_pos": [
-    -34,
-    12
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "LargeEngine",
-   "grid_pos": [
-    -34,
-    -11
-   ],
-   "rotation": "East"
   },
   {
    "module_type": "BasicQuarters",
@@ -8156,10 +8204,194 @@
    "rotation": "North"
   },
   {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -25,
+    8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -25,
+    -8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -30,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -22,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -22,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -25,
+    -6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -25,
+    6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -30,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -21,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    7,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -19,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    9,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    9,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    10,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    3,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    10,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    5,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -21,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    3,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    7,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -19,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    5,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
    "module_type": "OxygenScrubber",
    "grid_pos": [
     -10,
     1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -28,
+    -11
    ],
    "rotation": "North"
   },
@@ -8270,8 +8502,8 @@
   {
    "module_type": "OxygenScrubber",
    "grid_pos": [
-    -30,
-    -12
+    -28,
+    11
    ],
    "rotation": "North"
   },
@@ -8318,14 +8550,6 @@
   {
    "module_type": "OxygenScrubber",
    "grid_pos": [
-    -30,
-    12
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
     -14,
     2
    ],
@@ -8364,418 +8588,666 @@
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
-   "grid_pos": [
-    -21,
-    -12
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AmmoBay",
-   "grid_pos": [
-    7,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
     -19,
-    -12
+    -7
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    9,
-    3
+    -32,
+    10
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    9,
-    -3
+    -32,
+    11
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    10,
-    -1
+    -32,
+    -11
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    3,
-    -3
+    -32,
+    -10
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    10,
-    1
+    -19,
+    7
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
-   "grid_pos": [
-    5,
-    -3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AmmoBay",
+   "module_type": "BatteryBank",
    "grid_pos": [
     -21,
-    12
+    7
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "BatteryBank",
    "grid_pos": [
-    3,
-    3
+    -25,
+    -9
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "BatteryBank",
    "grid_pos": [
-    7,
+    -21,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    21,
     2
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "BatteryBank",
    "grid_pos": [
-    -19,
-    12
+    -25,
+    9
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "BatteryBank",
    "grid_pos": [
-    5,
+    -25,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    29,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -30,
+    11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -20,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -23,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -20,
     3
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    29,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    21,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
    "grid_pos": [
     -25,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -23,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -30,
+    -11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -13,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -15,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -7,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -13,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -14,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -15,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -20,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -20,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -7,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -20,
+    11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -14,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -22,
+    -9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -22,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Barracks",
+   "grid_pos": [
+    -20,
+    -11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -20,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    22,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -23,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -23,
     8
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    -25,
+    -30,
+    10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -30,
+    -10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -20,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    28,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -23,
     -8
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    -32,
-    -11
+    -23,
+    -5
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    -32,
-    11
+    30,
+    -2
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "CoolingPump",
    "grid_pos": [
     -22,
-    -3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -22,
-    3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -25,
     -6
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    -25,
+    20,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -22,
+    0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    22,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -22,
     6
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    -21,
+    28,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    30,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    20,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    35,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    35,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    1,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    5,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -16,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -6,
     7
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    -25,
-    -9
+    -12,
+    2
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    -21,
+    -16,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -6,
     -7
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    21,
+    5,
     2
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    -25,
-    9
+    -15,
+    10
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    -25,
+    1,
     -5
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "ShieldEmitter",
    "grid_pos": [
-    29,
+    -15,
+    -10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -23,
+    10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -23,
+    -10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -12,
     -2
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "MedBay",
    "grid_pos": [
-    -30,
-    11
+    -20,
+    -1
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "MedBay",
+   "grid_pos": [
+    -13,
+    8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -6,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
    "grid_pos": [
     -20,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -6,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -10,
     -3
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "MedBay",
    "grid_pos": [
-    -23,
-    -2
+    -20,
+    10
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "MedBay",
    "grid_pos": [
-    -20,
+    -15,
+    -6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -10,
     3
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
+   "module_type": "MedBay",
    "grid_pos": [
-    29,
-    2
+    -20,
+    -10
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    21,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    -25,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    -23,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    -30,
-    -11
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -13,
-    7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
+   "module_type": "MedBay",
    "grid_pos": [
     -15,
-    -3
+    6
    ],
    "rotation": "North"
   },
   {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -7,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
+   "module_type": "MedBay",
    "grid_pos": [
     -13,
-    -7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -14,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -15,
-    3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -20,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -20,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -7,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -20,
-    11
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -14,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -22,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -22,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Barracks",
-   "grid_pos": [
-    -20,
-    -11
+    -8
    ],
    "rotation": "North"
   },
@@ -8783,7 +9255,7 @@
    "module_type": "StandardEngine",
    "grid_pos": [
     -34,
-    10
+    -9
    ],
    "rotation": "East"
   },
@@ -8879,417 +9351,9 @@
    "module_type": "StandardEngine",
    "grid_pos": [
     -34,
-    -10
+    9
    ],
    "rotation": "East"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -19,
-    7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -32,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -19,
-    -7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -32,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -20,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    22,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -23,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -23,
-    8
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -30,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -30,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -20,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    28,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -23,
-    -8
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -23,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    30,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -22,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    20,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -22,
-    0
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    22,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    -22,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    28,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    30,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    20,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    35,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    35,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    1,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    5,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -16,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -6,
-    7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -12,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -16,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -6,
-    -7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    5,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -15,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    1,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -15,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -23,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -23,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    -12,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -20,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -13,
-    8
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -6,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -20,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -6,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -10,
-    -3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -20,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -15,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -10,
-    3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -20,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -15,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -13,
-    -8
-   ],
-   "rotation": "North"
   },
   {
    "module_type": "GalleyMess",

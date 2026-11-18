@@ -113,16 +113,18 @@ def arbiter():
     """Battlecruiser. The Hegemony's railgun doctrine carried to its end: a
     hull built round one spinal railgun. A long barrel runs out ahead of a
     plated delta, accelerator collars along it; one pair of sponsons and the
-    nacelle pods sit far aft, so the whole ship reads as a spear. Fast, thin
-    plate, and the longest reach in the navy."""
+    nacelle pods sit far aft, so the whole ship reads as a spear. The pods are
+    all engine (two large drives and a sustainer each, fed from their own fuel
+    and reactor), so it runs as fast as it reaches. Thin plate, and the
+    longest reach in the navy."""
     c = Canvas("th_arbiter")
     c.rows(-34, 14, """
              #n#n#/
- #####      g.....#/
-N.Q.O.#    #.a.a.O.#/
-N.R.b..## g.Q.KK.Q..#/
-E.f.c....#.s..m..O.s.#/
- ######..b..KK..GG.Q..####/
+N#####      g.....#/
+N.Q.R.#    #.a.a.O.#/
+N.f.b.O## g.Q.KK.Q..#/
+N.f.c....#.s..m..O.s.#/
+E######..b..KK..GG.Q..####/
        #.R.c....GG.O.m.Q..####/
        #..LL.b.f...Q.KK.Q.O.s.####/
        #.R..c.O.Q..m.y...M...T.A..####/

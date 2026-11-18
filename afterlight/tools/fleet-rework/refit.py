@@ -30,6 +30,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools", "ship-scale"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "faction-arming"))
 import kit    # noqa: E402
+import livery  # noqa: E402
 import scale  # noqa: E402
 
 CONCEPTS = os.path.join(ROOT, "tools", "fleet-concepts", "concepts")
@@ -172,7 +173,7 @@ def refit(slug, key, station=False):
         if new:
             m["module_type"] = new
             swapped += 1
-    out["paint"] = paint(slug, out)
+    out["paint"] = livery.paint(slug, out)  # palette, rooms by kind, motif, details
     os.makedirs(os.path.join(OUT, slug), exist_ok=True)
     path = os.path.join(OUT, slug, f"{key}.json")
     json.dump(out, open(path, "w"), indent=1)
