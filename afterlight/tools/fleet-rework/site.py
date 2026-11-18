@@ -10,7 +10,7 @@ and Approve / Rework / Reject with a note, kept in the artifact's database
 
 Writes tools/fleet-rework/site/ (index.html and img/).
 """
-import html, importlib, json, os, sys
+import html, importlib, json, os, shutil, sys
 
 from PIL import Image
 
@@ -27,6 +27,17 @@ REWORK = os.path.join(ROOT, "designs", "rework")
 # The concept modules each faction's ships are drawn in, in page order.
 MODULES = {
     "recursive_kingdom": ["rk_light", "rk_mid", "rk_trade", "rk_heavy", "rk_heavy2", "rk_heavy3"],
+    "terran_hegemony": ["terran", "terran_v5a", "terran_v5b"],
+    "eternal_hegemony": ["eternal", "eternal_v5a", "eternal_v5b"],
+    "gilded_throne": ["gilded", "gilded_v5a", "gilded_v5b"],
+    "merchant_princes": ["merchants", "merchants_v5a", "merchants_v5b"],
+    "free_haulers_compact": ["compact", "compact_v5a", "compact_v5b"],
+    "synthesis_collective": ["synthesis", "synthesis_v5a", "synthesis_v5b"],
+    "stellar_preserve": ["preserve", "preserve_v5a", "preserve_v5b"],
+    "broken_choir": ["choir", "choir_v5a", "choir_v5b"],
+    "corpse_stars": ["corpse", "corpse_v5a", "corpse_v5b"],
+    "the_silence": ["silence", "silence_v5a", "silence_v5b"],
+    "shepherd": ["shepherd", "shepherd_v5a", "shepherd_v5b"],
 }
 
 # What the refit's report calls things, as a player would.
@@ -47,15 +58,16 @@ ARMOUR = {"AblativeArmor": "ablative", "AngledAblativeArmor": "ablative", "Refle
           "AngledReflectivePlate": "reflective", "ArmorPlate": "steel", "AngledArmorPlate": "steel"}
 EXTRA = {"SalvageArm": "Salvage arm", "TractorBeam": "Tractor beam", "MiningDrill": "Mining drill", "DroneBay": "Drone bay",
          "BulkCargoHold": "Bulk cargo hold", "LargeCargo": "Large cargo", "SmallCargo": "Small cargo",
-         "DockingHub": "Docking hub", "DockingPort": "Docking port"}
+         "DockingHub": "Docking hub", "DockingPort": "Docking port", "PlasmaCaster": "Plasma caster",
+         "IonDisruptor": "Ion disruptor", "EMPPulse": "EMP pulse", "SignalJammer": "Signal jammer"}
 SCALE = 22.0  # game units per pixel in the lineup
 
 
 def section_of(cls):
     c = cls.lower()
-    if "station" in c:
+    if "station" in c or "platform" in c:
         return 4
-    if "trader" in c or "hauler" in c:
+    if "trade" in c or "hauler" in c or "civilian" in c:
         return 3
     if "experimental" in c:
         return 2
@@ -68,6 +80,30 @@ def webp(src, dst, max_w):
         im = im.resize((max_w, round(im.height * max_w / im.width)), Image.LANCZOS)
     im.save(dst, "WEBP", quality=88, method=6)
     return im.size
+
+
+def views(shell_png, inside_png, long_side=1500, gap=24):
+    """Shell and lit interior in one image: side by side for a tall ship, one
+    above the other for a wide one. Returns the image and True if side by side."""
+    a = Image.open(shell_png).convert("RGBA")
+    b = Image.open(inside_png).convert("RGBA")
+    side = a.height >= a.width
+    if side:
+        h = min(max(a.height, b.height), 900)
+        a = a.resize((max(1, round(a.width * h / a.height)), h), Image.LANCZOS)
+        b = b.resize((max(1, round(b.width * h / b.height)), h), Image.LANCZOS)
+        out = Image.new("RGBA", (a.width + gap + b.width, h), (0, 0, 0, 0))
+        out.alpha_composite(a, (0, 0)); out.alpha_composite(b, (a.width + gap, 0))
+    else:
+        w = min(max(a.width, b.width), 1200)
+        a = a.resize((w, max(1, round(a.height * w / a.width))), Image.LANCZOS)
+        b = b.resize((w, max(1, round(b.height * w / b.width))), Image.LANCZOS)
+        out = Image.new("RGBA", (w, a.height + gap + b.height), (0, 0, 0, 0))
+        out.alpha_composite(a, (0, 0)); out.alpha_composite(b, (0, a.height + gap))
+    if max(out.size) > long_side:
+        k = long_side / max(out.size)
+        out = out.resize((round(out.width * k), round(out.height * k)), Image.LANCZOS)
+    return out, side
 
 
 def missile_text(m):
@@ -90,6 +126,7 @@ def faction(slug, ships_out):
         return None
     info = mods[0].FACTION
     img = os.path.join(SITE, "img", slug)
+    shutil.rmtree(img, ignore_errors=True)  # only this build's pictures get published
     os.makedirs(img, exist_ok=True)
     ships = []
     for mod in mods:
@@ -112,16 +149,16 @@ def faction(slug, ships_out):
             weapons = [(NAMES.get(k, k), n) for k, n in sorted(rep["report"].items(), key=lambda kv: -kv[1])
                        if k in NAMES and n > 0]
             extras = [(label, counts[t]) for t, label in EXTRA.items() if counts.get(t)]
-            sw = webp(shell, os.path.join(img, f"{key}_shell.webp"), 1600)
-            iw = webp(os.path.join(OUT, slug, f"{key}_inside.png"), os.path.join(img, f"{key}_inside.webp"), 1600)
-            concept = fleet.render(fleet.load(os.path.join(CONCEPT_DIR, "concepts", slug, f"{key}.json")), px=10)
-            concept.save(os.path.join(img, f"{key}_concept.webp"), "WEBP", quality=90)
+            # One picture per ship (shell beside or above the lit interior) keeps
+            # the whole fleet under the artifact's file limit.
+            pair, side = views(shell, os.path.join(OUT, slug, f"{key}_inside.png"))
+            pair.save(os.path.join(img, f"{key}.webp"), "WEBP", quality=86)
             ships.append({
                 "key": key, "name": name, "cls": cls, "note": note, "section": section_of(cls),
                 "concept_hull": rep["concept_hull"], "hull": rep["hull"], "blocks": rep["blocks"],
                 "weapons": weapons, "armour": armour, "extras": extras,
                 "missile": missile_text(rep.get("missile")) if counts.get("VlsSilo") else "",
-                "shell": sw, "inside": iw, "zoom": meta["shell_zoom"],
+                "pair": pair.size, "side": side, "zoom": meta["shell_zoom"],
             })
     ships.sort(key=lambda s: (s["section"], s["hull"]))
     # The lineup: every shell to one scale, smallest first, in rows.
@@ -145,7 +182,7 @@ def faction(slug, ships_out):
     return {"slug": slug, "info": info, "ships": ships, "lineup": lineup.size}
 
 
-SECTION_NAMES = {1: "Warships", 2: "Experimental", 3: "Traders", 4: "Station"}
+SECTION_NAMES = {1: "Warships", 2: "Experimental", 3: "Traders and civilians", 4: "Station"}
 
 
 def ship_card(slug, s):
@@ -169,14 +206,10 @@ def ship_card(slug, s):
     </dl>
   </header>
   <p class="note">{e(s["note"])}</p>
-  <div class="views">
-    <figure class="view"><img src="img/{slug}/{s["key"]}_shell.webp" width="{s["shell"][0]}" height="{s["shell"][1]}" alt="{e(s["name"])}, painted shell" loading="lazy"><figcaption>Painted shell</figcaption></figure>
-    <figure class="view"><img src="img/{slug}/{s["key"]}_inside.webp" width="{s["inside"][0]}" height="{s["inside"][1]}" alt="{e(s["name"])}, lit interior" loading="lazy"><figcaption>Inside, lit</figcaption></figure>
-  </div>
+  <figure class="pair"><img src="img/{slug}/{s["key"]}.webp" width="{s["pair"][0]}" height="{s["pair"][1]}" alt="{e(s["name"])}: painted shell and lit interior" loading="lazy"><figcaption>{"Left" if s["side"] else "Top"}: painted shell. {"Right" if s["side"] else "Bottom"}: inside, lit.</figcaption></figure>
   <div class="facts">
     <div><h4>Weapons and defence</h4><ul>{weapons}</ul></div>
     <div><h4>Armour</h4><p>{e(armour)}</p>{f'<h4>Fittings</h4><ul>{extras}</ul>' if extras else ''}</div>
-    <figure class="concept"><img src="img/{slug}/{s["key"]}_concept.webp" alt="{e(s["name"])}, concept grid" loading="lazy"><figcaption>Concept grid</figcaption></figure>
   </div>
   <div class="verdict" data-doc="{doc}">
     <div class="choices" role="group" aria-label="Verdict for {e(s["name"])}">
@@ -213,7 +246,11 @@ def page(factions):
   <figure class="lineup"><img src="img/{slug}/_lineup.webp" width="{f["lineup"][0]}" height="{f["lineup"][1]}" alt="Every {e(info["name"])} ship to one scale"><figcaption>All {len(f["ships"])} ships to one scale, painted as they'll fly</figcaption></figure>
   {"".join(sections)}
 </section>''')
-    return TEMPLATE.replace("{{BODY}}", "".join(body)).replace("{{TOTAL}}", str(total))
+    nav = "".join(f'<a href="#{f["slug"]}" style="--faction:{f["info"]["accent"]}">{e(f["info"]["name"])} '
+                  f'<span class="left" data-left="{f["slug"]}">{len(f["ships"])}</span></a>' for f in factions)
+    nav = f'<nav class="factions" aria-label="Factions; the number is ships still without a verdict">{nav}</nav>'
+    return (TEMPLATE.replace("{{BODY}}", "".join(body)).replace("{{TOTAL}}", str(total))
+            .replace("{{NAV}}", nav if len(factions) > 1 else ""))
 
 
 TEMPLATE = r'''<title>Afterlight Fleet Rework</title>
@@ -244,11 +281,18 @@ h1, h2, h3, h4 { font-family: var(--display); letter-spacing: 0.01em; text-wrap:
 h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; }
 .intro { display: grid; gap: 14px; max-width: 68ch; }
 .intro p { margin: 0; color: var(--muted); }
+.factions { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0; margin: 18px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.factions a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); border-left: 3px solid var(--faction); color: var(--fg); text-decoration: none; font-size: 13px; white-space: nowrap; }
+.factions a:hover, .factions a:focus-visible { border-color: var(--faction); }
+.factions .left { font: 500 12px var(--mono); color: var(--muted); }
+.factions .left.done { color: var(--ok); }
+@media (max-width: 640px) { .factions { flex-wrap: nowrap; overflow-x: auto; } }
 .eyebrow, .cls { font: 500 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0; }
 .tally { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .tally span { font: 500 13px/1 var(--mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
 .tally b { color: var(--fg); font-weight: 500; }
 .faction { margin-top: 56px; display: grid; gap: 28px; }
+.faction, .ship { scroll-margin-top: 64px; }
 .faction-head { display: grid; gap: 10px; border-top: 2px solid var(--faction, var(--accent)); padding-top: 22px; }
 .faction-head h2 { font-size: clamp(26px, 4vw, 36px); }
 .tagline { margin: 0; max-width: 70ch; }
@@ -266,10 +310,9 @@ h3.section span { font: 500 13px var(--mono); }
 .size dt { font: 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .size dd { margin: 0; font: 500 15px var(--mono); font-variant-numeric: tabular-nums; }
 .note { margin: 0; max-width: 75ch; }
-.views { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.view { margin: 0; min-width: 0; display: grid; align-content: start; }
-.view img { width: 100%; height: auto; max-height: 520px; object-fit: contain; background: #06080c; border-radius: 4px; image-rendering: auto; }
-.facts { display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 18px; align-items: start; }
+.pair { margin: 0; min-width: 0; display: grid; gap: 6px; }
+.pair img { width: 100%; height: auto; max-height: 640px; object-fit: contain; background: #06080c; border-radius: 4px; padding: 10px; box-sizing: border-box; }
+.facts { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; align-items: start; }
 .facts h4 { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .facts ul { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 3px; }
 .facts p { margin: 0 0 10px; }
@@ -293,7 +336,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
 .saved { grid-column: 1 / -1; margin: 0; font: 12px var(--mono); color: var(--muted); min-height: 1em; }
 .status { font: 12px var(--mono); color: var(--muted); }
 @media (max-width: 760px) {
-  .views, .facts { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: 1fr; }
   .verdict { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -306,6 +349,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>
+  {{NAV}}
   {{BODY}}
 </div>
 <script>
@@ -320,6 +364,12 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     const n = { approve: 0, rework: 0, reject: 0 };
     Object.values(state).forEach(function (v) { if (v && n[v.verdict] !== undefined) n[v.verdict]++; });
     ["approve", "rework", "reject"].forEach(function (k) { document.getElementById("t-" + k).textContent = n[k]; });
+    document.querySelectorAll("[data-left]").forEach(function (el) {
+      const slug = el.dataset.left;
+      const left = cards.filter(function (c) { return c.dataset.doc.indexOf(slug + "__") === 0 && !(state[c.dataset.doc] || {}).verdict; }).length;
+      el.textContent = left ? left + " left" : "done";
+      el.classList.toggle("done", !left);
+    });
   }
 
   function show(card) {
