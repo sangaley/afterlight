@@ -48,40 +48,32 @@ def bill_runner():
 
 def claimstaker():
     """Industrial: prospector. Finds ore for the Guild and stakes the claim.
-    Two long sensor arms cross the spine at the cab, claim beacons racked
-    down both sides of each and a sensor pod at each tip, so it reads a
-    rock from two places at once; a pair of sample pods aft, sample racks
-    on the spine and a core drill at the bow."""
+    A survey claim frame seen from above: four straight booms of the Guild
+    spine laid round a square of open sky, gussets in the inside corners,
+    and a stake post at each corner, a standard pod with a claim beacon,
+    a radar and a point-defence drone on its outer face. The surveyor's
+    deckhouse, bridge in it, hangs in the middle of the plot on four
+    cross-struts run out to the corners, so the whole hull is an X in a
+    square: the claim, marked. Engines on the rear boom, core drills on
+    the front one, sample racks along the booms."""
     c = Canvas("mp_claimstaker", "Steel")
-    c.rows(-14, 3, """
- ###
-N.R#
-N...
-E...
-""")
-    c.P(-10, 1, _run(-10, 11, doors={-7}, marks={5: "k", 7: "k", 9: "k"}))
-    c.P(-10, 0, "." * 23)
-    _pod(c, -9, 2, ["k.k", "k.k", "k.k"])
-    # the cab at the crossing
-    c.rows(-3, 3, """
-  #.#
- #Q.q#
-#.BB.M#
-..BB...
-""")
-    # the arms, a sensor pod at each tip
-    for y in range(4, 8):
-        c.P(-1, y, "J.J" if y % 2 else "#.#")
-    _pod(c, -2, 8, ["...", "I.M", "k.k", ".", "#"])
-    c.P(-1, 12, "AAA")
-    # core drill at the bow
-    c.rows(11, 2, """
- #&/
-#..&/
-....&
+    # the upper half, x -10..10: stake posts at the corners, the top boom
+    # between them, the rear and front booms down the sides, a cross-strut
+    # stepping in from each inside corner to the deckhouse in the middle
+    c.rows(-10, 10, """
+/#p#             #p#/
+#RJO##J#k#A#k#J##AJk#
+#q.................I#
+#A.k#############Q.M#
+ #.# #         # #.#
+ N.# ##       ## #.#
+ N.#  ##     ##  #.&
+ #.k   ##   ##   k.#
+ #.#    #####    #.&
+ #.#    #BB.######.#
+ E.M    #BBH.......&
 """)
     c.mirror()
-    c.P(2, -1, "H")
     return c.build()
 
 
@@ -317,7 +309,7 @@ CONCEPTS = [
     ("bill_runner", bill_runner, "Bill Runner", "Scout: express courier",
      "The fastest hull the Guild owns: two engine pods on a stern crossbar, a bare spine and a cab threaded on it with a strongbox inside. It carries contracts, bills and the names they bind between Guild houses, never freight."),
     ("claimstaker", claimstaker, "Claimstaker", "Industrial: prospector",
-     "Two long sensor arms cross the spine at the cab, claim beacons racked along them and a sensor pod at each tip; sample pods aft, a core drill at the bow. Where it parks, the Guild owns the rock, in this universe or the next."),
+     "A survey claim frame: four booms of the Guild spine laid round a square of open sky, a stake post at each corner with a claim beacon, a radar and a point-defence drone, and the surveyor's deckhouse hung in the middle on four cross-struts. Engines on the rear boom, core drills on the front. Where it parks, the Guild owns the rock, in this universe or the next."),
     ("bailiff", bailiff, "Bailiff", "Corvette: debt collector",
      "The one Guild hull built to chase: big engines, a bare spine with the cab and a rack of impound holds, and a repossession clamp, gatlings on its jaws and grapples at the tips, that takes a debtor's ship and tows it home."),
     ("tidewaiter", tidewaiter, "Tidewaiter", "Patrol: customs",

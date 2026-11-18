@@ -69,21 +69,43 @@ E.............BB.H...............A?
 
 
 def mirage():
-    """Corvette. The decoy. Beside its one real needle hang two more drawn
-    only in rail, hung with signal buoys and jammers: on a scope it reads as
-    three hulls, and two of them are not there."""
+    """Corvette. The decoy, drawn as an enso: the one brush circle a monk
+    paints in a single breath. A ring of hull that swells thick at the stern,
+    where the bridge sits, and thins on both sides toward the bow, where it
+    does not quite close; past the end of the stroke the band frays into thin
+    rails like the dry hairs of the brush, hung with signal buoys and
+    jammers. On a scope the hairs and the gap read as a ship that is not
+    there."""
+    from silence_v5b import finish         # the stricter checks (one piece, symmetry, vents)
     c = Canvas("si_mirage", "Composite")
-    c.rows(-15, 7, """
-    #J###=###J###=###J###/
-    #                   ##?
-    #J###=###J###=###J###/
-      #       #
-      #       #
-  EM~###~#M#~####
- E.R.O..Q..sBB.Q.###~###~##/
-E...........BB.H...........A?
-""")
-    return c.mirror().build()
+    rc, g = 8.0, 46.0                      # stroke radius, half the gap (degrees)
+    for x in range(-13, 13):
+        for y in range(0, 13):
+            r, a = math.hypot(x, y), math.degrees(math.atan2(y, x))
+            if a >= g:                     # the band: 6 thick at the stern, 3.4 at the ends
+                t = 3.4 + 2.8 * ((a - g) / (180 - g)) ** 0.8
+                if abs(r - rc) <= t / 2:
+                    c.cells[(x, y)] = "~" if r > rc + t / 2 - 0.9 and round(a) % 24 < 6 else "#"
+    # the dry hairs past the end of the stroke: an outer one, long, flaring a
+    # little, and an inner one, short; ears at their tips, buoys and jammers
+    # along them
+    for p, ch in (((7, 7), "#"), ((7, 6), "J"), ((8, 6), "="), ((8, 5), "J"), ((9, 5), "#"),
+                  ((9, 4), "="), ((9, 3), "J"), ((10, 3), "#"), ((10, 2), "="), ((10, 1), "?"),
+                  ((5, 5), "#"), ((6, 5), "J"), ((6, 4), "="), ((6, 3), "J"), ((7, 3), "#"),
+                  ((7, 2), "?")):
+        c.cells[p] = ch
+    # the stern, the thick of the stroke: bridge, helm, engines feathered
+    # down the curve of the outer face
+    c.R(-8, -7, 0, 1, "B")
+    c.P(-6, 0, "H")
+    c.P(-11, 0, "E").P(-11, 1, "E").P(-10, 2, "E")
+    c.P(-9, 3, "R.O").P(-9, 4, "Q.b")
+    # round the band toward the bow
+    c.P(-4, 5, "M").P(-5, 6, "d")
+    c.P(-3, 8, "Q").P(-1, 9, "s").P(1, 8, "O").P(3, 7, "d").P(4, 8, "M").P(5, 7, "I").P(4, 6, "A")
+    # ears and a jammer on the outer face
+    c.P(-10, 3, "?").P(-5, 9, "J").P(0, 10, "=").P(5, 9, "?")
+    return finish(c.mirror())
 
 
 def unison():
@@ -219,7 +241,7 @@ CONCEPTS = [
     ("hark", hark, "Hark", "Corvette: eavesdropper",
      "Built like a Yagi aerial: five pairs of masts, longest aft, an ear at every tip. It parks off a trade lane and hears every hail."),
     ("mirage", mirage, "Mirage", "Corvette: decoy",
-     "One real needle and two more drawn only in rail, hung with signal buoys and jammers. On a scope it is three hulls; two of them are not there."),
+     "An enso, the brush circle drawn in one breath: a ring thick at the stern where the bridge sits, thinning toward a gap at the bow, its ends fraying into thin rails hung with buoys and jammers. On a scope the hairs read as a ship that is not there."),
     ("unison", unison, "Unison", "Corvette: interferometer",
      "A long nose and two arms swept back from a small hub, an ear at each tip. Three ears set far apart hear as one very large one."),
     ("pilgrim", pilgrim, "Pilgrim", "Frigate: pilgrim ship",

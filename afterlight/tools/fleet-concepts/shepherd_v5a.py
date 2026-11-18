@@ -251,23 +251,35 @@ E.LL....M.............BBH...t
 
 
 def briar():
-    """Destroyer, the snare. Sheep that stray into the briar are held there
-    by the fleece until the shepherd comes: a long thorned stem, its waist
-    swollen amidships and tapering to a plated point, four pairs of hooked
-    thorns along it, each a strut curling aft into a barb with a tractor in
-    its crook. A ship that passes close is snagged, and held, and the stem
-    keeps going."""
+    """Destroyer, the snare. A crown of thorns, the briar wound into a wreath:
+    two thorned branches woven round each other into a closed ring, crossing
+    six times with open eyes between, and the ends bound off at the stern in
+    a thick knot that holds the bridge, the reactors and the drives. Thorns
+    stand in from the ring all round, each a short hooked spike with a
+    tractor in its crook and an ion disruptor on its flank, and the ring's
+    inner face is lined with more tractors. What is pulled into the middle
+    is caught on the thorns, as sheep are on the briar, and held until the
+    Shepherd comes."""
     c = Canvas("sh_briar", MAT)
-    c.rows(-27, 8, """
-             #####/   #####/   #####/
- #####/      # t..#/  # t..#/  # t..#/
- # t..#/     #  t..#  #  t..#  #  t..#
- #  t..#        ##..#    ##..#    ##..#
-    ##..#  ##it###..##it###..##it###..##/
- it###..###.Q..O.m..Q.c.M.f..Q.b.O.A..y.##P#/
-E..R....c.......s................M.......T..#i#/
-E.Q..O.f.b..Q.y.KK..O...BB..q..m..T..Q..c.A...s#i/
-E..LL........M..........BBH..........s.....M.....P
+    # x -15 (stern) .. 15 (bow); drawn on y >= 0 and mirrored
+    c.rows(-15, 16, """
+             ##M##
+           QO.....##
+          #...s#c...#
+         #..##   ##..i
+         #.#       #.#
+    #####...##   ##...#P###
+   #.........#####.........#
+  #..##...#t#.....#t#...##..#
+ #..#  Q.t   #M.t#   t.Q  m..#
+ A.#   #.#    #t     #.#   y.A
+#.Q    #..ti# #i  #it..#    Q.#
+#.#   #..###/ /#  /###..#   O.#
+E.#KK#..t             t..M  T.i
+E........my#        /###..#b..#
+ #LLcf.QOqs#        #itO#....#
+ #bf#c.T.BBt             #...s
+ ER......BBH           #i.#.P
 """)
     return finish(c.mirror(), "destroyer")
 
@@ -288,5 +300,5 @@ CONCEPTS = [
     ("pinfold", pinfold, "Pinfold", "Destroyer (pound)",
      "Where strays are penned until claimed: a round pen on a long staff, walled all round but for a narrow gate in front, the wall's ends turned in like barbs. Tractors line the whole inside of the wall."),
     ("briar", briar, "Briar", "Destroyer (snare)",
-     "A long thorned stem with four pairs of hooked thorns curling aft along it, a tractor in every crook. Whatever passes close is snagged, as sheep are on the briar, and held until the Shepherd comes."),
+     "A crown of thorns: two thorned branches woven into a closed wreath, crossing six times round open eyes, bound off at the stern in a thick knot that holds the bridge and the drives. Hooked thorns stand in from the ring all round, a tractor in every crook, so whatever is pulled into the middle is caught and held until the Shepherd comes."),
 ]

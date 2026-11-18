@@ -9,6 +9,8 @@ skeleton (outline, engines, main guns) is mirrored port/starboard.
 
 Legend: see terran.py and draw.LEGEND.
 """
+import math
+
 from draw import Canvas
 from gilded import FACTION, _filigree, _horn  # noqa: F401  (FACTION is read by build.py)
 
@@ -111,27 +113,62 @@ E..M....BB.......
 
 
 def retainer():
-    """Corvette: the Retainer, a shareholder's bodyguard yacht. A small round
-    cabochon of a hull behind a three-spike crown, and a peacock's fan of
-    three horns a side, each with a shield emitter set in it like an eye:
-    it stands between its principal and the guns."""
+    """Corvette: the Retainer, a shareholder's bodyguard yacht. A peacock in
+    full display, seen from above: a small cut-gem body at the rear centre,
+    engines on its back and lasers on its shoulders, and a fan of seven
+    quills spread from it through 210 degrees, forward and out past both
+    beams, each ending in a diamond eye. The forward quill is walkable and
+    its eye carries the railgun and ion gun; the six slender quills each
+    hold a shield emitter in their eye; a filigree rib runs through all
+    seven like the bar of a fan. It stands between its principal and the
+    guns, far wider than it is long."""
     c = Canvas("gt_retainer")
-    # the fan: three horns a side, an eye near every tip
-    _horn(c, 5, 12, 0, -5, 1.0, 0.5, p=1.4)
-    _horn(c, 4, 10, -4, -15, 1.2, 0.6, p=1.4)
-    _horn(c, 3, 6, -6, -19, 1.4, 1.0, p=1.4)
-    for x, y in ((-5, 13), (-16, 11), (-21, 7)):
-        c.P(x, y + 1, "#").P(x - 1, y, "#s#").P(x, y - 1, "#")
-        _filigree(c, ys=range(y - 1, y + 3), xmin=x - 2, xmax=x + 2)
-    # the cabochon and its crown
-    c.rows(-8, 5, """
-     ####
-   #s.M.s#/
-  #.Q.O.Q.###/
-  E.R.m..T.A.z
- E..b..BB.H...z#/
-E..M...BB.......rri
+
+    def eye(x, y, rows):
+        """A diamond eye of radius 2 centred on (x, y): `rows` top to bottom
+        are its five rows (1, 3, 5, 3, 1 cells)."""
+        for k, row in enumerate(rows):
+            c.P(x - len(row) // 2, y + 2 - k, row)
+
+    def line(x0, y0, x1, y1):
+        """A thin 4-connected run of hull from (x0, y0) to (x1, y1), laid
+        under anything already drawn."""
+        n = max(abs(x1 - x0), abs(y1 - y0)) * 4
+        prev = (x0, y0)
+        for k in range(n + 1):
+            p = (int(round(x0 + (x1 - x0) * k / n)), int(round(y0 + (y1 - y0) * k / n)))
+            if p[0] != prev[0] and p[1] != prev[1]:
+                c.cells.setdefault((p[0], prev[1]), "#")
+            c.cells.setdefault(p, "#")
+            prev = p
+
+    # the jewel: a small octagonal cut stone, engines down its aft facets,
+    # the lasers on its shoulders
+    c.rows(-6, 3, """
+  zQOTQz
+ Eb.....M
+E.RBB.HmAs
+E.MBB......
 """)
+    # the forward quill, walkable: the railgun and ion gun in its eye
+    c.P(4, 1, "#######")
+    c.P(5, 0, ".....")
+    eye(12, 0, ["#", "#s#", "..rri", "#s#", "#"])
+    # the feather quills, slender and solid, a shield emitter in every eye
+    for x, y in ((10, 10), (4, 16), (-3, 16)):
+        eye(x, y, ["#", "###", "##s##", "###", "#"])
+        line(0, 0, x, y)
+    # the rib of the fan: an elliptic bar through every quill
+    prev = None
+    for k in range(0, 106):
+        t = math.radians(k)
+        p = (int(round(7.5 * math.cos(t))), int(round(11 * math.sin(t))))
+        if prev and p[0] != prev[0] and p[1] != prev[1]:
+            c.cells.setdefault((p[0], prev[1]), "#")
+        if p[1] > 0:
+            c.cells.setdefault(p, "#")
+        prev = p
+    _filigree(c, ys=range(1, 20))
     return c.mirror().build()
 
 
@@ -265,7 +302,7 @@ CONCEPTS = [
     ("auditor", auditor, "Auditor", "Corvette",
      "A small jewel aft and an open octagonal loupe at the bow, ringed with radar and lit from inside. It reads a ship's books through the lens."),
     ("retainer", retainer, "Retainer", "Corvette",
-     "A shareholder's bodyguard yacht: a small round hull behind a three-spike crown, and a peacock's fan of three horns a side, each with a shield emitter set in it like an eye."),
+     "A shareholder's bodyguard yacht, a peacock in full display: a small jewel at the rear, and a fan of seven quills spread forward and past both beams, a diamond eye on every tip, shield emitters in six of them and the railgun in the seventh. It opens its tail between its principal and the guns."),
     ("margin_call", margin_call, "Margin Call", "Corvette",
      "A marquise-cut striker, pointed at both ends, a laser at the end of every facet like stones in a bracelet. When it comes, everything is called in at once."),
     ("foreclosure", foreclosure, "Foreclosure", "Frigate",

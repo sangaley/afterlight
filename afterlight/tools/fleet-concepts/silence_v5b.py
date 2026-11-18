@@ -456,42 +456,55 @@ def quill():
 
 
 def almoner():
-    """Trader, medium hauler. The almoner keeps the order's stores and gives
-    them away. One great hold slung amidships on the needle: a long lozenge
-    packed with bulk holds, its long aft shoulders stepped with engines, and
-    a thin rail held off each flank carrying the ears."""
+    """Trader, medium hauler: the almoner keeps the order's stores and gives
+    them away, so it is built as a monk's alms bowl seen from above. A round
+    bowl with a broad rim holding the bulk holds and a crown of cryo pods,
+    a terrace a step below it where the crew lives, and the open hollow at
+    the bottom. Ribs cross the hollow: the keel rib, three wide, runs fore and
+    aft with the bridge on it at the dead centre; a single-cell rib reaches
+    to each beam. The engines cluster on the aft lip of the rim, the ears and
+    radar on the bow lip. As wide as it is long, and perfectly still."""
     c = Canvas("si_almoner", "Composite")
-    # the needle
-    deck(c, -30, 29, 0)
-    deck(c, -29, 28, 1)
-    wall(c, -27, 27, 2, beat=4, phase=-1)
-    c.P(-30, 0, "E").P(-29, 1, "E").P(-27, 2, "E")
-    c.cells[(28, 2)] = "/"
-    c.cells[(29, 1)] = "/"
-    c.P(29, 0, "A?")
-    # the hold: a lozenge over the needle, shoulders stepped three at a time
-    for y, h in ((3, 18), (4, 15), (5, 12), (6, 9)):
-        for x in range(-h, h + 1):
-            c.cells[(x, y)] = "#" if y == 6 or abs(x) > h - 3 else "."
-    for y, h in ((3, 18), (4, 15), (5, 12)):
-        for x in range(h - 2, h + 1):
-            c.cells[(x, y)] = c.cells[(-x, y)] = "#"
-    wall(c, -9, 9, 6, beat=4, phase=1)
-    for x in (-7, -4, 3, 6):                          # the bulk holds
-        c.P(x, 5, "CC").P(x, 4, "CC")
-    for x in (-13, -10, -7, -4, 3, 6, 9, 12):
-        c.P(x, 2, "CC").P(x, 1, "CC")
-    c.P(-1, 4, "M")
-    c.P(-1, 1, "BB.").P(-1, 0, "BB.H")
-    c.P(-26, 1, ".R.b.R.O.Q..m")
-    c.P(16, 1, "..Q.s.O..I.")
-    c.cells[(-22, 2)] = c.cells[(21, 2)] = "M"
-    # engines up the aft shoulder
-    c.cells[(-18, 3)] = c.cells[(-15, 4)] = c.cells[(-12, 5)] = "E"
-    # the rails along the flanks
-    c.P(-11, 9, "?####I####W####I####?")
-    for x in (-6, 6):
-        c.cells[(x, 7)] = c.cells[(x, 8)] = "#"
+    for x in range(-16, 17):
+        for y in range(0, 17):
+            r = math.hypot(x, y)
+            if 6.0 <= r <= 15.3 and abs(r - 9.5) > 0.55:
+                c.cells[(x, y)] = "#"              # the rim, a step, the terrace
+            if math.hypot(x * 0.8, y) <= 3.0:
+                c.cells[(x, y)] = "#"              # the hub at the bottom of the bowl
+    for k in range(3, 15):                         # the keel rib, fore and aft
+        for d in (-1, 0, 1):
+            c.cells.setdefault((k, d), "#")
+            c.cells.setdefault((-k, d), "#")
+    for k in range(3, 14):                         # a single-cell rib to each beam
+        c.cells.setdefault((0, k), "#")
+    # stealth coating on the outer lip at an even beat
+    for (x, y), ch in list(c.cells.items()):
+        r, a = math.hypot(x, y), math.degrees(math.atan2(y, x))
+        if ch == "#" and r > 14.4 and y >= 2 and round(a) % 18 < 5:
+            c.cells[(x, y)] = "~"
+    # the bridge on the keel rib at the bottom of the bowl
+    c.R(-1, 0, 0, 1, "B")
+    c.P(1, 0, "H")
+    c.P(-9, 0, "d").P(-5, 0, "d").P(5, 0, "d").P(9, 0, "d")
+    # the stern of the rim: engines down the aft lip, the engine room
+    for y in range(0, 4):
+        c.cells[(-15, y)] = "E"
+    c.cells[(-14, 4)] = "E"
+    c.P(-13, 1, "Rb").P(-13, 3, "OR")
+    # the stores, round the outer side of the rim; the walk keeps the inner side
+    for x, y in ((-13, 5), (-12, 7), (-10, 9), (-8, 11), (-5, 12),
+                 (12, 5), (11, 7), (9, 9), (7, 11), (4, 12), (13, 1)):
+        c.R(x, x + 1, y, y + 1, "C")
+    c.P(-3, 14, "VVVVVVV")                         # cryo along the crown of the rim
+    c.P(0, 13, "s")
+    c.cells[(-11, 9)] = c.cells[(11, 9)] = "M"
+    # the bow of the rim: radar and ears
+    c.P(13, 0, ".A?").P(12, 4, "W").P(15, 3, "I")
+    c.P(-5, 14, "I").P(5, 14, "I").P(0, 15, "?").P(-9, 12, "?").P(9, 12, "?")
+    # the terrace: the crew lives a step down from the stores
+    c.P(-7, 3, "Q").P(7, 3, "Q").P(-6, 5, "O").P(6, 5, "O").P(-3, 7, "m").P(3, 7, "m")
+    c.P(0, 7, "M")
     return finish(c.mirror())
 
 
@@ -546,8 +559,9 @@ CONCEPTS = [
      "A sheaf of five needles bound at the waist: the straws cross at the band, so the ears fan long ahead and "
      "the stalks splay short behind. The crew lives in the centre needle; the leaning straws are sealed holds."),
     ("almoner", almoner, "Almoner", "Trader: medium hauler",
-     "The almoner keeps the order's stores and gives them away: one great six-sided hold slung amidships on "
-     "the needle, packed with bulk holds, engines stepped up its aft shoulders, a thin rail off each flank."),
+     "The almoner keeps the order's stores and gives them away: a monk's alms bowl from above. A broad rim of "
+     "bulk holds and cryo, a terrace a step below where the crew lives, ribs across the open hollow and the "
+     "bridge on the keel rib at the centre. Engines on the aft lip."),
     ("mendicant", mendicant, "Mendicant", "Trader: small hauler",
      "A needle with a pannier slung each side on a short yoke, like a begging friar's bags: two sealed pods "
      "of holds with their own points and engines, so the stern still feathers."),

@@ -163,55 +163,36 @@ E.......
 
 
 def memento():
-    """Battleship. Two great thighbones crossed over the spine, memento mori
-    from above: the forward ends are split knees carrying missiles and
-    railguns, the aft ends are ball joints carrying engines. The bridge is
-    where the bones cross; the ram runs on ahead of them."""
+    """Battleship. Memento mori: a skull seen from above, face forward. A
+    broad round cranium of bone, two eye sockets and a nose hole open right
+    through the ship, cheekbones flaring out into gun knuckles, and a row of
+    teeth across the front, each tooth a gun. The engines sit across the back
+    of the cranium; the bridge is between the eyes."""
     c = Canvas("cs_memento", "AbyssalAlloy")
-    X0 = 34
-    # the shafts, one row at a time: 45 degrees, a walkway on the inner face
-    aft = ["..", ".Q", ".O", "..", ".b", "..", ".M", "..", ".c", "..", ".a", "..", ".."]
-    fwd = ["..", "..", "a.", "..", "T.", "..", "b.", "..", "M.", "..", "a.", "..", ".."]
-    for k, y in enumerate(range(4, 17)):
-        c.P(X0 - k - 3, y, "#" + aft[k] + "..#")
-        c.P(X0 + k - 2, y, "#.." + fwd[k] + "#")
-    # the knees: two lobes, missiles on the lobes, railguns and an ion
-    c.rows(44, 22, """
- ##x#  #x##
-#....##....#
-#.M.a..rr..i
-#...T..b..#
-#........##
-#..s..###
-""")
-    # the ball joints: round heads on short necks, engines on their aft faces
-    c.rows(12, 23, """
-  ####
- E...M#
-E..R.c.#
-E.f...b.#
-E..R.a...#
- E....Q...#
-  ###......#
-""")
-    # the knuckle where the bones cross the spine
-    c.P(30, 4, "##.....###")
-    c.P(27, 3, "#####.....#####")
-    # the spine
-    c.rows(13, 3, """
- ###
-E..f###################.....###############################
-E.R.c.LL.R.R..m.a......Q.Q...BB..H...a.R.R.b.c..Q.Q..O.m.
-E.......d...............d....BB..............d...........
-""")
-    # the ram, plated on every step
-    c.rows(70, 5, """
-###/
-#M.##/
-#..e.##/
-..a.T...##/
-KK.s.rr.i...##/
-......rr.......##
+    # x = -21 (the crown) to 18 (the teeth), y = 21 down to the centreline
+    c.rows(-21, 21, """
+                         ##rr#
+                        #.a...#
+                        #.....#
+               #..i...# #..a..x
+            ##Q.Q...s.........#
+          ##.........M....O.T.#
+        #.....Q.Q.............#
+       #........................#
+      #.R...M...........M....a...###a###
+     e...........#      #..a...c.......x
+    #...b.R.....#        #.Q.......#####
+   #............#        #........#
+   #.Q...KK.m..M#        #.T.......#####
+  #.b.c.LL.R...s#        #.............i
+  E.R.f..R..b...#        #.......b.#####
+ E.......Q......#        #.......c#
+ E..............#        #.........#####
+ E.c.R.....M.O...#      #.............rr
+E.f.LL.m..Q.b..s..######...........#####
+E.R.....O.....................  #.#
+E..b.Q.....Q........BBH.T..#    #.a#####
+E........d.......d..BB.....     #.....rr
 """)
     return finish(c.mirror())
 
@@ -376,81 +357,79 @@ def hourglass():
 
 
 def sarcophagus():
-    """Experimental. An open coffin with its lord still in it: a coffin of
-    bone, narrow at the feet and wide at the shoulders, and inside it a whole
-    skeleton laid out in state, skull, ribcage, pelvis and legs, with space
-    all round it. The coffin carries the guns; the dead lord commands from
-    the ribcage. Break the coffin and what is inside is still there."""
+    """Experimental. The dead lord lying in state, inside his mausoleum: a
+    square-ish cross-shaped tomb seen from above. A round dome sits over the
+    lord at the centre, its drum pierced by a ring of windows, with the
+    bridge beside his bier. Four short wings run out from it, each lined on
+    both edges by a colonnade of bone and each ending in a small domed
+    chapel on a narrow neck; open courts lie between the wings. The chapels
+    carry the guns; the rear chapel carries the engines on its back face."""
     c = Canvas("cs_sarcophagus", "AbyssalAlloy")
-    # the coffin: foot, flank to the shoulder, flank to the head
-    _wall(c, (1, 8), (40, 16))
-    _wall(c, (41, 16), (56, 9))
-    for y in range(0, 9):                     # the foot: engines across it
-        c.P(0, y, "E.#" if y % 2 == 0 else "E..")
-    c.P(0, 9, " ###")
-    for y in range(0, 10):                    # the head of the coffin
-        c.P(55, y, "#.#")
-    # the legs, from the feet to the hips, a knuckle at each knee
-    c.rows(3, 6, """
-     ###
-##########
-....d.....
-##########
-     ###
-""")
-    # the pelvis: two wings of bone, each round a hole
-    c.rows(13, 8, """
-  ####
- #....#
-#..  ..#
-#.#  #.#
-...##..#
-#.R..b.#
-#.......
-#..O....
-#.......
-""")
-    # the spine and the ribcage, the bridge at its heart
-    c.rows(20, 2, """
-######################
-.Q.a.c.m..b..BB.H.s.Q.
-.d...........BB.....d.
-""")
-    for r, tip in ((26, "e"), (32, "i"), (38, "e")):
-        c.rows(r - 3, 9, f"""
- {tip}#
-#.#
-#..#
- #.#
- #..#
-  #.#
-  #..#
-""")
-    # the skull, face up, crown toward the head of the coffin
-    c.rows(42, 6, """
-    ######
-  ##.M....##
- #..........#
-#.....  ....#
-#.....  ....#
-#............
-#.  .........
-""")
-    c.rows(58, 4, """
-###/
-#M.##/
-..a.e.##/
-.T.rr.i..##/
-.....rr.......##
-""")
-    # knuckles on the outer face of the coffin, a gun on each, deck behind it
-    top = lambda x: max(y for (xx, y) in c.cells if xx == x)
-    for x0, ch in ((12, "x"), (24, "i"), (36, "x"), (47, "i")):
-        t = top(x0)
-        for x in (x0 - 1, x0 + 1):
-            c.cells.setdefault((x, t), "#")
-        c.P(x0 - 1, t + 1, "#" + ch + "#")
-        c.cells[(x0, t)] = "."
+    for x in range(-28, 29):
+        for y in range(0, 29):
+            ax, r = abs(x), math.hypot(x, y)
+            if r <= 12.4:                          # the dome
+                a = math.degrees(math.atan2(y, ax)) % 45
+                if not (7.6 < r <= 8.6 and min(a, 45 - a) > 9):   # drum windows
+                    c.cells[(x, y)] = "#"
+                continue
+            for u, v in ((ax, y), (y, ax)):        # u along a wing, v across it
+                if ((u <= 16 and v <= 4)           # the wing
+                        or (u <= 18 and v <= 2)    # the chapel's neck
+                        or (12 <= u <= 16 and 7 <= v <= 8)        # architrave
+                        or (v in (5, 6) and u in (12, 14, 16))    # columns
+                        or math.hypot(u - 22.5, v) <= 5.4):      # the chapel
+                    c.cells[(x, y)] = "#"
+    # the rear chapel: engines on its back face, reactors behind them
+    _segs(c, {
+        5: [(-24, "E##e")],
+        4: [(-26, "N...R.f#")],
+        3: [(-26, "N.LL.c.#")],
+        2: [(-27, "N.b.O.b.")],
+        1: [(-27, "N..c.R.m.")],
+        0: [(-27, "E" + "." * 52 + "rr")],
+    })
+    # the rear wing: the dead lord's household
+    _segs(c, {3: [(-16, "Q...Q")], 1: [(-16, "....m")]})
+    # the dome: the lord on his bier (cryo) at the centre, grave goods and
+    # his cardinals round him, the bridge at his head
+    _segs(c, {
+        7: [(-2, ".$.$.")],
+        6: [(1, "T")],
+        5: [(-3, "M.O.s.M")],
+        3: [(-6, "q...........q")],
+        1: [(-6, "q.....$..BBH")],
+        0: [(-1, "VVV.BB")],
+    })
+    # the dome's outer ring, beyond the drum: guns into the courts
+    _segs(c, {
+        10: [(-5, "c")],
+        9: [(-8, "i"), (8, "e")],
+        4: [(10, "a")],
+        2: [(-10, "b")],
+    })
+    # the side wing and its chapel: quarters, stores, guns
+    _segs(c, {
+        27: [(-2, "##x##")],
+        26: [(-2, ".a...")],
+        23: [(-5, "i..Q.Q....i")],
+        22: [(-4, ".........")],
+        21: [(-4, "M........e")],
+        20: [(-3, ".R.....")],
+        15: [(0, "M")],
+        14: [(-3, "c.....b")],
+        13: [(4, "O")],
+    })
+    # the front wing and chapel: targeting, ammunition, railguns in the apse
+    _segs(c, {
+        5: [(23, "x")],
+        4: [(19, "..T...a")],
+        3: [(13, "T.M"), (24, "m.i")],
+        2: [(19, "..s.a..rr")],
+        1: [(13, "b.c"), (25, "a")],
+    })
+    for x in (-17, 17):
+        c.cells[(x, 0)] = "d"                       # bulkheads in the necks
     return finish(c.mirror())
 
 
@@ -458,13 +437,13 @@ CONCEPTS = [
     ("cortege", cortege, "Cortege", "Cruiser",
      "A funeral procession in bone: the spine is a chain of swollen vertebrae pinched apart by bare links, each throwing a short process aft to a gun."),
     ("memento", memento, "Memento", "Battleship",
-     "Two great thighbones crossed over the spine: split knees forward carrying missiles and railguns, ball joints aft carrying engines, the bridge where they cross."),
+     "Memento mori: a skull seen from above, as wide as it is long. Eye sockets and a nose hole open right through it, cheekbones flare into gun knuckles, a row of teeth across the front carries the guns, engines across the back of the cranium, the bridge between the eyes."),
     ("see", see, "The Holy See", "Flagship",
      "The seat of a dead pontiff still in office: a ringed cross inside a pointed halo of bone, its arms running out past the halo, the pontiff lying in state beside the bridge."),
     ("hourglass", hourglass, "Hourglass", "Experimental: entropy clock",
      "An hourglass of bone on its side: two triangular bulbs meet at a waist where the bridge sits. The forward bulb has run empty; the last sand is heaped against the stern."),
-    ("sarcophagus", sarcophagus, "Sarcophagus", "Experimental: open coffin",
-     "An open coffin of bone with its dead lord still laid out inside, skull, ribs, pelvis and legs, space all round him. The coffin carries the guns; he commands from the ribcage."),
+    ("sarcophagus", sarcophagus, "Sarcophagus", "Experimental: mausoleum",
+     "The dead lord's mausoleum, seen from above: a cross-shaped tomb with a round windowed dome over his bier, the bridge beside him. Four short wings lined with bone colonnades, open courts between them, each wing ending in a small domed chapel that carries guns; engines on the rear chapel."),
     ("ferryman", ferryman, "Ferryman", "Trader: small",
      "A ferry for the dead: two pairs of short ribs each cradling a rack of coffins, and a lantern on the prow."),
     ("tithe", tithe, "Tithe", "Trader: medium",

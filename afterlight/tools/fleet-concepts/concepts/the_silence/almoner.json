@@ -3,584 +3,8 @@
  "hull_cells": [
   {
    "grid_pos": [
-    -30,
-    0
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -29,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -29,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -29,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -28,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -28,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -28,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -27,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -27,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -27,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -27,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -27,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -26,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -26,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -26,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -26,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -26,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -25,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -25,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -25,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -25,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -25,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -24,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -24,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -24,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -24,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -24,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -23,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -23,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -23,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -23,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -23,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -22,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -22,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -22,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -22,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -22,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -21,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -21,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -21,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -21,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -21,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -20,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -20,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -20,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -20,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -20,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
+    -15,
     -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    3
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -588,25 +12,9 @@
   {
    "grid_pos": [
     -15,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
     -2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -614,7 +22,7 @@
     -15,
     -1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -622,7 +30,7 @@
     -15,
     0
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -630,7 +38,7 @@
     -15,
     1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -638,7 +46,7 @@
     -15,
     2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -646,468 +54,12 @@
     -15,
     3
    ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
-    4
-   ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -14,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
     -6
    ],
    "layer": "Outer",
@@ -1115,23 +67,23 @@
   },
   {
    "grid_pos": [
-    -9,
+    -14,
     -5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -9,
+    -14,
     -4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -9,
+    -14,
     -3
    ],
    "layer": "Hallway",
@@ -1139,127 +91,7 @@
   },
   {
    "grid_pos": [
-    -9,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
+    -14,
     -2
    ],
    "layer": "Hallway",
@@ -1267,7 +99,7 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     -1
    ],
    "layer": "Hallway",
@@ -1275,7 +107,7 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     0
    ],
    "layer": "Hallway",
@@ -1283,7 +115,7 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     1
    ],
    "layer": "Hallway",
@@ -1291,7 +123,7 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     2
    ],
    "layer": "Hallway",
@@ -1299,7 +131,7 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     3
    ],
    "layer": "Hallway",
@@ -1307,23 +139,23 @@
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -8,
+    -14,
     6
    ],
    "layer": "Outer",
@@ -1331,143 +163,7 @@
   },
   {
    "grid_pos": [
-    -8,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
+    -13,
     -8
    ],
    "layer": "Outer",
@@ -1475,7 +171,7 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     -7
    ],
    "layer": "Outer",
@@ -1483,15 +179,15 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     -6
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     -5
    ],
    "layer": "Inner",
@@ -1499,31 +195,31 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
-    -3
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
-    -2
+    -13,
+    -3
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
+    -13,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -13,
     -1
    ],
    "layer": "Inner",
@@ -1531,7 +227,7 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     0
    ],
    "layer": "Hallway",
@@ -1539,7 +235,7 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     1
    ],
    "layer": "Inner",
@@ -1547,31 +243,31 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
-    3
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
-    4
+    -13,
+    3
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
+    -13,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -13,
     5
    ],
    "layer": "Inner",
@@ -1579,15 +275,15 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     6
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     7
    ],
    "layer": "Outer",
@@ -1595,7 +291,7 @@
   },
   {
    "grid_pos": [
-    -6,
+    -13,
     8
    ],
    "layer": "Outer",
@@ -1603,15 +299,7 @@
   },
   {
    "grid_pos": [
-    -6,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
+    -12,
     -9
    ],
    "layer": "Outer",
@@ -1619,135 +307,31 @@
   },
   {
    "grid_pos": [
-    -5,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    -5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    -2
+    -12,
+    -8
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -5,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    2
+    -12,
+    -7
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -5,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
+    -12,
     -6
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     -5
    ],
    "layer": "Inner",
@@ -1755,31 +339,31 @@
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
-    -3
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
-    -2
+    -12,
+    -3
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
+    -12,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -12,
     -1
    ],
    "layer": "Inner",
@@ -1787,7 +371,7 @@
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     0
    ],
    "layer": "Hallway",
@@ -1795,7 +379,7 @@
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     1
    ],
    "layer": "Inner",
@@ -1803,31 +387,31 @@
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
-    3
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
-    4
+    -12,
+    3
    ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
+    -12,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -12,
     5
    ],
    "layer": "Inner",
@@ -1835,15 +419,31 @@
   },
   {
    "grid_pos": [
-    -4,
+    -12,
     6
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -4,
+    -12,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -12,
+    8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -12,
     9
    ],
    "layer": "Outer",
@@ -1851,143 +451,47 @@
   },
   {
    "grid_pos": [
-    -3,
+    -11,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
     -9
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -3,
+    -11,
+    -8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
     -6
    ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -3
-   ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -3,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -2,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -2,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -2,
+    -11,
     -5
    ],
    "layer": "Hallway",
@@ -1995,7 +499,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     -4
    ],
    "layer": "Hallway",
@@ -2003,7 +507,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     -3
    ],
    "layer": "Hallway",
@@ -2011,7 +515,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     -2
    ],
    "layer": "Hallway",
@@ -2019,7 +523,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     -1
    ],
    "layer": "Hallway",
@@ -2027,7 +531,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     0
    ],
    "layer": "Hallway",
@@ -2035,7 +539,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     1
    ],
    "layer": "Hallway",
@@ -2043,7 +547,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     2
    ],
    "layer": "Hallway",
@@ -2051,7 +555,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     3
    ],
    "layer": "Hallway",
@@ -2059,7 +563,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     4
    ],
    "layer": "Hallway",
@@ -2067,7 +571,7 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     5
    ],
    "layer": "Hallway",
@@ -2075,39 +579,95 @@
   },
   {
    "grid_pos": [
-    -2,
+    -11,
     6
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -2,
+    -11,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
     9
    ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    10
+   ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
+    -11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
     -9
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
+    -8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
     -6
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     -5
    ],
    "layer": "Hallway",
@@ -2115,79 +675,79 @@
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     -4
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     -3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     -2
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    3
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
-    4
+    -10,
+    0
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
     5
    ],
    "layer": "Hallway",
@@ -2195,31 +755,103 @@
   },
   {
    "grid_pos": [
-    -1,
+    -10,
     6
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -1,
+    -10,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
     9
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    0,
-    -9
+    -10,
+    10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    11
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    0,
+    -9,
+    -12
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
     -6
    ],
    "layer": "Outer",
@@ -2227,167 +859,23 @@
   },
   {
    "grid_pos": [
-    0,
+    -9,
     -5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    0,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
+    -9,
     -1
    ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    0,
-    6
-   ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    0,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
+    -9,
     0
    ],
    "layer": "Hallway",
@@ -2395,47 +883,23 @@
   },
   {
    "grid_pos": [
-    1,
+    -9,
     1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    1,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    1,
+    -9,
     5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    1,
+    -9,
     6
    ],
    "layer": "Outer",
@@ -2443,63 +907,135 @@
   },
   {
    "grid_pos": [
-    1,
+    -9,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
     9
    ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    12
+   ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
+    -8,
+    -13
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
     -9
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    -5
+    -8,
+    -8
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
+    -8,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
     -4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
+    -8,
     -3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
+    -8,
     -2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    2,
+    -8,
     -1
    ],
    "layer": "Hallway",
@@ -2507,127 +1043,7 @@
   },
   {
    "grid_pos": [
-    2,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    2,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
+    -8,
     0
    ],
    "layer": "Hallway",
@@ -2635,247 +1051,7 @@
   },
   {
    "grid_pos": [
-    3,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    3,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    4,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
+    -8,
     1
    ],
    "layer": "Hallway",
@@ -2883,63 +1059,127 @@
   },
   {
    "grid_pos": [
-    5,
+    -8,
     2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    5,
+    -8,
     3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    5,
+    -8,
     4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    5,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    5,
-    6
+    -8,
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    5,
+    -8,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
     9
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
-    -9
+    -8,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    13
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
+    -13
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -9
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
     -8
    ],
    "layer": "Outer",
@@ -2947,63 +1187,47 @@
   },
   {
    "grid_pos": [
-    6,
-    -7
+    -7,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
-    -6
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    6,
-    -5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    6,
+    -7,
     -4
    ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -3
+   ],
    "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
-    -3
+    -7,
+    -2
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    6,
+    -7,
     -1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
     0
    ],
    "layer": "Hallway",
@@ -3011,63 +1235,47 @@
   },
   {
    "grid_pos": [
-    6,
+    -7,
     1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
     2
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
     3
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
     4
    ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    6,
-    5
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    6,
-    6
-   ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
-    7
+    -7,
+    5
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    6,
+    -7,
     8
    ],
    "layer": "Outer",
@@ -3075,6 +1283,2390 @@
   },
   {
    "grid_pos": [
+    -7,
+    9
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    13
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    0
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    0
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    0
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    14
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    15
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    13
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -14
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
     6,
     9
    ],
@@ -3083,8 +3675,40 @@
   },
   {
    "grid_pos": [
-    7,
-    -9
+    6,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    12
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    13
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    14
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -3092,7 +3716,47 @@
   {
    "grid_pos": [
     7,
-    -6
+    -13
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -9
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -8
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -3102,7 +3766,7 @@
     7,
     -5
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3110,7 +3774,7 @@
     7,
     -4
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3118,7 +3782,7 @@
     7,
     -3
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -3126,7 +3790,7 @@
     7,
     -2
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3134,7 +3798,7 @@
     7,
     -1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3150,7 +3814,7 @@
     7,
     1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3158,7 +3822,7 @@
     7,
     2
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3166,7 +3830,7 @@
     7,
     3
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -3174,7 +3838,7 @@
     7,
     4
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3182,13 +3846,13 @@
     7,
     5
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     7,
-    6
+    8
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -3198,7 +3862,71 @@
     7,
     9
    ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    13
+   ],
    "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -13
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -10
+   ],
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3206,23 +3934,23 @@
     8,
     -9
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
     8,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    8,
-    -5
+    -8
    ],
    "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -7
+   ],
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3230,7 +3958,7 @@
     8,
     -4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3238,7 +3966,7 @@
     8,
     -3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3246,7 +3974,7 @@
     8,
     -2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3278,7 +4006,7 @@
     8,
     2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3286,7 +4014,7 @@
     8,
     3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3294,23 +4022,23 @@
     8,
     4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     8,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    8,
-    6
+    7
    ],
    "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    8
+   ],
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3318,7 +4046,63 @@
     8,
     9
    ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    10
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    11
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    12
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    13
+   ],
    "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -12
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -10
+   ],
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -3326,7 +4110,23 @@
     9,
     -9
    ],
-   "layer": "Outer",
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -7
+   ],
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -3342,31 +4142,7 @@
     9,
     -5
    ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    -2
-   ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3374,7 +4150,7 @@
     9,
     -1
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3390,31 +4166,7 @@
     9,
     1
    ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    9,
-    4
-   ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3422,7 +4174,7 @@
     9,
     5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3436,6 +4188,550 @@
   {
    "grid_pos": [
     9,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    11
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    12
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    7
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    8
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    10
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    11
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    6
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    9
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    10
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -9
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -6
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -4
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    4
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    6
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    7
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
+    8
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    12,
     9
    ],
    "layer": "Outer",
@@ -3443,7 +4739,151 @@
   },
   {
    "grid_pos": [
-    10,
+    13,
+    -8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -6
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -2
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    2
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    5
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    6
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    13,
+    8
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    14,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    14,
     -5
    ],
    "layer": "Outer",
@@ -3451,15 +4891,15 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     -4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    10,
+    14,
     -3
    ],
    "layer": "Hallway",
@@ -3467,7 +4907,7 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     -2
    ],
    "layer": "Inner",
@@ -3475,7 +4915,7 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     -1
    ],
    "layer": "Inner",
@@ -3483,15 +4923,15 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     0
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    10,
+    14,
     1
    ],
    "layer": "Inner",
@@ -3499,7 +4939,7 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     2
    ],
    "layer": "Inner",
@@ -3507,7 +4947,7 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     3
    ],
    "layer": "Hallway",
@@ -3515,15 +4955,15 @@
   },
   {
    "grid_pos": [
-    10,
+    14,
     4
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    10,
+    14,
     5
    ],
    "layer": "Outer",
@@ -3531,328 +4971,8 @@
   },
   {
    "grid_pos": [
-    11,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    11,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
     14,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    15,
-    -4
+    6
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -3862,7 +4982,7 @@
     15,
     -3
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3870,7 +4990,7 @@
     15,
     -2
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3878,7 +4998,7 @@
     15,
     -1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3886,7 +5006,7 @@
     15,
     0
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3894,7 +5014,7 @@
     15,
     1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -3902,589 +5022,13 @@
     15,
     2
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     15,
     3
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    15,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    22,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    22,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    22,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    22,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    22,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    23,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    23,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    23,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    23,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    23,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    24,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    24,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    24,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    24,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    24,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    25,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    25,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    25,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    25,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    25,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    26,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    26,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    26,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    26,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    26,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    27,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    27,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    27,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    27,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    27,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    28,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    28,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    28,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    29,
-    0
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    30,
-    0
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -4492,49 +5036,9 @@
  ],
  "modules": [
   {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    28,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    29,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    28,
-    -2
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    29,
-    -1
-   ],
-   "rotation": "East"
-  },
-  {
    "module_type": "StandardEngine",
    "grid_pos": [
     -15,
-    4
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -18,
     -3
    ],
    "rotation": "East"
@@ -4542,24 +5046,8 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -30,
-    0
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -27,
-    2
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -12,
-    5
+    -15,
+    -2
    ],
    "rotation": "East"
   },
@@ -4567,30 +5055,6 @@
    "module_type": "StandardEngine",
    "grid_pos": [
     -15,
-    -4
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -18,
-    3
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -12,
-    -5
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -29,
     -1
    ],
    "rotation": "East"
@@ -4598,7 +5062,15 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -29,
+    -15,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -15,
     1
    ],
    "rotation": "East"
@@ -4606,10 +5078,730 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -27,
-    -2
+    -15,
+    2
    ],
    "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -15,
+    3
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -14,
+    4
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -14,
+    -4
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -12,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -13,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -13,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -12,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -6,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -13,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -6,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    6,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    6,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -13,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    13,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -10,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -12,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -13,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    4,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -5,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    13,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    12,
+    -6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    11,
+    -8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    4,
+    -13
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -5,
+    -13
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    9,
+    -10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -8,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    7,
+    11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    9,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    11,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    12,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    7,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -8,
+    11
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -13,
+    -6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -12,
+    -8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BulkCargoHold",
+   "grid_pos": [
+    -10,
+    -10
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    14,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -13,
+    8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -1,
+    -15
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    12,
+    -9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -13,
+    -8
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    12,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    8,
+    13
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    4,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    8,
+    -13
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    4,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -1,
+    15
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    14,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -12,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -12,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -11,
+    -9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    0,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    11,
+    -9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -11,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    11,
+    9
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    0,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    0,
+    -15
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    15,
+    0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    -9,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    0,
+    15
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    -9,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    9,
+    -12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    9,
+    12
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    7,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    7,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    5,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    -5,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    15,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    5,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    -5,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ThermalImager",
+   "grid_pos": [
+    15,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    3,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -3,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    3,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MedBay",
+   "grid_pos": [
+    -3,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -3,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -2,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -1,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    0,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    1,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    2,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    3,
+    14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -3,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -2,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    -1,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    0,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    1,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    2,
+    -14
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "CryoStorage",
+   "grid_pos": [
+    3,
+    -14
+   ],
+   "rotation": "North"
   },
   {
    "module_type": "BridgeWing",
@@ -4620,746 +5812,82 @@
    "rotation": "East"
   },
   {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    0,
+    13
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    0,
+    -13
+   ],
+   "rotation": "North"
+  },
+  {
    "module_type": "HelmStation",
    "grid_pos": [
-    2,
+    1,
     0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AdvancedRadar",
+   "grid_pos": [
+    12,
+    4
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AdvancedRadar",
+   "grid_pos": [
+    12,
+    -4
    ],
    "rotation": "North"
   },
   {
    "module_type": "RadarArray",
    "grid_pos": [
-    29,
+    14,
     0
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -21,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -21,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -25,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -25,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    -23,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    -23,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    22,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    -19,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    22,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    -19,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    18,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    -17,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    18,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    -17,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -14,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MedBay",
-   "grid_pos": [
-    -14,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -10,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    12,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    3,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -7,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -7,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -7,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    9,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -4,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    6,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -4,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    6,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    6,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -4,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -13,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    3,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -7,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -13,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    3,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    9,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -10,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    12,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    3,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    -4,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BulkCargoHold",
-   "grid_pos": [
-    6,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    20,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    20,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    25,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    4,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    -6,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    25,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    4,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    -6,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    15,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    27,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -3,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    1,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    11,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -21,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -3,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    23,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    1,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -17,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    15,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
+   "module_type": "EmergencyBulkhead",
    "grid_pos": [
     -5,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    27,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    9,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -25,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    19,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -1,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    9,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    5,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -17,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -7,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -7,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -5,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    5,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -25,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    19,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -1,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    11,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -21,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    23,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    21,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -22,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    21,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -1,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -1,
-    -4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -22,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    -11,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    9,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    -11,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    9,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    30,
     0
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AdvancedRadar",
+   "module_type": "EmergencyBulkhead",
    "grid_pos": [
-    -1,
-    -9
+    9,
+    0
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AdvancedRadar",
+   "module_type": "EmergencyBulkhead",
    "grid_pos": [
-    -1,
-    9
+    5,
+    0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "EmergencyBulkhead",
+   "grid_pos": [
+    -9,
+    0
    ],
    "rotation": "North"
   }

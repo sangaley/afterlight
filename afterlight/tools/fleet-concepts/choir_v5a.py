@@ -63,23 +63,27 @@ E.........BBH#
 
 
 def keen():
-    """Scout, interceptor. A broken arrow: a nocked body shard with the
-    engines, a shaft pipe out to a rocket at the bow, and two barbs swept back
-    from the arrowhead, cracked off the shaft and each held on by one strut.
-    The barbs carry engines of their own."""
+    """Scout, interceptor. A cracked bell seen from below its mouth: a thick
+    round lip with the clapper hanging in the middle, and the bridge in the
+    clapper, held to the lip by three short struts. The bell has split on
+    both sides of its forward face, so the front of the lip is a loose shard
+    held only by the fore strut; a gatling sits on every point the crack
+    left. Listening gear studs the rim, the drives ring its aft curve, and a
+    rocket fires from the front shard."""
     c = Canvas("bc_keen", "Steel")
-    pipe(c, 0, 8, 22, "*", top="  ?  =     ?")
-    c.rows(0, 7, """
-           g#/
-           EM##/
-           E..f##/
-            #...Q##/
-             ##.#####
-  #M##g#      #.#
- E.R.BB.#
-E.O.bBB..
+    # x -8 (aft) .. 8 (bow); the crack runs from (3,4) out to (5,6)
+    c.rows(-8, 7, """
+     #?#M#=#
+   #J.......g
+  ##..##.###  g
+  ?..# #.#   #O/
+ E..b  #.#  #..#
+ E.f   #.#   #.M
+ E.#  QBB.###a.#
+E..R  RBB.......*
 """)
     c.mirror()
+    del c.cells[(7, -4)]              # a plate shaken off the lower shard
     return finish(c)
 
 
@@ -277,7 +281,7 @@ CONCEPTS = [
     ("whisper", whisper, "Whisper", "Scout",
      "A tuning fork struck and left ringing: two long listening tines on a yoke, cracked off the engine stem and held by one strut. More ear than ship; it hears your crew think before it sees you."),
     ("keen", keen, "Keen", "Scout",
-     "A broken arrow built to run things down: a shaft pipe to a rocket at the bow, and two swept barbs cracked off it, each hanging on by one strut and carrying its own drives."),
+     "A cracked bell seen from above: a thick round lip with the bridge in the clapper, hung on three short struts. Split on both sides of its face, the front of the lip is a loose shard held only by one strut; gatlings sit on the crack's points and the drives ring its aft curve."),
     ("lament", lament, "Lament", "Corvette",
      "A struck gong: a round hull shattered into a boss and three pieces by a Y of cracks, each hung on one strut. Stub pipes jut from the front, gatlings ring the rim; it closes and keeps ringing."),
     ("syrinx", syrinx, "Syrinx", "Corvette",
