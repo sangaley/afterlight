@@ -292,6 +292,34 @@ pub fn intercept(from: Vec2, speed: f32, at: Vec2, vel: Vec2) -> Option<Vec2> {
     Some(at + vel * t)
 }
 
+/// Which missile a point defence turret takes: the one it already has while
+/// that one is still in reach and closing, else the one that will reach the
+/// ship first. Taking the first-arriving afresh every frame, a turret facing a
+/// salvo swung from missile to missile as their order changed and spent three
+/// frames in four turning, not firing (traced 2026-11-18: 1 of 22 downed).
+/// `missiles`: (missile, position, velocity).
+pub fn pd_pick(
+    ship_pos: Vec2,
+    from: Vec2,
+    reach: f32,
+    keep: Option<Entity>,
+    missiles: impl Iterator<Item = (Entity, Vec2, Vec2)>,
+) -> Option<(Entity, Vec2, Vec2)> {
+    let closing: Vec<(f32, Entity, Vec2, Vec2)> = missiles
+        .filter(|(_, p, _)| p.distance(from) < reach)
+        .filter_map(|(e, p, v)| {
+            let to_ship = ship_pos - p;
+            let closing = v.dot(to_ship.normalize_or_zero());
+            (closing > 50.0).then(|| (to_ship.length() / closing, e, p, v))
+        })
+        .collect();
+    closing
+        .iter()
+        .find(|(_, e, ..)| Some(*e) == keep)
+        .or_else(|| closing.iter().min_by(|a, b| a.0.total_cmp(&b.0)))
+        .map(|&(_, e, p, v)| (e, p, v))
+}
+
 /// What a point defence gun should shoot at: of the enemy missiles closing on
 /// `ship_pos` within `reach` of the gun at `from`, the one that will get
 /// there first; and where to aim (rounds at `speed`, the shooter moving at
@@ -331,6 +359,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_turret_keeps_the_missile_it_has() {
+        let a = Entity::from_raw_u32(1).unwrap();
+        let b = Entity::from_raw_u32(2).unwrap();
+        // Both closing on a ship at the origin; b will arrive first.
+        let salvo = [(a, Vec2::new(3000.0, 0.0), Vec2::new(-1000.0, 0.0)), (b, Vec2::new(0.0, 2000.0), Vec2::new(0.0, -1000.0))];
+        assert_eq!(pd_pick(Vec2::ZERO, Vec2::ZERO, 5000.0, None, salvo.into_iter()).map(|m| m.0), Some(b));
+        assert_eq!(pd_pick(Vec2::ZERO, Vec2::ZERO, 5000.0, Some(a), salvo.into_iter()).map(|m| m.0), Some(a), "it stays on a");
+        // Out of reach, it lets go.
+        assert_eq!(pd_pick(Vec2::ZERO, Vec2::ZERO, 2500.0, Some(a), salvo.into_iter()).map(|m| m.0), Some(b));
+    }
 
     #[test]
     fn a_round_leads_a_crossing_missile() {

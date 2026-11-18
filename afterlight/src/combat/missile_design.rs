@@ -350,6 +350,12 @@ pub const EMP_SECONDS: f32 = 6.0;
 /// beside the slower, harder guns. Enemy missiles too, as with guns.
 pub const WARHEAD_SCALE: f32 = 1.25;
 
+/// A missile's toughness against point defence at the 250 mm gauge, before
+/// sheaths. Was 50; doubled 2026-11-18 when every flak gun learned to stay on
+/// one missile and count its size: at 50, a Terran patrol's flak downed 11 of
+/// a 12-missile salvo.
+pub const TOUGHNESS: f32 = 100.0;
+
 pub fn stats(d: &MissileDesign, launcher: LauncherSpec) -> MissileStats {
     use MissileBody::*;
     let k = (launcher.gauge_mm / 250.0).powi(2);
@@ -419,7 +425,7 @@ pub fn stats(d: &MissileDesign, launcher: LauncherSpec) -> MissileStats {
         lateral_burning,
         life_s,
         turn_circle: top * top / lateral,
-        toughness: 50.0 * k.powf(0.7) * (1.0 + 0.8 * sheaths),
+        toughness: TOUGHNESS * k.powf(0.7) * (1.0 + 0.8 * sheaths),
         seeker,
         fool_chance: fool_base * 0.45f32.powi(procs),
         reload_s: (2.0 + 0.8 * parts as f32) * (launcher.gauge_mm / 250.0).powf(0.6) * launcher.reload_mult,
@@ -520,7 +526,7 @@ mod tests {
         let s = stats(&sledge, launcher_spec(ModuleType::VlsSilo).unwrap());
         assert!((2.4..3.1).contains(&(s.reach / 7193.0)), "{}", s.reach);
         assert!((2.4..3.1).contains(&(s.top_speed / 1098.0)), "{}", s.top_speed);
-        assert!((s.toughness - 174.0).abs() < 1.0);
+        assert!((s.toughness - 348.0).abs() < 2.0);
         assert!((s.reload_s - 14.0).abs() < 0.1);
         let hornet = stats(&MissileDesign::default_for(ModuleType::LaunchPad), launcher_spec(ModuleType::LaunchPad).unwrap());
         assert!((2.4..3.1).contains(&(hornet.reach / 5240.0)), "{}", hornet.reach);

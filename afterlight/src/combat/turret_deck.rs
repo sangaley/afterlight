@@ -60,6 +60,9 @@ pub fn update_player_aim_point(
     aim.then = cursor.or_else(|| selection.target.and_then(|t| targets.get(t).ok()).map(|g| g.translation().truncate()));
 }
 
+/// How much faster a turret turns while its point defence is on a missile.
+pub const PD_SLEW: f32 = 2.5;
+
 /// The rotating deck above a turret ring.
 #[derive(Component, Debug, Clone)]
 pub struct TurretBody {
@@ -85,6 +88,8 @@ pub struct TurretBody {
     /// A point defence gun on it has a missile to shoot at, and `aim` is
     /// where to meet it (combat::missile_defence).
     pub pd_engaged: bool,
+    /// The missile its point defence is on, kept until it's gone or past.
+    pub pd_target: Option<Entity>,
     /// How its ring was laid: with `ring_cell` and `size`, enough to lay it
     /// again (meta saves a shot-out ring this way).
     pub ring_rotation: crate::components::Rotation,
@@ -107,7 +112,7 @@ impl TurretBody {
 
     pub fn new(ring: Entity, ring_cell: IVec2, size: i32) -> Self {
         Self {
-            ring, ring_cell, size, angle: 0.0, traverse_deg_s: 0.0, mass_t: 0.0, motors: 0, jammed: false, aim: None, pd_engaged: false,
+            ring, ring_cell, size, angle: 0.0, traverse_deg_s: 0.0, mass_t: 0.0, motors: 0, jammed: false, aim: None, pd_engaged: false, pd_target: None,
             ring_rotation: crate::components::Rotation::North,
         }
     }
@@ -674,21 +679,26 @@ pub fn traverse_turrets(
         // A point defence gun on it takes the turret onto the incoming
         // missile that will arrive first, whoever's ship it is.
         let ship = parent.parent();
+        let keep = body.pd_target;
+        let mut picked = None;
         let pd_aim = children.into_iter().flatten().find_map(|c| pd.0.get(*c).ok()).and_then(|g| {
             let from = ship_gt.affine().transform_point3(transform.translation.with_z(0.0)).truncate();
-            crate::combat::missile_defence::pd_solution(
+            let speed = g.stats.velocity_mps * crate::combat::gun_assembly::GAME_SPEED_PER_MPS;
+            let (missile, at, vel) = crate::combat::missile_defence::pd_pick(
                 ship_gt.translation().truncate(),
                 from,
-                g.stats.velocity_mps * crate::combat::gun_assembly::GAME_SPEED_PER_MPS,
-                ship_vel.map(|v| v.0).unwrap_or(Vec2::ZERO),
                 crate::combat::gun_assembly::range_for(&g.stats).min(crate::combat::missile_defence::PD_RANGE),
+                keep,
                 warning
                     .into_iter()
                     .flat_map(|w| w.spotted.iter())
                     .filter_map(|e| pd.1.get(*e).ok())
-                    .map(|(_, t, v)| (t.translation.truncate(), v.0)),
-            )
+                    .map(|(e, t, v)| (e, t.translation.truncate(), v.0)),
+            )?;
+            picked = Some(missile);
+            crate::combat::missile_defence::intercept(from, speed, at, vel - ship_vel.map(|v| v.0).unwrap_or(Vec2::ZERO))
         });
+        body.pd_target = picked;
         let laser_pd = children.into_iter().flatten().any(|c| pd.2.contains(*c));
         let pd_aim = pd_aim.or_else(|| {
             laser_pd.then(|| {
@@ -736,7 +746,9 @@ pub fn traverse_turrets(
         if diff > std::f32::consts::PI {
             diff -= std::f32::consts::TAU;
         }
-        let max = body.traverse_deg_s.to_radians() * dt;
+        // On point defence it slews faster: a CIWS mount is geared for quick,
+        // small swings after a missile, not for laying a heavy gun.
+        let max = body.traverse_deg_s.to_radians() * dt * if on_pd && pd_aim.is_some() { PD_SLEW } else { 1.0 };
         let next = body.angle + diff.clamp(-max, max);
         // A physical stop: it won't turn its guns into another turret. It
         // may always turn the way that fouls less, so two built overlapping

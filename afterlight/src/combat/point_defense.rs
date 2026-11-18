@@ -188,16 +188,18 @@ pub fn pd_missile_collision(
         let enemy = |m: &MissileProjectile| sides.threat(pd.ship, m.owner_ship);
 
         if let Some(flak) = proj.flak {
-            let fused = missile_grid.0.nearby(proj_pos, flak.fuse).any(|(e, _)| {
-                missile_query.get(e).is_ok_and(|(t, m, _)| enemy(m) && t.translation.truncate().distance(proj_pos) < flak.fuse)
+            // The missile's own size counts: a fuse that would only go off at
+            // a missile's middle let a burst slide past one 30 u long.
+            let fused = missile_grid.0.nearby(proj_pos, flak.fuse + MAX_MISSILE_SIZE).any(|(e, _)| {
+                missile_query.get(e).is_ok_and(|(t, m, b)| enemy(m) && t.translation.truncate().distance(proj_pos) < flak.fuse + missile_size(b.as_deref()))
             });
             if !fused { continue; }
             commands.entity(proj_entity).try_despawn();
             spawn_hit_effect(&mut commands, proj_pos, Color::srgb(1.0, 0.8, 0.45), flak.burst * 0.35);
-            let caught: Vec<Entity> = missile_grid.0.nearby(proj_pos, flak.burst).map(|(e, _)| e).collect();
+            let caught: Vec<Entity> = missile_grid.0.nearby(proj_pos, flak.burst + MAX_MISSILE_SIZE).map(|(e, _)| e).collect();
             for e in caught {
                 let Ok((t, m, built)) = missile_query.get_mut(e) else { continue };
-                if !enemy(m) || t.translation.truncate().distance(proj_pos) > flak.burst { continue; }
+                if !enemy(m) || t.translation.truncate().distance(proj_pos) > flak.burst + missile_size(built.as_deref()) { continue; }
                 let at = t.translation.truncate();
                 let yours = built.as_ref().is_some_and(|b| b.player);
                 if hurt_missile(built, flak.damage) {
@@ -211,12 +213,12 @@ pub fn pd_missile_collision(
             continue;
         }
 
-        for (missile_entity, _) in missile_grid.0.nearby(proj_pos, 32.0) {
+        for (missile_entity, _) in missile_grid.0.nearby(proj_pos, MAX_MISSILE_SIZE * 1.5) {
             let Ok((missile_transform, missile, built)) = missile_query.get_mut(missile_entity) else { continue };
             // A battery does not shoot down its own salvo on the way out.
             if !enemy(missile) { continue; }
             let missile_pos = missile_transform.translation.truncate();
-            let radius = built.as_ref().map_or(20.0, |b| 14.0 + 10.0 * b.stats.k.sqrt());
+            let radius = missile_size(built.as_deref()) * 1.5;
             if proj_pos.distance(missile_pos) >= radius { continue; }
             commands.entity(proj_entity).try_despawn();
             // A built gun's round does its own damage; the old PD rounds 25.
@@ -235,6 +237,15 @@ pub fn pd_missile_collision(
         }
     }
 }
+
+/// How far a missile reaches from its middle, for what hits it: a designed
+/// one by its size, a fixed-list one 20 u.
+pub fn missile_size(built: Option<&super::missiles::BuiltMissile>) -> f32 {
+    built.map_or(20.0, |b| (14.0 + 10.0 * b.stats.k.sqrt()).min(MAX_MISSILE_SIZE))
+}
+
+/// The biggest `missile_size`, for how far to look.
+const MAX_MISSILE_SIZE: f32 = 60.0;
 
 /// Takes `damage` off a missile; true when it's down. A fixed-list missile
 /// has no toughness and goes down to anything.
