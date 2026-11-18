@@ -7,6 +7,9 @@ pub mod ship_roof;
 pub mod warp_light;
 pub mod roof_wear;
 pub mod paint_gen;
+pub mod interior_light;
+pub mod module_glow;
+pub mod path_lights;
 pub mod far_view;
 pub mod far_art;
 pub mod block_height;
@@ -71,6 +74,13 @@ impl Plugin for VfxPlugin {
             // Hull tiles pick their own seams from their neighbours. Visual
             // only, and gated internally on the live tile count, so it costs
             // an archetype scan on the frames where nothing was built or shot.
+            // The inside of every ship lit up from its dark art.
+            .add_systems(Update, interior_light::light_interiors)
+            // The modules' lights glow in their system's colour.
+            .add_plugins(bevy::sprite_render::Material2dPlugin::<module_glow::GlowMaterial>::default())
+            .add_systems(Update, (module_glow::add_module_glow, module_glow::put_out_module_glow))
+            // Path lights at the walkways' turns and junctions.
+            .add_systems(Update, path_lights::lay_path_lights)
             // Zoomed out, the ship shows plating instead of its insides.
             .add_systems(
                 Update,
