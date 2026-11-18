@@ -68,11 +68,11 @@ E.............BB.H...............A?
     return c.mirror().build()
 
 
-def echo():
+def mirage():
     """Corvette. The decoy. Beside its one real needle hang two more drawn
     only in rail, hung with signal buoys and jammers: on a scope it reads as
     three hulls, and two of them are not there."""
-    c = Canvas("si_echo", "Composite")
+    c = Canvas("si_mirage", "Composite")
     c.rows(-15, 7, """
     #J###=###J###=###J###/
     #                   ##?
@@ -86,12 +86,12 @@ E...........BB.H...........A?
     return c.mirror().build()
 
 
-def concord():
+def unison():
     """Corvette. The interferometer: a long nose and two arms swept back
     from a small hub, each arm ending in a rail of passive ears. Three ears
     set far apart hear as one very large one. The engines step back along
     the trailing edge of both arms like fletching."""
-    c = Canvas("si_concord", "Composite")
+    c = Canvas("si_unison", "Composite")
     for y in range(0, 15):
         for x in range(-20, 6):
             if y >= 2 and -1 <= x + y <= 2:
@@ -154,11 +154,11 @@ def pilgrim():
     return c.mirror().build()
 
 
-def antiphon():
+def lauds():
     """Frigate. The direction finder: two long needles crossed at the bridge
     like a pair of knitting needles, each listening down its own bearing.
     Where the two bearings cross, it knows exactly where you are."""
-    c = Canvas("si_antiphon", "Composite")
+    c = Canvas("si_lauds", "Composite")
     for x in range(-29, 30):
         for y in range(0, 10):
             if abs(y - abs(x) / 4) <= 1.5:
@@ -218,13 +218,13 @@ CONCEPTS = [
      "The Silence never broadcast, so what the pickets hear goes home by hand in sealed memory cores. A thin shaft and a swallow's forked tail."),
     ("hark", hark, "Hark", "Corvette: eavesdropper",
      "Built like a Yagi aerial: five pairs of masts, longest aft, an ear at every tip. It parks off a trade lane and hears every hail."),
-    ("echo", echo, "Echo", "Corvette: decoy",
+    ("mirage", mirage, "Mirage", "Corvette: decoy",
      "One real needle and two more drawn only in rail, hung with signal buoys and jammers. On a scope it is three hulls; two of them are not there."),
-    ("concord", concord, "Concord", "Corvette: interferometer",
+    ("unison", unison, "Unison", "Corvette: interferometer",
      "A long nose and two arms swept back from a small hub, an ear at each tip. Three ears set far apart hear as one very large one."),
     ("pilgrim", pilgrim, "Pilgrim", "Frigate: pilgrim ship",
      "One long needle with its eye near the stern, as a sewing needle has. The pilgrims' cells line both sides of the eye; the bridge sits just ahead of it."),
-    ("antiphon", antiphon, "Antiphon", "Frigate: direction finder",
+    ("lauds", lauds, "Lauds", "Frigate: direction finder",
      "Two needles crossed at the bridge, each listening down its own bearing. Where the two bearings cross, it knows exactly where you are."),
     ("compline", compline, "Compline", "Destroyer: flight leader",
      "A long lance in front and two shorter needles trailing it like wingmen in a flight of three, held on one yoke. It leads a listening flight home and keeps itself between the flight and harm."),

@@ -1,98 +1,10 @@
 {
- "name": "si_concord",
+ "name": "si_mirage",
  "hull_cells": [
   {
    "grid_pos": [
-    -19,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -19,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -18,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -17,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -16,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
     -15,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
-    -14
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
-    14
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -15,
-    16
+    0
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -100,7 +12,7 @@
   {
    "grid_pos": [
     -14,
-    -16
+    -1
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -108,15 +20,7 @@
   {
    "grid_pos": [
     -14,
-    -15
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    -14
+    0
    ],
    "layer": "Hallway",
    "material": "Composite"
@@ -124,39 +28,7 @@
   {
    "grid_pos": [
     -14,
-    -13
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    13
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    14
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    15
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -14,
-    16
+    1
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -164,7 +36,7 @@
   {
    "grid_pos": [
     -13,
-    -16
+    -2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -172,15 +44,7 @@
   {
    "grid_pos": [
     -13,
-    -14
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    -13
+    -1
    ],
    "layer": "Hallway",
    "material": "Composite"
@@ -188,23 +52,7 @@
   {
    "grid_pos": [
     -13,
-    -12
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    12
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -13,
-    13
+    0
    ],
    "layer": "Hallway",
    "material": "Composite"
@@ -212,15 +60,15 @@
   {
    "grid_pos": [
     -13,
-    14
+    1
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -13,
-    16
+    2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -228,7 +76,7 @@
   {
    "grid_pos": [
     -12,
-    -16
+    -2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -236,23 +84,15 @@
   {
    "grid_pos": [
     -12,
-    -14
+    -1
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -12,
-    -13
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    -12
+    0
    ],
    "layer": "Hallway",
    "material": "Composite"
@@ -260,47 +100,15 @@
   {
    "grid_pos": [
     -12,
-    -11
+    1
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -12,
-    11
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    12
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    13
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    14
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -12,
-    16
+    2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -308,254 +116,6 @@
   {
    "grid_pos": [
     -11,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -13
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -12
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -11
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    -10
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    10
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    11
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    12
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    13
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -11,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -12
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -11
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -10
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    10
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    11
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    12
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -10,
-    16
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -11
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -10
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -9
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    -8
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    8
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    9
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    10
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -9,
-    11
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -10
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -9
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    -8
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
     -7
    ],
    "layer": "Outer",
@@ -563,63 +123,7 @@
   },
   {
    "grid_pos": [
-    -8,
-    7
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    8
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    9
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -8,
-    10
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -9
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -8
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    -7
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
+    -11,
     -6
    ],
    "layer": "Outer",
@@ -627,7 +131,63 @@
   },
   {
    "grid_pos": [
-    -7,
+    -11,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -11,
     6
    ],
    "layer": "Outer",
@@ -635,32 +195,328 @@
   },
   {
    "grid_pos": [
-    -7,
+    -11,
     7
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    8
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -7,
-    9
    ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -6,
-    -8
+    -10,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -10,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -9,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -8,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -7,
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -670,13 +526,29 @@
     -6,
     -7
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -6,
-    -6
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -1
    ],
    "layer": "Hallway",
    "material": "Composite"
@@ -684,7 +556,23 @@
   {
    "grid_pos": [
     -6,
-    -5
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -6,
+    2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -700,23 +588,7 @@
   {
    "grid_pos": [
     -6,
-    6
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
     7
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -6,
-    8
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -732,23 +604,7 @@
   {
    "grid_pos": [
     -5,
-    -6
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
     -5
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    -4
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -756,7 +612,39 @@
   {
    "grid_pos": [
     -5,
-    4
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -5,
+    2
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -766,15 +654,7 @@
     -5,
     5
    ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -5,
-    6
-   ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -788,7 +668,7 @@
   {
    "grid_pos": [
     -4,
-    -6
+    -7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -798,23 +678,23 @@
     -4,
     -5
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -4,
-    -4
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
-    -3
+    -2
    ],
    "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    -1
+   ],
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -822,21 +702,13 @@
     -4,
     0
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -4,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -4,
-    4
+    1
    ],
    "layer": "Inner",
    "material": "Composite"
@@ -844,15 +716,31 @@
   {
    "grid_pos": [
     -4,
-    5
+    2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -4,
-    6
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -4,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -3,
+    -7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -863,22 +751,6 @@
     -5
    ],
    "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -4
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    -3
-   ],
-   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -894,7 +766,7 @@
     -3,
     -1
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -902,7 +774,7 @@
     -3,
     0
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -910,7 +782,7 @@
     -3,
     1
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -919,22 +791,6 @@
     2
    ],
    "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    3
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -3,
-    4
-   ],
-   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -947,8 +803,8 @@
   },
   {
    "grid_pos": [
-    -2,
-    -4
+    -3,
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -956,9 +812,17 @@
   {
    "grid_pos": [
     -2,
-    -3
+    -7
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    -5
+   ],
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -966,7 +830,7 @@
     -2,
     -2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -982,7 +846,7 @@
     -2,
     0
    ],
-   "layer": "Hallway",
+   "layer": "Inner",
    "material": "Composite"
   },
   {
@@ -998,20 +862,108 @@
     -2,
     2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     -2,
-    3
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -2,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    -2
    ],
    "layer": "Hallway",
    "material": "Composite"
   },
   {
    "grid_pos": [
-    -2,
+    -1,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    -1,
     4
    ],
    "layer": "Outer",
@@ -1020,7 +972,7 @@
   {
    "grid_pos": [
     -1,
-    -3
+    5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1028,47 +980,7 @@
   {
    "grid_pos": [
     -1,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    -1,
-    3
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1076,7 +988,15 @@
   {
    "grid_pos": [
     0,
-    -3
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1086,7 +1006,7 @@
     0,
     -2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -1118,13 +1038,21 @@
     0,
     2
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     0,
-    3
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    0,
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1132,7 +1060,15 @@
   {
    "grid_pos": [
     1,
-    -3
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1142,7 +1078,7 @@
     1,
     -2
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -1150,7 +1086,7 @@
     1,
     -1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -1158,7 +1094,7 @@
     1,
     0
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -1166,7 +1102,7 @@
     1,
     1
    ],
-   "layer": "Inner",
+   "layer": "Hallway",
    "material": "Composite"
   },
   {
@@ -1174,13 +1110,21 @@
     1,
     2
    ],
-   "layer": "Inner",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     1,
-    3
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    1,
+    7
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1188,7 +1132,15 @@
   {
    "grid_pos": [
     2,
-    -2
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1198,7 +1150,7 @@
     2,
     -1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
@@ -1214,13 +1166,37 @@
     2,
     1
    ],
-   "layer": "Hallway",
+   "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     2,
-    2
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    2,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1251,6 +1227,38 @@
   },
   {
    "grid_pos": [
+    3,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    3,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
     4,
     -1
    ],
@@ -1269,6 +1277,38 @@
    "grid_pos": [
     4,
     1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    4,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1299,6 +1339,38 @@
   },
   {
    "grid_pos": [
+    5,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    5,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
     6,
     -1
    ],
@@ -1317,6 +1389,38 @@
    "grid_pos": [
     6,
     1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    6,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1347,6 +1451,38 @@
   },
   {
    "grid_pos": [
+    7,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    7,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
     8,
     -1
    ],
@@ -1365,6 +1501,46 @@
    "grid_pos": [
     8,
     1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    8,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    -5
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1395,6 +1571,38 @@
   },
   {
    "grid_pos": [
+    9,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    9,
+    7
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
     10,
     -1
    ],
@@ -1413,6 +1621,22 @@
    "grid_pos": [
     10,
     1
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    10,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Composite"
+  },
+  {
+   "grid_pos": [
+    11,
+    -6
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1443,8 +1667,8 @@
   },
   {
    "grid_pos": [
-    12,
-    -1
+    11,
+    6
    ],
    "layer": "Outer",
    "material": "Composite"
@@ -1454,196 +1678,12 @@
     12,
     0
    ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    12,
-    1
-   ],
    "layer": "Outer",
    "material": "Composite"
   },
   {
    "grid_pos": [
     13,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    13,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    14,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    15,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    15,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    15,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    16,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    17,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    18,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    19,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    20,
-    0
-   ],
-   "layer": "Outer",
-   "material": "Composite"
-  },
-  {
-   "grid_pos": [
-    21,
     0
    ],
    "layer": "Outer",
@@ -1654,7 +1694,23 @@
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    20,
+    10,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    10,
+    5
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    12,
     1
    ],
    "rotation": "North"
@@ -1662,7 +1718,215 @@
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    20,
+    10,
+    -7
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    10,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    12,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -2,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -10,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    6,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    6,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -2,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -10,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    6,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -2,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -10,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -10,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    6,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalBuoy",
+   "grid_pos": [
+    -2,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    -6,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    -6,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    2,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    -6,
+    7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    2,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    -6,
+    -7
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    2,
+    5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "SignalJammer",
+   "grid_pos": [
+    2,
+    -5
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    13,
+    0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    11,
+    -6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "PassiveRadar",
+   "grid_pos": [
+    11,
+    6
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -14,
     -1
    ],
    "rotation": "East"
@@ -1670,7 +1934,7 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -3,
+    -13,
     -2
    ],
    "rotation": "East"
@@ -1678,23 +1942,7 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -3,
-    -1
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -5,
-    4
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -3,
+    -14,
     1
    ],
    "rotation": "East"
@@ -1702,23 +1950,7 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -3,
-    2
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -4,
-    -3
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "StandardEngine",
-   "grid_pos": [
-    -4,
+    -15,
     0
    ],
    "rotation": "East"
@@ -1726,23 +1958,207 @@
   {
    "module_type": "StandardEngine",
    "grid_pos": [
-    -4,
-    3
+    -13,
+    2
    ],
    "rotation": "East"
   },
   {
-   "module_type": "StandardEngine",
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -12,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
    "grid_pos": [
     -5,
-    -4
+    2
    ],
-   "rotation": "East"
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -5,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -12,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -11,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -3,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -7,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    5,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -11,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    5,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    9,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -3,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    9,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StealthCoating",
+   "grid_pos": [
+    -7,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -12,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "StandardReactor",
+   "grid_pos": [
+    -12,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -10,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -10,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    0,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    0,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -4,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -4,
+    1
+   ],
+   "rotation": "North"
   },
   {
    "module_type": "BridgeWing",
    "grid_pos": [
-    -1,
+    -3,
     1
    ],
    "rotation": "East"
@@ -1750,279 +2166,7 @@
   {
    "module_type": "HelmStation",
    "grid_pos": [
-    1,
-    0
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    -2,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    -2,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    1,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BasicQuarters",
-   "grid_pos": [
-    1,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    1,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ShieldEmitter",
-   "grid_pos": [
-    1,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    2,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -8,
-    -10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    -8,
-    10
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "MemoryCore",
-   "grid_pos": [
-    2,
-    2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -3,
-    3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -3,
-    -3
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -4,
-    -4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StandardReactor",
-   "grid_pos": [
-    -4,
-    4
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -6,
-    -8
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    13,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    13,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    5,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    5,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    17,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -3,
-    -5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    17,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -9,
-    11
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -10,
-    -9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -3,
-    5
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -6,
-    8
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -10,
-    9
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -7,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    9,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -7,
-    6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    9,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "StealthCoating",
-   "grid_pos": [
-    -9,
-    -11
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "RadarArray",
-   "grid_pos": [
-    -13,
-    -14
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "RadarArray",
-   "grid_pos": [
-    20,
+    0,
     0
    ],
    "rotation": "North"
@@ -2030,47 +2174,7 @@
   {
    "module_type": "RadarArray",
    "grid_pos": [
-    -13,
-    14
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    -19,
-    16
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "ThermalImager",
-   "grid_pos": [
-    -19,
-    -16
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    -10,
-    16
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    -10,
-    -16
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "PassiveRadar",
-   "grid_pos": [
-    21,
+    12,
     0
    ],
    "rotation": "North"

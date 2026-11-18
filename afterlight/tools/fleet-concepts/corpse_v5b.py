@@ -162,12 +162,12 @@ E.......
     return finish(c.mirror())
 
 
-def requiem():
+def memento():
     """Battleship. Two great thighbones crossed over the spine, memento mori
     from above: the forward ends are split knees carrying missiles and
     railguns, the aft ends are ball joints carrying engines. The bridge is
     where the bones cross; the ram runs on ahead of them."""
-    c = Canvas("cs_requiem", "AbyssalAlloy")
+    c = Canvas("cs_memento", "AbyssalAlloy")
     X0 = 34
     # the shafts, one row at a time: 45 degrees, a walkway on the inner face
     aft = ["..", ".Q", ".O", "..", ".b", "..", ".M", "..", ".c", "..", ".a", "..", ".."]
@@ -457,7 +457,7 @@ def sarcophagus():
 CONCEPTS = [
     ("cortege", cortege, "Cortege", "Cruiser",
      "A funeral procession in bone: the spine is a chain of swollen vertebrae pinched apart by bare links, each throwing a short process aft to a gun."),
-    ("requiem", requiem, "Requiem", "Battleship",
+    ("memento", memento, "Memento", "Battleship",
      "Two great thighbones crossed over the spine: split knees forward carrying missiles and railguns, ball joints aft carrying engines, the bridge where they cross."),
     ("see", see, "The Holy See", "Flagship",
      "The seat of a dead pontiff still in office: a ringed cross inside a pointed halo of bone, its arms running out past the halo, the pontiff lying in state beside the bridge."),

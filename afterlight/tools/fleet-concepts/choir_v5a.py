@@ -85,12 +85,12 @@ E.O.bBB..
 
 # ------------------------------------------------------------------ corvettes
 
-def howl():
+def lament():
     """Corvette, brawler. A struck gong: a round hull shattered into a boss
     and three pieces, a Y of cracks running out from a ring crack round the
     boss, each piece held on by one strut. Three stub pipes jut from the
     front piece and gatlings ring the rim. It closes, and keeps hitting."""
-    c = Canvas("bc_howl", "Steel")
+    c = Canvas("bc_lament", "Steel")
     c.rows(0, 8, """
      ##g###
    #gQ.m.M# g#/
@@ -132,13 +132,13 @@ def syrinx():
     return finish(c)
 
 
-def vigil():
+def nocturne():
     """Corvette, escort. An hourglass: two wedge shards flaring fore and aft
     from a pinched waist, cracked off a small hub that holds the bridge and
     held to it by two struts. The wide fore face is a wall of gatlings and
     stub pipes it keeps between the fleet and whatever comes; the aft face is
     all engines, to keep station."""
-    c = Canvas("bc_vigil", "Steel")
+    c = Canvas("bc_nocturne", "Steel")
     c.rows(0, 8, """
                       ##g
                      #M..
@@ -278,11 +278,11 @@ CONCEPTS = [
      "A tuning fork struck and left ringing: two long listening tines on a yoke, cracked off the engine stem and held by one strut. More ear than ship; it hears your crew think before it sees you."),
     ("keen", keen, "Keen", "Scout",
      "A broken arrow built to run things down: a shaft pipe to a rocket at the bow, and two swept barbs cracked off it, each hanging on by one strut and carrying its own drives."),
-    ("howl", howl, "Howl", "Corvette",
+    ("lament", lament, "Lament", "Corvette",
      "A struck gong: a round hull shattered into a boss and three pieces by a Y of cracks, each hung on one strut. Stub pipes jut from the front, gatlings ring the rim; it closes and keeps ringing."),
     ("syrinx", syrinx, "Syrinx", "Corvette",
      "A voice box made of pan pipes: five pipes cut level at the mouths and graduated at the tail, bound by one band with the bridge in its knot. Every mouth a launcher, every tail a drive."),
-    ("vigil", vigil, "Vigil", "Corvette",
+    ("nocturne", nocturne, "Nocturne", "Corvette",
      "An hourglass: two wedges flaring from a pinched waist, cracked off the bridge hub and held by struts. Its wide fore face is a wall of gatlings and stub pipes kept between the fleet and the enemy."),
     ("outcry", outcry, "Outcry", "Frigate",
      "A cry flung out in every direction: four shards blown off one core in an X, each held by one strut. The forward pair hook into short pipes like claws; the aft pair carry a staircase of drives."),
