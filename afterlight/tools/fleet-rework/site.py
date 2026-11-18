@@ -40,6 +40,11 @@ MODULES = {
     "shepherd": ["shepherd", "shepherd_v5a", "shepherd_v5b"],
 }
 
+# Ships redrawn off the arrowhead after the first full review (2026-11-18).
+RESHAPED = {"eternal_hegemony": {"thurible", "remembrancer"}, "corpse_stars": {"memento", "sarcophagus"},
+            "the_silence": {"mirage", "almoner"}, "broken_choir": {"keen"}, "shepherd": {"briar"},
+            "merchant_princes": {"claimstaker"}, "gilded_throne": {"retainer"}}
+
 # What the refit's report calls things, as a player would.
 NAMES = {
     "CIWS Turret": "CIWS point-defence turret",
@@ -197,7 +202,7 @@ def ship_card(slug, s):
 <article class="ship" id="{doc}">
   <header class="ship-head">
     <div>
-      <p class="cls">{e(s["cls"])}</p>
+      <p class="cls">{e(s["cls"])}{' <span class="reshaped">New shape</span>' if s["key"] in RESHAPED.get(slug, ()) else ''}</p>
       <h3>{e(s["name"])}</h3>
     </div>
     <dl class="size">
@@ -286,6 +291,7 @@ h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; }
 .factions a:hover, .factions a:focus-visible { border-color: var(--faction); }
 .factions .left { font: 500 12px var(--mono); color: var(--muted); }
 .factions .left.done { color: var(--ok); }
+.reshaped { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--warn); color: #14110a; font: 600 11px var(--mono); letter-spacing: 0.04em; vertical-align: 1px; }
 @media (max-width: 640px) { .factions { flex-wrap: nowrap; overflow-x: auto; } }
 .eyebrow, .cls { font: 500 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0; }
 .tally { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -346,6 +352,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <p class="eyebrow">Afterlight · fleet review</p>
     <h1>Fleet Rework</h1>
     <p>Every ship here is drawn by hand, then refit the way the game's current fleet was: doubled in size, armed with the turret, missile and point-defence kits, plated and painted. The pictures are the game's own renders of each design file. None of these ships is in the game yet.</p>
+    <p>Ten ships marked <span class="reshaped">New shape</span> were redrawn so they stop reading as arrowheads: a skull, a mausoleum, a censer, a laurel wreath, an ensō, an alms bowl, a cracked bell, a crown of thorns, a survey frame and a peacock fan.</p>
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>
