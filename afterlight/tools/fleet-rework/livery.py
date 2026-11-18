@@ -62,7 +62,7 @@ THEMES = {
                             light=[250, 244, 220], pattern="Bands", motif="navy", room=0.6),
     # Crimson and gold, an empire dressed for parade: gold chevrons down the
     # nave, ivory bands.
-    "eternal_hegemony": dict(main=[156, 38, 46], second=[70, 20, 28], accents=[[236, 188, 74], [238, 228, 206], [116, 64, 156]],
+    "eternal_hegemony": dict(main=[156, 38, 46], second=[226, 172, 64], accents=[[236, 188, 74], [238, 228, 206], [116, 64, 156]],
                              light=[255, 214, 120], pattern="Chevrons", motif="regal", room=0.62),
     # Royal slate and gold, jewel green: a gilded nose and a roundel.
     "gilded_throne": dict(main=[96, 104, 156], second=[42, 44, 76], accents=[[242, 200, 82], [240, 232, 214], [44, 176, 124]],
