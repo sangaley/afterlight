@@ -62,6 +62,38 @@ STYLE = {
         # Scrap plate: stops one shell whatever its size, then breaks.
         "armour": {"ArmorPlate": "AblativeArmor", "AngledArmorPlate": "AngledAblativeArmor"},
     },
+    # Factions whose missile is already set in ship-scale (choir, corpse,
+    # merchants) keep it; the rest get one here that fits their story.
+    "terran_hegemony": {
+        # Navy issue: a long-burn armour-piercer on radar. Standard plate.
+        "missile": {"motor": "Sustainer", "body": ["Fuel", "ShapedCharge", "ArmourSheath"], "head": "Radar"},
+    },
+    "eternal_hegemony": {
+        # Obeys orders even in flight: steered by command link from the throne.
+        "missile": {"motor": "Sustainer", "body": ["Fuel", "He", "ArmourSheath"], "head": "CommandLink"},
+    },
+    "gilded_throne": {
+        # The best money buys, and mirror plate that turns lasers.
+        "missile": {"motor": "Vectoring", "body": ["SignalProcessor", "ShapedCharge", "ArmourSheath"], "head": "Radar"},
+        "armour": {"ArmorPlate": "ReflectivePlate", "AngledArmorPlate": "AngledReflectivePlate"},
+    },
+    "synthesis_collective": {
+        # Hunts by heat and bursts beside you; flesh plate that sloughs off.
+        "missile": {"motor": "Vectoring", "body": ["Fuel", "Frag", "ProximityFuse"], "head": "Heat"},
+        "armour": {"ArmorPlate": "AblativeArmor", "AngledArmorPlate": "AngledAblativeArmor"},
+    },
+    "stellar_preserve": {
+        # Stops, does not kill: an EMP that bursts close.
+        "missile": {"motor": "Sustainer", "body": ["Fuel", "Emp", "ProximityFuse"], "head": "Heat"},
+    },
+    "free_haulers_compact": {
+        # Cheap and cheerful: a frag rocket off a rail, no seeker.
+        "missile": {"motor": "Booster", "body": ["Fuel", "Frag"], "head": "DumbNose"},
+    },
+    "shepherd": {
+        # What it catches it keeps: an EMP to stop you, steered from the hook.
+        "missile": {"motor": "Vectoring", "body": ["Fuel", "Emp", "ArmourSheath"], "head": "CommandLink"},
+    },
 }
 
 
@@ -157,7 +189,9 @@ def refit(slug, key, station=False):
 def main():
     slug = sys.argv[1]
     keys = sys.argv[2:] or sorted(f[:-5] for f in os.listdir(os.path.join(CONCEPTS, slug)) if f.endswith(".json"))
-    stations = {"hive"}
+    # Stations and platforms are drawn three times as big, not twice.
+    stations = {"hive", "broken_spire", "depot", "citadel", "reliquary", "exchange", "trade_post",
+                "velvet_rope", "sanctuary", "monastery", "growth_node", "gun_platform", "bastion", "the_fold"}
     for key in keys:
         path, a, b, n, report = refit(slug, key, key in stations)
         line = ", ".join(f"{v} {k}" for k, v in sorted(report.items()))

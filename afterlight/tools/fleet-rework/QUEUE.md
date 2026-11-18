@@ -13,10 +13,8 @@ at once on the 8 GB Mac; start the next job when one finishes.
 Paint: every faction from its in-game livery (refit.py LIVERY). Story: each brief carries the
 faction's lore from space-empire-story-bible.md and capital_worlds.rs.
 
-Status 2026-11-18 ~03:30: RK all 21 drawn. Done also: choir_v5a, silence_v5a, silence_v5b,
-preserve_v5a, merchants_v5a. Running: choir_v5b, preserve_v5b, merchants_v5b, compact_v5a,
-compact_v5b, synthesis_v5a, synthesis_v5b, gilded_v5a, gilded_v5b, corpse_v5a.
-Left to launch: corpse_v5b, terran_v5a, terran_v5b, eternal_v5a, eternal_v5b, shepherd_v5a, shepherd_v5b.
+Status 2026-11-18 later: merchants_v5b and choir_v5b done + committed (e850519); preserve_v5b, compact_v5a, compact_v5b, gilded_v5a, synthesis_v5a, corpse_v5a, corpse_v5b, synthesis_v5b, terran_v5a, gilded_v5b, terran_v5b, eternal_v5a done. Running: eternal_v5b, shepherd_v5a, shepherd_v5b.
+Left to launch: none.
 
 ## Done (older notes)
 - recursive_kingdom: rk_light, rk_mid, rk_heavy, rk_trade (rk_heavy keeps a spare sierpinski() out of CONCEPTS)
