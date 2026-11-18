@@ -33,12 +33,12 @@ def appraiser():
     return c.mirror().build()
 
 
-def herald():
-    """Scout: the Herald. It goes ahead of the Throne to read out the claim.
+def notary():
+    """Scout: the Notary. It goes ahead of the Throne to read out the claim.
     A fleur-de-lis: a long centre petal for the crown spike, two side petals
     bulging forward and curling back into horns, a collar band across the
     stem, and a small curled foot round the engines."""
-    c = Canvas("gt_herald")
+    c = Canvas("gt_notary")
     # the side petals, swelling forward and curling back to an aft tip
     c.P(-6, 10, "##")
     c.P(-5, 9, "#s#")
@@ -260,7 +260,7 @@ def poison_pill():
 CONCEPTS = [
     ("appraiser", appraiser, "Appraiser", "Scout",
      "A small jewel hung on a beam like a balance, a crescent pan at each end. Before the Debt Collector comes, this prices you."),
-    ("herald", herald, "Herald", "Scout",
+    ("notary", notary, "Notary", "Scout",
      "A fleur-de-lis: a long centre petal for the crown spike, side petals curling back into horns. It goes ahead of the Throne to read out the claim."),
     ("auditor", auditor, "Auditor", "Corvette",
      "A small jewel aft and an open octagonal loupe at the bow, ringed with radar and lit from inside. It reads a ship's books through the lens."),
