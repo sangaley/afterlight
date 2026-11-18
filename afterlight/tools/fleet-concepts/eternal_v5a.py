@@ -165,20 +165,29 @@ E#####.#########.###/
 
 def remembrancer():
     """Corvette: escort. The Remembrancer keeps the old fleet's memory of
-    itself, and it shows: behind its one great ziggurat tower hang two
-    echoes of the same tower, hollow and a beat late, as if the ship were
-    still arriving from two hundred years ago. A crown at the bow, a nave of
-    pillars to the throne, pods at the stern corners."""
+    itself, so it is drawn as a memorial wreath seen from above: two laurel
+    branches curving round from a ribbon knot at the stern and left open at
+    the bow, a leaf stepping off both sides of the branch at every station,
+    every leaf leaning toward the branch's tip. The knot holds the throne;
+    its ribbon ends trail aft and carry the engines. A processional walk runs
+    the length of each branch between shield pillars, and the guns ride the
+    leaf tips. Behind the wreath hangs its echo: the outer edge of the same
+    wreath, hollow and a beat late, as if the ship were still arriving from
+    two hundred years ago."""
     c = Canvas("eh_remembrancer")
-    paint(c, -13, 7, """
-        ::: ::: #g#/
-       :: ::: :#a.a#/
- #g#  ::  ::: #Q...Q#/
-E...  ########s.....s####l
-E.R.##.QO.M.a.....a.T..A##
- #.f.KK.s..s..s..s..s..#
-  E...c......BBH.....T..#z#g#/
-  E.M..m.....BB..M...........n
+    paint(c, -17, 11, """
+         :   g  g  g
+       :::  #Q #O #Q/
+     ::: ####.s..s..#
+    ::   #...........#/
+   ::  # #.M.Q.a.T.M..c##
+  ::  l##..# bs bs  #...z
+  :    #R.#   a  a  #.m..#
+ ::  ##.Of          #y #On
+ER##  #.KK#/             #
+ E..b#c.Q.Q#/
+  ER...s.BBH#
+    E....BB.A
 """)
     return finish(c.mirror(), "corvette")
 
@@ -204,25 +213,30 @@ E...###.#####.b.c.M..a..####.###..#/
 
 
 def thurible():
-    """Frigate: missile. A thurible, the censer swung before the procession:
-    a stepped dome pierced with a ring of open windows round the throne,
-    the smoke going up from every face of it. Here the smoke is missiles:
-    the dome's top tier and every step below it is a launcher rail, and a
-    long missile rides the spire. Pods at the stern corners, a recessed
-    bank between them, a small crown at the bow."""
+    """Frigate: missile. The thurible itself, the censer swung before the
+    procession, seen from above: a round bowl whose rim ring holds a domed
+    lid, a pierced gap between them and a ring of openings round the throne
+    at the top of the dome. Four chains rise from the lid's crown, where the
+    throne sits, run out between shield pillars and cross the gap as single
+    links to the rim; the stern link is the way to the engines on the rear
+    rim. The smoke is missiles: launchers stand round the rim and on the
+    dome's tier, firing out through crenels cut in the rim, and the raked
+    steps of the bowl and the dome are plated like a crown."""
     c = Canvas("eh_thurible")
-    paint(c, -14, 10, """
-           #x#x#x#
-         #x.......x#/
- ##g###x#..M.###.M..#x/
-E.R.....Q.O.#   #.QaT.#/
-E..b.d.m.s..#   #..s.A.#/
- ###.Q.#  #.a###a.#  #.O####/
-    #..#  #..KK...#  #.a.####
-    #.c.##.s....s..##..T#/
-   E.R.LL.Q..s..s..Q.a..#/
-   E.b.KK.....BBH.W..A...#z####/
-   E.M........BB...............x
+    paint(c, -12, 12, """
+         ###x###
+       # #.Q.Q.# #
+     #xa a.O.O.a ax#/
+    #..Q #.....# Q..#/
+   #...#    d    #...#/
+  #.O.#   #s.s#/  #.A.#
+  x..#  xQ.s.s.Qx/ #..z
+ #.Q#  #am.....ma#/ #Q.g
+ E.c  #T  .s.s.  T#  T.a/
+E.R#  #b  q...q  b#/ #..x
+E.b# #M.KK.....KK.M# W.ax
+E.LL #R..s.BBH.s..R# a.T#
+E...d......BB.......d.A.l
 """)
     return finish(c.mirror(), "frigate")
 
@@ -289,11 +303,11 @@ CONCEPTS = [
     ("lictor", lictor, "Lictor", "Corvette: gunboat",
      "The fasces made a warship: three rod hulls bound by bands, the crown's spire and points at their heads, and an axe blade of guns flaring from each side. It walks before the old fleet's magistrates."),
     ("remembrancer", remembrancer, "Remembrancer", "Corvette: escort",
-     "It keeps the old fleet's memory of itself: behind its one ziggurat tower hang two hollow echoes of the same tower, a beat late, as if the ship were still arriving from two hundred years ago."),
+     "A memorial laurel wreath: two leafed branches curving from a ribbon knot that holds the throne, open at the bow, guns on the leaf tips. Behind it hangs the wreath's hollow echo, a beat late, as if the ship were still arriving from two hundred years ago."),
     ("sceptre", sceptre, "Sceptre", "Frigate: railgun lance",
      "The emperor's sceptre carried into battle: an engine pommel, a rod, an orb holding the throne under a stepped gun tower, and a crowned head whose every point is a railgun."),
     ("thurible", thurible, "Thurible", "Frigate: missile",
-     "The censer swung before the procession: a stepped dome pierced with a ring of open windows round the throne. The smoke that rises from it is missiles, off every step of the dome."),
+     "The censer swung before the procession, seen from above: a round bowl rim round a pierced dome, four chains running from the throne at its crown out to the rim. The smoke that rises from it is missiles, off the rim and the dome's tier."),
     ("oriflamme", oriflamme, "Oriflamme", "Destroyer",
      "The sacred war banner: once raised, no quarter. The Eternal raised theirs two hundred years ago and never lowered it. A crowned pole across the bow, a towered banner behind, a swallowtail fly whose tails are the engine pods."),
     ("basilica", basilica, "Basilica", "Light cruiser",
