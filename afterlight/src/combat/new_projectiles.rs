@@ -68,6 +68,11 @@ pub struct Flak {
     pub damage: f32,
 }
 
+/// How much harder a flak burst hits a missile than its shell's payload alone.
+/// 1.3 since 2026-11-18 ("slightly boost the flak"), every ship's alike: a
+/// 20 mm CIWS burst takes about 10.5 off a missile instead of 8.
+pub const FLAK_BOOST: f32 = 1.3;
+
 impl Flak {
     /// A built gun's flak, if its shell has a fuse; `kinetic` is the round's
     /// own damage, half of which the burst carries too.
@@ -76,8 +81,21 @@ impl Flak {
         shell.flak_radii(gun.stats.gauge_mm).map(|(fuse, burst)| Flak {
             fuse,
             burst,
-            damage: shell.flak_damage(gun.stats.gauge_mm) + kinetic * 0.5,
+            damage: (shell.flak_damage(gun.stats.gauge_mm) + kinetic * 0.5) * FLAK_BOOST,
         })
+    }
+}
+
+#[cfg(test)]
+mod flak_tests {
+    /// The starter's CIWS: a burst takes about 10.5 off a missile.
+    #[test]
+    fn a_20_mm_burst_takes_a_tenth_and_a_half_off_a_missile() {
+        let d: crate::combat::gun_design::GunDesign =
+            serde_json::from_str(&std::fs::read_to_string("designs/guns/20_mm_ciws.json").unwrap()).unwrap();
+        let gun = d.assembled().expect("the CIWS assembles");
+        let flak = super::Flak::of(&gun, gun.stats.damage).expect("its shell has a fuse");
+        assert!((flak.damage - 10.5).abs() < 0.2, "{}", flak.damage);
     }
 }
 
