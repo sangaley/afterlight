@@ -479,6 +479,7 @@ impl Plugin for CombatPlugin {
             ).run_if(in_state(GameState::Exploring)))
             .add_systems(Update, (
                 targeting::mark_all_input.before(targeting::assign_auto_aim),
+                targeting::mark_test_hook.run_if(targeting::mark_hook_on).before(targeting::assign_auto_aim),
                 targeting::draw_marks,
             ).run_if(in_state(GameState::Exploring)))
             // Shields: attach to player + AI ships, recharge, drive bubble visuals

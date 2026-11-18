@@ -301,6 +301,40 @@ pub fn assign_auto_aim(
     }
 }
 
+/// AFTERLIGHT_MARK_AT=<secs> (filming and balance runs): mark every AI ship in
+/// range then, whatever its standing, the way Shift + `\` marks hostiles. A
+/// scripted key press is eaten by whatever story card is open at the time.
+pub fn mark_hook_on() -> bool {
+    std::env::var_os("AFTERLIGHT_MARK_AT").is_some()
+}
+
+#[allow(clippy::type_complexity)]
+pub fn mark_test_hook(
+    time: Res<Time>,
+    mut marks: ResMut<MarkedTargets>,
+    player: Query<&Transform, With<Ship>>,
+    enemies: Query<(Entity, &Transform), (With<AiShip>, Without<AiShipWreck>, Without<Ship>, Without<crate::combat::severance::DetachedSection>)>,
+    mut done: Local<bool>,
+) {
+    let at = std::env::var("AFTERLIGHT_MARK_AT").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+    if *done || time.elapsed_secs() < at {
+        return;
+    }
+    let Ok(tf) = player.single() else { return };
+    let mut near: Vec<(Entity, f32)> = enemies
+        .iter()
+        .map(|(e, t)| (e, tf.translation.truncate().distance(t.translation.truncate())))
+        .filter(|(_, d)| *d <= AUTO_ENGAGE_RANGE)
+        .collect();
+    if near.is_empty() {
+        return;
+    }
+    near.sort_by(|a, b| a.1.total_cmp(&b.1));
+    marks.ships = near.iter().map(|(e, _)| *e).collect();
+    *done = true;
+    info!("MARK {} ships, nearest {:.0} u", marks.ships.len(), near[0].1);
+}
+
 /// Shift + `\`: mark every hostile ship in range, or clear the marks.
 #[allow(clippy::type_complexity)]
 pub fn mark_all_input(
