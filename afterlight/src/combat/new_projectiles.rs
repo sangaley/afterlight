@@ -343,6 +343,13 @@ pub(crate) fn aim_at_override() -> Option<Vec2> {
     })
 }
 
+/// AFTERLIGHT_GUN_TRACE: what the player's point defence guns did this second
+/// (engaged, held for arc, held for a turret in the way, fired, no ammo).
+static PD_TALLY: [std::sync::atomic::AtomicU32; 5] = [const { std::sync::atomic::AtomicU32::new(0) }; 5];
+fn pd_tally(i: usize) {
+    PD_TALLY[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn fire_weapons_system(
     fx: Res<crate::vfx::effect_textures::EffectTextures>,
     aiming: AimInput,
@@ -376,6 +383,12 @@ pub fn fire_weapons_system(
         Res<crate::combat::turret_deck::TurretShapes>,
     ),
 ) {
+    if crate::combat::gun_assembly::trace() && (time.elapsed_secs() % 1.0) < time.delta_secs() {
+        let t: Vec<u32> = PD_TALLY.iter().map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed)).collect();
+        if t[0] > 0 {
+            info!("PD GUNS (yours) this second: engaged {} frames, held off-arc {}, held for a turret {}, fired {}, no ammo {}", t[0], t[1], t[2], t[3], t[4]);
+        }
+    }
     let (turret_bodies, turret_shapes) = (&turrets.0, &turrets.1);
     let Ok((player_ship, ship_transform, ship_physics, ship_velocity)) = ship_query.single() else { return };
     let _dt = time.delta_secs();
@@ -466,6 +479,10 @@ pub fn fire_weapons_system(
         if point_defence && module.module_type == ModuleType::FiringPiece && !pd_engaged { continue; }
         let group_firing = fire_state.firing[fire_group.group as usize % 4];
         if !group_firing && !pd_engaged { continue; }
+        if pd_engaged {
+            pd_tally(0);
+            if !crate::combat::INFINITE_AMMO && weapon.ammo <= 0 { pd_tally(4); }
+        }
 
         // Check ammo
         if !crate::combat::INFINITE_AMMO && weapon.ammo <= 0 { continue; }
@@ -564,6 +581,7 @@ pub fn fire_weapons_system(
             None => is_in_firing_arc(ship_physics.rotation, &module.rotation, mount, target_pos - weapon_pos),
         };
         if !in_arc {
+            if pd_engaged { pd_tally(1); }
             if crate::combat::gun_assembly::trace() && turret_bodies.contains(parent.parent()) {
                 if let Some(m) = muzzle {
                     let off = m.dir.angle_to((target_pos - weapon_pos).normalize_or_zero()).to_degrees();
@@ -579,8 +597,12 @@ pub fn fire_weapons_system(
         }
         // A firing cut-out: a turret gun holds fire while its line of fire
         // crosses another of the ship's turrets. (Hull guns fire on the deck
-        // below and keep the no-line-of-sight rule.)
-        if turret_bodies.contains(parent.parent()) {
+        // below and keep the no-line-of-sight rule.) Point defence doesn't:
+        // its flak bursts in the air at the missile, over the deck. Held by
+        // the cut-out, the starter's two CIWS sat silent 30-70% of every
+        // engagement and shot down nothing, while an AI ship's (which has no
+        // cut-out) fired straight through its own turrets.
+        if turret_bodies.contains(parent.parent()) && !pd_engaged {
             let own = parent.parent();
             let to_aim = target_pos - weapon_pos;
             let end = weapon_pos + to_aim.normalize_or_zero() * to_aim.length().min(TURRET_CUTOUT_REACH);
@@ -592,6 +614,7 @@ pub fn fire_weapons_system(
                     segment_closest(weapon_pos, end, world).0 < crate::combat::turret_deck::TURRET_CLEARANCE * 0.8
                 });
             if fouled {
+                if pd_engaged { pd_tally(2); }
                 continue;
             }
         }
@@ -750,6 +773,7 @@ pub fn fire_weapons_system(
                 GravityAffected { mass: 0.5 }, // Projectiles affected by gravity (slightly)
                 GravityForce::default(),
             )).insert_if(crate::combat::point_defense::PointDefenseRound { ship: player_ship }, || pd_engaged);
+            if pd_engaged { pd_tally(3); }
         }
 
         // Muzzle flash
@@ -2228,3 +2252,4 @@ mod pierce_tests {
         assert!(blocks_through(434.0, 142.0, 30.0, 0.0) > 5);
     }
 }
+
