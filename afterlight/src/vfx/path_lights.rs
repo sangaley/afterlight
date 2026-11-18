@@ -67,6 +67,22 @@ pub fn inside_corners(walkway: &HashSet<IVec2>) -> Vec<(IVec2, IVec2)> {
     out
 }
 
+/// A ship's walkway: its bare `Hallway` decking, with no part standing on it.
+pub fn walkway_cells(children: &Children, hull: &Query<&HullSegment, Without<HullDestroyed>>, modules: &Query<&Module, Without<DestroyedModule>>) -> HashSet<IVec2> {
+    let mut floor: HashSet<IVec2> = HashSet::default();
+    let mut parts: HashSet<IVec2> = HashSet::default();
+    for child in children.iter() {
+        if let Ok(h) = hull.get(child) {
+            if h.hull_layer == HullLayer::Hallway {
+                floor.insert(h.grid_position);
+            }
+        } else if let Ok(m) = modules.get(child) {
+            parts.extend(ShipGrid::cells_for(m.grid_position, m.size, m.rotation, footprints::footprint_override(m.module_type)));
+        }
+    }
+    floor.difference(&parts).copied().collect()
+}
+
 /// One of a ship's path lights.
 #[derive(Component)]
 pub struct PathLight;
@@ -110,18 +126,7 @@ pub fn lay_path_lights(
             commands.entity(old).try_despawn();
         }
 
-        let mut floor: HashSet<IVec2> = HashSet::default();
-        let mut parts: HashSet<IVec2> = HashSet::default();
-        for child in children.iter() {
-            if let Ok(h) = hull.get(child) {
-                if h.hull_layer == HullLayer::Hallway {
-                    floor.insert(h.grid_position);
-                }
-            } else if let Ok(m) = modules.get(child) {
-                parts.extend(ShipGrid::cells_for(m.grid_position, m.size, m.rotation, footprints::footprint_override(m.module_type)));
-            }
-        }
-        let walkway: HashSet<IVec2> = floor.difference(&parts).copied().collect();
+        let walkway = walkway_cells(children, &hull, &modules);
 
         let mut spawned = Vec::new();
         for (cell, d) in inside_corners(&walkway) {
