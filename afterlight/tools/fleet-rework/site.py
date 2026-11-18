@@ -26,7 +26,7 @@ REWORK = os.path.join(ROOT, "designs", "rework")
 
 # The concept modules each faction's ships are drawn in, in page order.
 MODULES = {
-    "recursive_kingdom": ["rk_light", "rk_mid", "rk_heavy"],
+    "recursive_kingdom": ["rk_light", "rk_mid", "rk_trade", "rk_heavy", "rk_heavy2", "rk_heavy3"],
 }
 
 # What the refit's report calls things, as a player would.
@@ -78,7 +78,14 @@ def missile_text(m):
 
 
 def faction(slug, ships_out):
-    mods = [importlib.import_module(m) for m in MODULES[slug] if os.path.exists(os.path.join(CONCEPT_DIR, m + ".py"))]
+    mods = []
+    for m in MODULES[slug]:
+        if not os.path.exists(os.path.join(CONCEPT_DIR, m + ".py")):
+            continue
+        try:
+            mods.append(importlib.import_module(m))
+        except Exception as e:  # a module another agent is still writing
+            print(f"  {m}: not ready ({e.__class__.__name__}), left out")
     if not mods:
         return None
     info = mods[0].FACTION

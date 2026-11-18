@@ -46,7 +46,7 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //   AFTERLIGHT_HIDE_UI=1 — hide every UI root (HUD, markers, cursor): world only.
 //   AFTERLIGHT_NO_BG_PLANETS=1 — hide the small parallax planets behind everything.
 //   AFTERLIGHT_KEY_BG=1 — empty space pure green, starfield hidden (for keying footage).
-//   AFTERLIGHT_PORTRAIT=1 — your ship alone: stations, other ships, planets and effects hidden.
+//   AFTERLIGHT_PORTRAIT=1 — your ship alone, held still and square: stations, other ships, planets and effects hidden.
 //   AFTERLIGHT_FREEZE_AT=<secs> — stop the game clock then (ships hold their spawn slots).
 //   AFTERLIGHT_FX_SCALE=<k> — shots and beams drawn k times bigger (wide fight shots).
 //   AFTERLIGHT_NO_DAMAGE_TEXT=1 — no floating damage numbers.
@@ -648,10 +648,25 @@ impl Plugin for DemoPlugin {
         if std::env::var("AFTERLIGHT_PORTRAIT").ok().as_deref() == Some("1") {
             app.add_systems(
                 PostUpdate,
-                (|mut roots: Query<&mut Visibility, (Without<ChildOf>, Without<crate::components::Ship>, Without<Node>)>| {
+                (|mut roots: Query<&mut Visibility, (Without<ChildOf>, Without<crate::components::Ship>, Without<Node>)>,
+                  mut ship: Query<(&mut Transform, &mut crate::components::ShipPhysics, &mut crate::components::Velocity), With<crate::components::Ship>>| {
                     for mut v in &mut roots {
                         if *v != Visibility::Hidden {
                             *v = Visibility::Hidden;
+                        }
+                    }
+                    // Held still and square to the frame: a parked ship drifts
+                    // and slowly turns, and the portrait is cropped to its plan.
+                    for (mut tf, mut physics, mut velocity) in &mut ship {
+                        if physics.rotation != 0.0 || physics.angular_velocity != 0.0 {
+                            physics.rotation = 0.0;
+                            physics.angular_velocity = 0.0;
+                        }
+                        if velocity.0 != Vec2::ZERO {
+                            velocity.0 = Vec2::ZERO;
+                        }
+                        if tf.rotation != Quat::IDENTITY {
+                            tf.rotation = Quat::IDENTITY;
                         }
                     }
                 })

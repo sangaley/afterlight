@@ -12,10 +12,11 @@ steps as every ship in the game did (tools/ship-scale/scale.py):
 - point defence on every armed ship (about one CIWS per 400 cells), and
   Missile Warners with a decoy and chaff beside one.
 
-Then what this rework adds for each faction (STYLE): its own missile design,
-its armour (the newer ablative and reflective plates where it suits), and a
-paint job of its own -- three colours and decals -- carried in the design
-(Blueprint.paint), so the portrait shows the ship as it will look.
+Then what this rework adds for each faction (STYLE): its own missile design
+and its armour (the newer ablative and reflective plates where it suits).
+Every ship is painted in its faction's in-game colours and pattern (LIVERY),
+carried in the design (Blueprint.paint), so the portrait shows it as it will
+look.
 
 Writes designs/rework/<slug>/<key>.json. Nothing here is loaded by the game's
 rosters; these are for the review site until they're approved.
@@ -34,6 +35,25 @@ import scale  # noqa: E402
 CONCEPTS = os.path.join(ROOT, "tools", "fleet-concepts", "concepts")
 OUT = os.path.join(ROOT, "designs", "rework")
 
+# Every faction's colours, as the game paints it (src/ai_ship/livery.rs and
+# components.rs::faction_map_color): (map colour, accent, accent pattern). The
+# portraits wear the same scheme (vfx::ship_roof::faction_paint), so a faction
+# looks the same on the map, in play and on the review site.
+LIVERY = {
+    "terran_hegemony": ((0.65, 0.7, 0.8), (0.93, 0.95, 0.98), "Bands"),
+    "eternal_hegemony": ((0.95, 0.2, 0.2), (0.95, 0.78, 0.3), "Chevrons"),
+    "gilded_throne": ((0.4, 0.45, 0.65), (0.95, 0.8, 0.35), "Bow"),
+    "broken_choir": ((0.6, 0.8, 0.65), (0.85, 0.9, 0.85), "Checker"),
+    "synthesis_collective": ((0.75, 0.35, 0.95), (0.3, 0.9, 0.8), "Stripe"),
+    "corpse_stars": ((0.55, 0.35, 0.9), (0.9, 0.86, 0.75), "Chevrons"),
+    "stellar_preserve": ((0.25, 0.85, 0.75), (0.95, 0.97, 0.95), "Split"),
+    "the_silence": ((0.9, 0.92, 0.95), (0.25, 0.27, 0.3), "Bands"),
+    "shepherd": ((1.0, 0.85, 0.2), (0.5, 0.33, 0.2), "Bow"),
+    "recursive_kingdom": ((0.95, 0.55, 0.2), (0.18, 0.16, 0.15), "Chevrons"),
+    "merchant_princes": ((0.5, 0.75, 0.4), (0.93, 0.9, 0.75), "Bands"),
+    "free_haulers_compact": ((0.8, 0.45, 0.3), (0.95, 0.82, 0.2), "Stripe"),
+}
+
 # Each faction's own touches on top of the shared refit.
 STYLE = {
     "recursive_kingdom": {
@@ -41,12 +61,45 @@ STYLE = {
         "missile": {"motor": "Booster", "body": ["Fins", "He", "Frag"], "head": "DumbNose"},
         # Scrap plate: stops one shell whatever its size, then breaks.
         "armour": {"ArmorPlate": "AblativeArmor", "AngledArmorPlate": "AngledAblativeArmor"},
-        # Sun-bleached scrap, oxidised panels, safety-orange trim.
-        "paint": {"main": [0.55, 0.49, 0.40], "second": [0.33, 0.40, 0.36], "trim": [0.88, 0.54, 0.24]},
-        # Every copy is numbered: chevrons down the spine, pointing at the bow.
-        "decals": {"spine": "Chevron", "every": 6, "colour": [224, 138, 60]},
     },
 }
+
+
+def accent_at(pattern, cell, lo, hi):
+    """Livery::accent_at, the same cells the game paints in the accent."""
+    x, y = cell
+    from_bow = hi[0] - x
+    off = y - (lo[1] + hi[1]) * 0.5
+    if pattern == "Bands":
+        return x % 6 < 2
+    if pattern == "Chevrons":
+        return (x + int(abs(off))) % 7 < 2
+    if pattern == "Bow":
+        return from_bow < max((hi[0] - lo[0] + 1) // 5, 2)
+    if pattern == "Split":
+        return off > 0
+    if pattern == "Checker":
+        return (x // 2 + y // 2) % 2 == 0
+    if pattern == "Stripe":
+        half = max((hi[1] - lo[1]) * 0.5, 1.0)
+        return 0.45 <= abs(off) / half < 0.7
+    return False
+
+
+def paint(slug, design):
+    """The faction's scheme (faction_paint: main its map colour a little
+    greyed toward plating, second and trim its accent), with its pattern
+    laid in the second colour."""
+    base, accent, pattern = LIVERY[slug]
+    grey = (0.6, 0.6, 0.62)
+    main = [round(g + (b - g) * 0.62, 4) for g, b in zip(grey, base)]
+    cells = [tuple(c["grid_pos"]) for c in design["hull_cells"]]
+    lo = (min(c[0] for c in cells), min(c[1] for c in cells))
+    hi = (max(c[0] for c in cells), max(c[1] for c in cells))
+    slots = [[list(c), "Second"] for c in cells if accent_at(pattern, c, lo, hi)]
+    return {"main": main, "second": [round(a * 0.9, 4) for a in accent], "trim": list(accent), "warm": False,
+            "slots": slots, "decals": []}
+
 
 KITS = {
     "autocannon": "Light Autocannon",
@@ -57,26 +110,6 @@ KITS = {
     "vls": "VLS Missile Silo",
     "spinal": "280 mm Spinal Gun",
 }
-
-
-def decals(design, style):
-    """Chevrons down the middle of the hull, every few cells, bow-ward."""
-    d = style.get("decals")
-    if not d:
-        return []
-    hull = {tuple(c["grid_pos"]) for c in design["hull_cells"]}
-    taken = set()
-    for m in design["modules"]:
-        if not (m.get("extras") or {}).get("turret"):
-            taken.update(kit.cells_of(m["module_type"], tuple(m["grid_pos"]), m.get("rotation", "North")))
-    xs = sorted({x for x, y in hull if y in (0, -1)})
-    out = []
-    for x in xs[2:-2:d["every"]]:
-        for y in (0, -1):
-            if (x, y) in hull and (x, y) not in taken:
-                # The art is a V pointing down; a quarter turn points it at the bow.
-                out.append({"cell": [x, y], "shape": d["spine"], "turn": 1, "flip": False, "colour": d["colour"], "layer": 0})
-    return out
 
 
 def refit(slug, key, station=False):
@@ -107,10 +140,7 @@ def refit(slug, key, station=False):
         if new:
             m["module_type"] = new
             swapped += 1
-    if style.get("paint"):
-        p = style["paint"]
-        out["paint"] = {"main": p["main"], "second": p["second"], "trim": p["trim"], "warm": False, "slots": [],
-                        "decals": decals(out, style)}
+    out["paint"] = paint(slug, out)
     os.makedirs(os.path.join(OUT, slug), exist_ok=True)
     path = os.path.join(OUT, slug, f"{key}.json")
     json.dump(out, open(path, "w"), indent=1)

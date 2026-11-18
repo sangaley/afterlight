@@ -49,13 +49,17 @@ def extent(design):
 
 
 def zooms(design):
+    """(shell zoom, inside zoom, frame size). A ship too big for the usual
+    frame at a zoom that still draws its blocks gets a bigger frame."""
     x0, x1, y0, y1 = extent(design)
     # The camera sits on the ship's origin, not its middle: fit the far side.
     w, h = 2 * max(-x0, x1), 2 * max(-y0, y1)
-    fit = max(w / (W * 0.85), h / (H * 0.85))
+    fw = min(4096, max(W, int(w / (SHELL_ZOOM[1] * 0.95 * 0.85)) + 16))
+    fh = min(4096, max(H, int(h / (SHELL_ZOOM[1] * 0.95 * 0.85)) + 16))
+    fit = max(w / (fw * 0.85), h / (fh * 0.85))
     shell = min(max(fit, SHELL_ZOOM[0]), SHELL_ZOOM[1])
     inside = min(max(fit, 1.2), SHELL_ZOOM[1])
-    return shell, inside
+    return shell, inside, (fw, fh)
 
 
 def keyed_crop(path, out, ext, zoom):
@@ -79,7 +83,7 @@ def keyed_crop(path, out, ext, zoom):
     return im.size
 
 
-def shoot(design_path, zoom, inside, shots):
+def shoot(design_path, zoom, inside, shots, frame=(W, H)):
     """One run of the game: the design at a fixed zoom, the clock stopped once
     it's up (a parked ship slowly turns), and one shot on cue with F7. With
     `inside`, '.' takes the roof off first."""
@@ -100,7 +104,7 @@ def shoot(design_path, zoom, inside, shots):
         "AFTERLIGHT_MOVETEST": "1",
         "AFTERLIGHT_DESIGN": os.path.abspath(design_path),
         "AFTERLIGHT_OFFSCREEN": "1",
-        "AFTERLIGHT_OFFSCREEN_SIZE": f"{W}x{H}",
+        "AFTERLIGHT_OFFSCREEN_SIZE": f"{frame[0]}x{frame[1]}",
         "AFTERLIGHT_HIDE_UI": "1",
         "AFTERLIGHT_KEY_BG": "1",
         "AFTERLIGHT_PORTRAIT": "1",
@@ -134,11 +138,11 @@ def shoot(design_path, zoom, inside, shots):
 def render(design_path, out_dir):
     design = json.load(open(design_path))
     key = os.path.splitext(os.path.basename(design_path))[0]
-    shell, inside = zooms(design)
+    shell, inside, frame = zooms(design)
     ext = extent(design)
     out = {}
     for name, zoom, roof_off in (("shell", shell, False), ("inside", inside, True)):
-        shot = shoot(design_path, zoom, roof_off, os.path.join(out_dir, "_shots", f"{key}_{name}"))
+        shot = shoot(design_path, zoom, roof_off, os.path.join(out_dir, "_shots", f"{key}_{name}"), frame)
         if not shot:
             print(f"{key}: no {name} shot (see {out_dir}/_shots/{key}_{name}/run.log)")
             return None
