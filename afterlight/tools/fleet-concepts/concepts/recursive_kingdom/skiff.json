@@ -3,8 +3,448 @@
  "hull_cells": [
   {
    "grid_pos": [
+    -11,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -11,
+    -5
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -11,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -11,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -11,
+    5
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -11,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    -4
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    4
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -10,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -4
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    -3
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    3
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    4
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -9,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -4
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -3
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    -2
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    2
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    3
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    4
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -8,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -3
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -2
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    -1
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    1
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    2
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    3
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    5
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -7,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -5
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -3
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -2
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    0
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    1
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    2
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    5
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -6,
+    6
+   ],
+   "layer": "Outer",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
     -5,
-    -7
+    -5
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -12,7 +452,79 @@
   {
    "grid_pos": [
     -5,
-    7
+    -4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -3
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -2
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    0
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    4
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -5,
+    5
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -20,7 +532,7 @@
   {
    "grid_pos": [
     -4,
-    -7
+    -4
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -28,23 +540,63 @@
   {
    "grid_pos": [
     -4,
-    -6
+    -3
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -4,
-    6
+    -2
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -4,
-    7
+    -1
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -4,
+    0
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -4,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -4,
+    2
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -4,
+    3
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -4,
+    4
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -52,7 +604,7 @@
   {
    "grid_pos": [
     -3,
-    -7
+    -3
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -60,23 +612,47 @@
   {
    "grid_pos": [
     -3,
-    -6
+    -2
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -3,
-    6
+    -1
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -3,
-    7
+    0
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -3,
+    1
+   ],
+   "layer": "Hallway",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -3,
+    2
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -3,
+    3
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -84,7 +660,7 @@
   {
    "grid_pos": [
     -2,
-    -7
+    -2
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -92,7 +668,15 @@
   {
    "grid_pos": [
     -2,
-    -6
+    -1
+   ],
+   "layer": "Inner",
+   "material": "Steel"
+  },
+  {
+   "grid_pos": [
+    -2,
+    0
    ],
    "layer": "Hallway",
    "material": "Steel"
@@ -100,31 +684,15 @@
   {
    "grid_pos": [
     -2,
-    -5
+    1
    ],
-   "layer": "Outer",
+   "layer": "Inner",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -2,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    -2,
-    6
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    -2,
-    7
+    2
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -132,7 +700,7 @@
   {
    "grid_pos": [
     -1,
-    -6
+    -1
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -140,47 +708,15 @@
   {
    "grid_pos": [
     -1,
-    -5
+    0
    ],
-   "layer": "Outer",
+   "layer": "Hallway",
    "material": "Steel"
   },
   {
    "grid_pos": [
     -1,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    -1,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    -6
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    -5
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    -4
+    1
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -189,614 +725,6 @@
    "grid_pos": [
     0,
     0
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    5
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    0,
-    6
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    1,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    -5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    2,
-    5
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    3,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    4,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    -4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    -3
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    0
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    3
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    5,
-    4
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    -2
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    2
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    6,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    -3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    -2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    2
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    7,
-    3
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    8,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    8,
-    -1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    8,
-    0
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    8,
-    1
-   ],
-   "layer": "Hallway",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    8,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    9,
-    -2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    9,
-    -1
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    9,
-    0
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    9,
-    1
-   ],
-   "layer": "Inner",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    9,
-    2
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    10,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    10,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    11,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    11,
-    1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    12,
-    -1
-   ],
-   "layer": "Outer",
-   "material": "Steel"
-  },
-  {
-   "grid_pos": [
-    12,
-    1
    ],
    "layer": "Outer",
    "material": "Steel"
@@ -806,15 +734,15 @@
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    8,
-    3
+    -5,
+    6
    ],
    "rotation": "North"
   },
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    10,
+    -1,
     2
    ],
    "rotation": "North"
@@ -822,7 +750,23 @@
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    10,
+    0,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    -5,
+    -6
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "AngledArmorPlate",
+   "grid_pos": [
+    -1,
     -2
    ],
    "rotation": "East"
@@ -830,117 +774,141 @@
   {
    "module_type": "AngledArmorPlate",
    "grid_pos": [
-    8,
-    -3
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    -1,
-    7
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "AngledArmorPlate",
-   "grid_pos": [
-    -1,
-    -7
+    0,
+    -1
    ],
    "rotation": "East"
   },
   {
    "module_type": "ClusterRocket",
    "grid_pos": [
-    6,
-    -3
+    -9,
+    -6
    ],
    "rotation": "South"
   },
   {
    "module_type": "ClusterRocket",
    "grid_pos": [
-    6,
-    3
+    -9,
+    6
    ],
    "rotation": "North"
   },
   {
-   "module_type": "MemoryCore",
+   "module_type": "StandardEngine",
    "grid_pos": [
-    -1,
+    -11,
+    4
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -11,
+    5
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "StandardEngine",
+   "grid_pos": [
+    -11,
     -5
    ],
-   "rotation": "North"
+   "rotation": "East"
   },
   {
-   "module_type": "MemoryCore",
+   "module_type": "StandardEngine",
    "grid_pos": [
-    3,
-    2
+    -11,
+    -4
    ],
-   "rotation": "North"
+   "rotation": "East"
   },
   {
-   "module_type": "MemoryCore",
+   "module_type": "RadarArray",
    "grid_pos": [
-    -1,
+    -6,
     5
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BasicQuarters",
+   "module_type": "RadarArray",
    "grid_pos": [
-    5,
-    -2
+    -6,
+    -5
    ],
    "rotation": "North"
   },
   {
-   "module_type": "BasicQuarters",
+   "module_type": "StandardReactor",
    "grid_pos": [
-    5,
-    2
+    -10,
+    -4
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "StandardReactor",
    "grid_pos": [
-    7,
-    -2
+    -10,
+    4
    ],
    "rotation": "North"
   },
   {
-   "module_type": "AmmoBay",
+   "module_type": "FuelTank",
    "grid_pos": [
-    7,
-    2
+    -9,
+    4
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardEngine",
+   "module_type": "FuelTank",
    "grid_pos": [
-    1,
-    1
+    -9,
+    -4
    ],
-   "rotation": "East"
+   "rotation": "North"
   },
   {
-   "module_type": "StandardEngine",
+   "module_type": "CoolingPump",
    "grid_pos": [
-    1,
-    -1
+    -8,
+    -4
    ],
-   "rotation": "East"
+   "rotation": "North"
   },
   {
-   "module_type": "StandardEngine",
+   "module_type": "CoolingPump",
+   "grid_pos": [
+    -8,
+    4
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Gatling",
+   "grid_pos": [
+    -4,
+    4
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "Gatling",
+   "grid_pos": [
+    -4,
+    -4
+   ],
+   "rotation": "South"
+  },
+  {
+   "module_type": "Gatling",
    "grid_pos": [
     0,
     0
@@ -948,17 +916,121 @@
    "rotation": "East"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "MemoryCore",
    "grid_pos": [
-    3,
+    -5,
+    0
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -8,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "MemoryCore",
+   "grid_pos": [
+    -8,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    -3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BasicQuarters",
+   "grid_pos": [
+    -7,
+    3
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -7,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "BatteryBank",
+   "grid_pos": [
+    -7,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -6,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "OxygenScrubber",
+   "grid_pos": [
+    -6,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -3,
+    2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "AmmoBay",
+   "grid_pos": [
+    -3,
+    -2
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -6,
+    -1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "ShieldEmitter",
+   "grid_pos": [
+    -6,
     1
    ],
    "rotation": "North"
   },
   {
-   "module_type": "StandardReactor",
+   "module_type": "TargetingComputer",
    "grid_pos": [
-    3,
+    -2,
+    1
+   ],
+   "rotation": "North"
+  },
+  {
+   "module_type": "TargetingComputer",
+   "grid_pos": [
+    -2,
     -1
    ],
    "rotation": "North"
@@ -966,64 +1038,8 @@
   {
    "module_type": "HelmStation",
    "grid_pos": [
-    9,
-    1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "BatteryBank",
-   "grid_pos": [
-    3,
+    -4,
     0
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "CoolingPump",
-   "grid_pos": [
-    5,
-    0
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "Gatling",
-   "grid_pos": [
-    9,
-    0
-   ],
-   "rotation": "East"
-  },
-  {
-   "module_type": "TargetingComputer",
-   "grid_pos": [
-    9,
-    -1
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "OxygenScrubber",
-   "grid_pos": [
-    3,
-    -2
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -3,
-    -6
-   ],
-   "rotation": "North"
-  },
-  {
-   "module_type": "FuelTank",
-   "grid_pos": [
-    -3,
-    6
    ],
    "rotation": "North"
   }

@@ -27,6 +27,7 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //                          frames come back black. Use AFTERLIGHT_OFFSCREEN for
 //                          anything run in the background.
 //                          Dir: AFTERLIGHT_SHOTS_DIR (default /tmp/afterlight_shots).
+//   AFTERLIGHT_OFFSCREEN_SIZE=<w>x<h> — with it, render that big (default 1280x720).
 //   AFTERLIGHT_OFFSCREEN=1  — render into an image instead of the window, so
 //                          capture works however buried the window is. The
 //                          window itself shows nothing; for unattended runs.
@@ -45,13 +46,14 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //   AFTERLIGHT_HIDE_UI=1 — hide every UI root (HUD, markers, cursor): world only.
 //   AFTERLIGHT_NO_BG_PLANETS=1 — hide the small parallax planets behind everything.
 //   AFTERLIGHT_KEY_BG=1 — empty space pure green, starfield hidden (for keying footage).
+//   AFTERLIGHT_PORTRAIT=1 — your ship alone: stations, other ships, planets and effects hidden.
 //   AFTERLIGHT_FREEZE_AT=<secs> — stop the game clock then (ships hold their spawn slots).
 //   AFTERLIGHT_FX_SCALE=<k> — shots and beams drawn k times bigger (wide fight shots).
 //   AFTERLIGHT_NO_DAMAGE_TEXT=1 — no floating damage numbers.
 //   AFTERLIGHT_NO_SHIELD_FX=1 — no shield outline glow or facing arcs (shields still work).
 //   AFTERLIGHT_STANDOFF=<u> — fighting AI ships hold this far off (before hull sizes).
 //   AFTERLIGHT_HOLD_LINES=1 — fighting AI ships hold where they are (placed battle lines).
-//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] | ai — point the camera there instead of at
+//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] | ai | ship — point the camera there instead of at
 //                          the ship ("station": the nearest station core; ">d"
 //                          slides d units toward its world).
 //   AFTERLIGHT_SHOTS_AFTER=<secs> — with AFTERLIGHT_SHOTS, don't start capturing
@@ -559,6 +561,14 @@ impl Plugin for DemoPlugin {
                             }
                         });
                 });
+            } else if spec.trim() == "ship" {
+                // "ship": exactly on your ship, with none of the camera's lead
+                // (ship portraits for the fleet review site, cropped from the
+                // design's own extent).
+                app.add_systems(Update, |ship: Query<&Transform, With<crate::components::Ship>>,
+                                         mut pin: ResMut<crate::camera::CameraPin>| {
+                    pin.0 = ship.single().ok().map(|t| t.translation.truncate());
+                });
             } else if spec.trim() == "ai" {
                 // "ai": follow the nearest AI ship (whole ships, not broken-off
                 // pieces), for filming what happens to it.
@@ -616,17 +626,33 @@ impl Plugin for DemoPlugin {
                 .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
             );
         }
-        // AFTERLIGHT_KEY_BG=1 -- empty space drawn pure green, the starfield, stars
-        // and planets hidden, so footage can be keyed cleanly and given its own
-        // backdrop.
+        // AFTERLIGHT_KEY_BG=1 -- empty space drawn pure green, the starfield, stars,
+        // planets and the sky's nebula hidden, so footage can be keyed cleanly
+        // and given its own backdrop.
         if std::env::var("AFTERLIGHT_KEY_BG").ok().as_deref() == Some("1") {
             app.add_systems(
                 PostUpdate,
                 (|mut clear: ResMut<ClearColor>,
-                  mut stars: Query<&mut Visibility, Or<(With<crate::vfx::starfield::StarfieldStar>, With<crate::vfx::starfield::BackgroundPlanet>, With<crate::celestial::components::Star>, With<crate::celestial::components::Planet>)>>| {
+                  mut stars: Query<&mut Visibility, Or<(With<crate::vfx::starfield::StarfieldStar>, With<crate::vfx::starfield::BackgroundPlanet>, With<crate::celestial::components::Star>, With<crate::celestial::components::Planet>, With<crate::ui::nebula::SkyNebula>)>>| {
                     clear.0 = Color::srgb(0.0, 1.0, 0.0);
                     for mut v in &mut stars {
                         *v = Visibility::Hidden;
+                    }
+                })
+                .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
+            );
+        }
+        // AFTERLIGHT_PORTRAIT=1 -- your ship alone: everything else standing in
+        // the world on its own (stations, other ships, planets, effects) hidden.
+        // Ship portraits for the fleet review site (tools/fleet-rework).
+        if std::env::var("AFTERLIGHT_PORTRAIT").ok().as_deref() == Some("1") {
+            app.add_systems(
+                PostUpdate,
+                (|mut roots: Query<&mut Visibility, (Without<ChildOf>, Without<crate::components::Ship>, Without<Node>)>| {
+                    for mut v in &mut roots {
+                        if *v != Visibility::Hidden {
+                            *v = Visibility::Hidden;
+                        }
                     }
                 })
                 .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
@@ -1174,11 +1200,25 @@ pub fn screenshot_of(offscreen: Option<&OffscreenTarget>) -> Screenshot {
 /// same patch of space and lays the HUD out identically at scale 1.0.
 const OFFSCREEN_SIZE: (u32, u32) = (1280, 720);
 
+/// AFTERLIGHT_OFFSCREEN_SIZE=<w>x<h>: render offscreen that big instead (ship
+/// portraits for the fleet review site: a big ship whole, at a zoom that
+/// still shows its insides).
+fn offscreen_size() -> (u32, u32) {
+    std::env::var("AFTERLIGHT_OFFSCREEN_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (w, h) = v.split_once('x')?;
+            Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+        })
+        .unwrap_or(OFFSCREEN_SIZE)
+}
+
 fn create_offscreen_target(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     use bevy::render::render_resource::{TextureFormat, TextureUsages};
+    let (width, height) = offscreen_size();
     let mut image = Image::new_target_texture(
-        OFFSCREEN_SIZE.0,
-        OFFSCREEN_SIZE.1,
+        width,
+        height,
         TextureFormat::Rgba8UnormSrgb,
         None,
     );
@@ -1188,7 +1228,7 @@ fn create_offscreen_target(mut commands: Commands, mut images: ResMut<Assets<Ima
     // and would be misread as "offscreen rendering doesn't work".
     image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
     commands.insert_resource(OffscreenTarget(images.add(image)));
-    info!("capture: rendering offscreen at {}x{}", OFFSCREEN_SIZE.0, OFFSCREEN_SIZE.1);
+    info!("capture: rendering offscreen at {}x{}", width, height);
 }
 
 fn aim_camera_offscreen(
