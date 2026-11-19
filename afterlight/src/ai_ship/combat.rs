@@ -485,6 +485,8 @@ pub fn ai_weapon_fire_system(
             );
             if let (Some((g, _)), true) = (gun, crate::combat::gun_assembly::trace()) {
                 info!("AI GUN fired {:?} on {:?}: {:.0} mm at {:.0} u/s, {:.0} damage", child, ai_entity, g.stats.gauge_mm, proj_speed, weapon.damage);
+            } else if gun.is_none() && crate::combat::gun_assembly::trace() {
+                info!("AI WEAPON fired {:?} {:?} on {:?}, range {:.0}, loaded {:?}", module.module_type, child, ai_entity, weapon.range, loaded.map(|a| a.0));
             }
         }
     }

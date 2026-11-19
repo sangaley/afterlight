@@ -138,6 +138,8 @@ pub fn ship_movement(
     camera_query: Query<(&Camera, &GlobalTransform), With<crate::camera::MainCamera>>,
     debug_tuning: Res<crate::debug::DebugTuning>,
     power_channels: Res<crate::resources::PowerChannels>,
+    // What the drive can do this frame, for enemy tractors to pull against.
+    drive: Option<ResMut<crate::ai_ship::tractor::PlayerDrive>>,
 ) {
     let Ok((player_ship, mut transform, mut velocity, mut physics, layout, children)) = ship_query.single_mut() else {
         return;
@@ -174,6 +176,9 @@ pub fn ship_movement(
             get_engine_thrust(calculated_stats, engine) * efficiency
         })
         .sum::<f32>() * debug_tuning.speed_mult * engine_power;
+    if let Some(mut drive) = drive {
+        drive.accel = total_thrust * THRUST_SCALE / mass.max(1.0);
+    }
 
     // --- FACING: nose follows the aim source ---
     // Controller right stick when it has aim (see InputState.gamepad_aim),

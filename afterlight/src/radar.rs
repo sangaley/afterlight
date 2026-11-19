@@ -189,7 +189,7 @@ pub fn update_radar(
     camera_query: Query<&Projection, With<MainCamera>>,
     stations: Res<SystemStations>,
     mut commands: Commands,
-    standing: Res<crate::diplomacy::FactionStanding>,
+    (standing, ecm): (Res<crate::diplomacy::FactionStanding>, Option<Res<crate::ai_ship::ecm::Ecm>>),
 ) {
     if !sweep_state.display_visible {
         return;
@@ -407,13 +407,25 @@ pub fn update_radar(
     // moved. Colored by disposition (red hostile / white neutral; blue ally is
     // reserved — no player-allied ships exist yet).
     let mut desired: HashMap<Entity, (f32, f32, Color, f32)> = HashMap::new();
+    // Inside an enemy's jamming field the scope fills with static: every
+    // contact shakes. A stealth-coated hull doesn't show until it's close.
+    let jammed = ecm.as_ref().is_some_and(|e| e.jams(ship_pos));
     for (ai_entity, ai_transform, ai_ship_type) in ai_ship_query.iter() {
         let offset = ai_transform.translation.truncate() - ship_pos;
         if offset.length() > radar_range {
             continue;
         }
-        let radar_x = (offset.x / radar_range) * radar_half + radar_half;
-        let radar_y = radar_half - (offset.y / radar_range) * radar_half;
+        let hidden = ecm.as_ref().is_some_and(|e| e.hidden.contains(&ai_entity));
+        if !crate::ai_ship::ecm::on_scope(hidden, offset.length()) {
+            continue;
+        }
+        let shake = if jammed {
+            crate::ai_ship::ecm::static_offset(ai_entity.to_bits(), time.elapsed_secs(), 14.0)
+        } else {
+            Vec2::ZERO
+        };
+        let radar_x = (offset.x / radar_range) * radar_half + radar_half + shake.x;
+        let radar_y = radar_half - (offset.y / radar_range) * radar_half + shake.y;
         desired.insert(
             ai_entity,
             (radar_x, radar_y, radar_ship_color(standing.tier(*ai_ship_type)), radar_ship_size(*ai_ship_type)),

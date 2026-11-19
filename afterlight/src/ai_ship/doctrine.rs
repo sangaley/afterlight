@@ -52,6 +52,12 @@ pub struct Doctrine {
     /// Fire rate gained as it breaks: rate × (1 + fury × hull lost). The
     /// Corpse Stars grow stronger as they break.
     pub fury: f32,
+    /// Fights from where its disablers (ion, EMP) reach, not its longest gun:
+    /// a ship whose point is to knock your systems out has to be close
+    /// enough to do it. Its plasma casters out-reached its ion disruptors,
+    /// so a Collective ship held off at its plasma range and every ion bolt
+    /// fizzled short.
+    pub close_in: bool,
 }
 
 pub fn doctrine(faction: AiShipType) -> Doctrine {
@@ -69,6 +75,7 @@ pub fn doctrine(faction: AiShipType) -> Doctrine {
         hunt: Hunt::default(),
         rally: 1.0,
         fury: 0.0,
+        close_in: false,
     };
     match faction {
         // The line: a navy holding long range in a battle line, every gun on
@@ -137,6 +144,7 @@ pub fn doctrine(faction: AiShipType) -> Doctrine {
             salvo_beat: 0.0,
             hunt: Hunt { wounded: 0.0, size: -0.4 },
             rally: 1.5,
+            close_in: true,
             ..base
         },
         // Catch and keep: they don't trade blows. They stop a ship (drive,
@@ -169,6 +177,7 @@ pub fn doctrine(faction: AiShipType) -> Doctrine {
             salvo_phase: 5.0,
             hunt: Hunt { wounded: 0.5, size: 0.0 },
             fury: 0.8,
+            close_in: true,
             ..base
         },
         // The hook: a lone apex hunter, power then guns, at close range, and
@@ -179,6 +188,7 @@ pub fn doctrine(faction: AiShipType) -> Doctrine {
             aim: &[Power, Weapons],
             salvo_beat: 0.0,
             hunt: Hunt { wounded: 0.5, size: -0.3 },
+            close_in: true,
             ..base
         },
         // Numbers: copies that fly straight in, each on whatever is nearest,
@@ -295,6 +305,14 @@ mod tests {
         assert_eq!(fury_scale(fury, 1.0), 1.0);
         assert!(fury_scale(fury, 0.3) > 1.5);
         assert_eq!(fury_scale(doctrine(AiShipType::TerranHegemony).fury, 0.3), 1.0);
+    }
+
+    #[test]
+    fn the_disablers_close_in() {
+        for f in [AiShipType::SynthesisCollective, AiShipType::CorpseStars, AiShipType::Shepherd] {
+            assert!(doctrine(f).close_in, "{f:?}");
+        }
+        assert!(!doctrine(AiShipType::TerranHegemony).close_in);
     }
 
     #[test]

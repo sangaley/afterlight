@@ -780,6 +780,8 @@ pub fn move_missiles(
         Res<super::turret_deck::PlayerAimPoint>,
         Query<&Transform, (With<super::missile_defence::MissileDecoy>, Without<MissileProjectile>)>,
     ),
+    // Enemy jamming fields: a seeker inside one can't hold a lock.
+    ecm: Option<Res<crate::ai_ship::ecm::Ecm>>,
 ) {
     let dt = time.delta_secs();
     let (ships_seen, blocks_seen, player_aim, decoys) = (&seeing.0, &seeing.1, &seeing.2, &seeing.3);
@@ -828,7 +830,13 @@ pub fn move_missiles(
         if let Some(mut built) = built {
             if ejecting {
                 missile.eject_time -= dt;
-            } else if fly_built(&mut missile, &mut built, &mut velocity, pos, dt, in_channel, &target_query, ships_seen, blocks_seen, player_aim, decoys) {
+            } else if {
+                let jammed = built.player && ecm.as_ref().is_some_and(|e| e.jams(pos));
+                fly_built(
+                    &mut missile, &mut built, &mut velocity, pos, dt, in_channel, &target_query, ships_seen, blocks_seen, player_aim, decoys,
+                    jammed,
+                )
+            } {
                 // Stalled: out of speed and out of the fight.
                 if super::gun_assembly::trace() && built.player {
                     info!("MISSILE of yours stalled after {:.1}s, {:.0} u flown", missile.age, missile.traveled);
@@ -1108,6 +1116,8 @@ fn fly_built(
     blocks: &Query<(&Module, &GlobalTransform), Without<DestroyedModule>>,
     player_aim: &super::turret_deck::PlayerAimPoint,
     decoys: &Query<&Transform, (With<super::missile_defence::MissileDecoy>, Without<MissileProjectile>)>,
+    // Inside an enemy jamming field: the seeker can't take or hold a lock.
+    jammed: bool,
 ) -> bool {
     use super::missile_design::{MissileHead, Seeker, MAX_SPEED, STALL_SPEED};
     // Fooled: it chases the decoy, and is spent when it gets there or the
@@ -1144,7 +1154,11 @@ fn fly_built(
             (Seeker::Heat { range, cone_deg } | Seeker::Radar { range, cone_deg }, Some((at, _))) => {
                 let off = Vec2::from_angle(heading).angle_to(at - pos).abs().to_degrees();
                 let dist = pos.distance(at);
-                if !built.locked && dist < range && off < cone_deg {
+                if jammed && built.locked && rand::random::<f32>() < dt * 0.8 {
+                    // Static on the seeker: it loses what it had.
+                    built.locked = false;
+                    built.launch_aim = pos + Vec2::from_angle(heading) * 4000.0;
+                } else if !jammed && !built.locked && dist < range && off < cone_deg {
                     built.locked = true;
                 } else if built.locked && off > cone_deg + 15.0 {
                     // Overshot: lost it. Carry on the way it was going.
@@ -1163,7 +1177,7 @@ fn fly_built(
                 .or(target_point.map(|(at, _)| at));
             if let Some(p) = point {
                 // Looser the farther it has flown from the ship guiding it.
-                let spread = 30.0 + missile.traveled * 0.02;
+                let spread = (30.0 + missile.traveled * 0.02) * if jammed { 4.0 } else { 1.0 };
                 built.wander += Vec2::new(rand::random::<f32>() - 0.5, rand::random::<f32>() - 0.5) * spread * dt * 3.0;
                 built.wander *= 0.98;
                 aim = p + built.wander;

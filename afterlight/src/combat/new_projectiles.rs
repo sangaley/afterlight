@@ -1137,6 +1137,28 @@ fn flies_past(
     }
 }
 
+/// An EMP burst at `at`: every working system within `radius` on this ship
+/// knocked out for `duration` seconds. How many went out.
+fn emp_burst(
+    commands: &mut Commands,
+    blocks: &Children,
+    modules: &Query<(&mut Module, &GlobalTransform), Without<DestroyedModule>>,
+    at: Vec2,
+    radius: f32,
+    duration: f32,
+) -> u32 {
+    let mut out = 0;
+    for child in blocks.iter() {
+        if let Ok((module, gt)) = modules.get(child) {
+            if module.is_active && at.distance(gt.translation().truncate()) < radius {
+                commands.entity(child).try_insert(crate::combat::energy_weapons::IonDisabled { timer: duration });
+                out += 1;
+            }
+        }
+    }
+    out
+}
+
 pub fn check_projectile_hits(
     fx: Res<crate::vfx::effect_textures::EffectTextures>,
     mut commands: Commands,
@@ -1444,6 +1466,23 @@ pub fn check_projectile_hits(
                 // flying, so deflect it rather than despawning: a bounce can
                 // find another block on this same ship, which is what makes a
                 // concave hull a shot trap and a convex one shed fire.
+                // An EMP round goes off on contact, whatever the angle: the
+                // burst is the point, not the bite. A glancing ion or EMP shot
+                // used to skid off the plate and do nothing at all.
+                if obl.ricochet {
+                    if let Some(crate::combat::ammo_types::AmmoHitBehavior::EMPDisable { disable_radius, disable_duration }) =
+                        proj.effect.or_else(|| proj.ammo.map(|a| a.hit_behavior(proj.damage)))
+                    {
+                        let (radius, duration) = (disable_radius * proj.caliber, disable_duration * proj.caliber);
+                        let knocked_out = emp_burst(&mut commands, children, &ai_module_query, hit_pos, radius, duration);
+                        if crate::combat::gun_assembly::trace() {
+                            info!("EMP HIT {:?} (player {}, glancing): {} systems out for {:.1}s", ai_entity, is_player, knocked_out, duration);
+                        }
+                        spawn_explosion(&mut commands, &fx, hit_pos, radius * IMPACT_BLAST_SCALE, Color::srgb(0.4, 0.5, 0.95));
+                        commands.entity(proj_entity).try_despawn();
+                        continue 'projectiles;
+                    }
+                }
                 if obl.ricochet {
                     proj.bounces += 1;
                     proj.last_hit = Some(hit_entity);
@@ -1591,15 +1630,9 @@ pub fn check_projectile_hits(
                         EMPDisable { disable_radius, disable_duration } => {
                             let radius = disable_radius * proj.caliber;
                             let duration = disable_duration * proj.caliber;
-                            for child in children.iter() {
-                                if let Ok((module, gt)) = ai_module_query.get(child) {
-                                    if !module.is_active { continue; }
-                                    if hit_pos.distance(gt.translation().truncate()) < radius {
-                                        commands.entity(child).try_insert(
-                                            crate::combat::energy_weapons::IonDisabled { timer: duration }
-                                        );
-                                    }
-                                }
+                            let knocked_out = emp_burst(&mut commands, children, &ai_module_query, hit_pos, radius, duration);
+                            if crate::combat::gun_assembly::trace() {
+                                info!("EMP HIT {:?} (player {}): {} systems out for {:.1}s", ai_entity, is_player, knocked_out, duration);
                             }
                             spawn_explosion(&mut commands, &fx, hit_pos, radius * IMPACT_BLAST_SCALE, Color::srgb(0.4, 0.5, 0.95));
                         }
@@ -2115,6 +2148,31 @@ mod shared_hit_tests {
         assert_eq!(hits.len(), 1);
         assert!(hits[0].applied, "already applied, so process_ship_damage won't apply it twice");
         assert!(matches!(hits[0].source, crate::events::DamageSource::Gunfire));
+    }
+
+    /// An enemy ion or EMP round knocks out the systems round where it lands
+    /// on your ship, and scratches nothing.
+    #[test]
+    fn an_enemy_emp_round_knocks_out_your_systems() {
+        let (mut app, player, plates) = setup(false);
+        let at = crate::building::grid_to_local(IVec2::new(1, 1)).extend(0.0);
+        let engine = app.world_mut().spawn((
+            Module {
+                module_type: ModuleType::SignalJammer, health: 100.0, max_health: 100.0, power_consumption: 0.0,
+                power_generation: 0.0, is_active: true, grid_position: IVec2::new(1, 1), size: IVec2::ONE,
+                rotation: Rotation::North,
+            },
+            Transform::from_translation(at), GlobalTransform::from_translation(at), ChildOf(player),
+        )).id();
+        let round = app.world_mut().query_filtered::<Entity, With<Projectile>>().iter(app.world()).next().unwrap();
+        {
+            let mut p = app.world_mut().get_mut::<Projectile>(round).unwrap();
+            p.ammo = Some(crate::combat::ammo_types::KineticAmmoType::EMPShell);
+            p.damage = 0.0;
+        }
+        app.update();
+        assert!(app.world().get::<crate::combat::energy_weapons::IonDisabled>(engine).is_some(), "the engine is knocked out");
+        assert_eq!(app.world().get::<HullSegment>(plates[0]).unwrap().health, 100.0, "and the plate is unscratched");
     }
 
     fn shooter(app: &mut App) -> Entity {

@@ -1,5 +1,7 @@
 pub mod awareness;
 pub mod doctrine;
+pub mod tractor;
+pub mod ecm;
 pub mod traffic;
 pub mod components;
 mod layouts;
@@ -58,6 +60,8 @@ impl Plugin for AiShipPlugin {
             .init_resource::<WorldSimulation>()
             .init_resource::<awareness::Battlefield>()
             .init_resource::<awareness::Mind>()
+            .init_resource::<tractor::PlayerDrive>()
+            .init_resource::<ecm::Ecm>()
             .init_resource::<traffic::TradingFleets>()
             .register_required_components::<AiShip, awareness::Awareness>()
             .init_resource::<scavenger::ScavengerWaves>()
@@ -76,7 +80,9 @@ impl Plugin for AiShipPlugin {
                     // constant/unavoidable. Territories + roaming wanderers are
                     // the encounter source now; ships stay on their own patrols.
                     (awareness::survey_battlefield, ai_brain::ai_brain_system).chain(),
-                    movement::ai_ship_movement_system,
+                    // A catcher's beams pull after it has moved, so a catch is
+                    // carried where the catcher goes.
+                    (movement::ai_ship_movement_system, tractor::ai_tractor_system.after(movement::ai_ship_movement_system), ecm::ai_ecm_system),
                     movement::ai_thruster_system,
                     movement::ai_fuel_system,
                     power::update_ai_power,

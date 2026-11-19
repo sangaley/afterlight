@@ -264,6 +264,20 @@ pub fn ai_ship_movement_system(
         }
         guns
     };
+    // Each ship's disablers (ion, EMP) and the shortest of their reaches: a
+    // doctrine that closes in fights from there (ai_ship::doctrine).
+    let disabler_reach: bevy::platform::collections::HashMap<Entity, f32> = {
+        let mut out: bevy::platform::collections::HashMap<Entity, f32> = Default::default();
+        for (weapon, module, owner) in weapon_query.iter() {
+            if module.is_active && module.health > 0.0
+                && matches!(module.module_type, ModuleType::IonDisruptor | ModuleType::EMPPulse)
+            {
+                let r = out.entry(owner.root).or_insert(f32::MAX);
+                *r = r.min(weapon.range);
+            }
+        }
+        out
+    };
     for (_entity, mut transform, mut velocity, behavior, mut nav, state, ship_type, children, collider, member, escort, target) in ai_ships.iter_mut() {
         if *behavior == AiShipBehavior::Dead || state.is_destroyed {
             velocity.0 = Vec2::ZERO;
@@ -419,6 +433,10 @@ pub fn ai_ship_movement_system(
             let longest = reach.get(&_entity).copied().unwrap_or(0.0);
             let max_weapon_range = field.hulls.get(&_entity).map_or(longest, |h| h.fighting()).max(1.0).min(longest.max(1.0));
             let max_weapon_range = if longest > 0.0 { max_weapon_range } else { 0.0 };
+            let max_weapon_range = match disabler_reach.get(&_entity) {
+                Some(r) if super::doctrine::doctrine(*ship_type).close_in && max_weapon_range > 0.0 => max_weapon_range.min(*r),
+                _ => max_weapon_range,
+            };
 
             // Fights at range, FtD-style: a ship holds where its weapons
             // still connect -- 70% of its longest reach, so a sniper's fight
