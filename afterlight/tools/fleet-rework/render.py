@@ -17,7 +17,7 @@ the game: the designs are read from wherever they are.
 
 Run from afterlight/ after `cargo build` (it runs target/debug/afterlight).
 """
-import json, os, signal, subprocess, sys, time
+import json, os, re, signal, subprocess, sys, time
 
 from PIL import Image
 
@@ -34,6 +34,43 @@ SHELL_ZOOM = (5.6, 7.9)
 # machine. The clock stops then (a parked ship slowly turns), and the shot
 # waits for the camera to settle.
 FREEZE, SHOT = 16.0, 18.0
+
+
+# The game window opens on top and takes the keyboard; a portrait never needs
+# it (offscreen runs draw into an image), so as soon as it comes up, whatever
+# app the developer was using is put back in front.
+_USER_APP = [None]
+
+
+def _front():
+    """(pid, bundle path) of the frontmost app, or (None, None)."""
+    try:
+        asn = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True, timeout=2).stdout.strip()
+        info = subprocess.run(["lsappinfo", "info", "-only", "pid", "-only", "bundlepath", asn],
+                              capture_output=True, text=True, timeout=2).stdout
+        pid = re.search(r'"pid"=(\d+)', info)
+        path = re.search(r'"LSBundlePath"="([^"]+)"', info)
+        return (int(pid.group(1)) if pid else None, path.group(1) if path else None)
+    except Exception:
+        return (None, None)
+
+
+def _remember_user_app():
+    pid, path = _front()
+    if path and not path.endswith("afterlight"):
+        _USER_APP[0] = path
+
+
+def _give_back_focus(proc, wait=6.0):
+    """Wait for the game to take the front, then hand it back."""
+    end = time.time() + wait
+    while time.time() < end and proc.poll() is None:
+        pid, _ = _front()
+        if pid == proc.pid:
+            if _USER_APP[0]:
+                subprocess.run(["open", "-a", _USER_APP[0]], timeout=5)
+            return
+        time.sleep(0.2)
 
 
 def extent(design):
@@ -115,8 +152,10 @@ def shoot(design_path, zoom, inside, shots, frame=(W, H)):
         "AFTERLIGHT_SHOTS_DIR": shots,
     })
     log = open(os.path.join(shots, "run.log"), "w")
+    _remember_user_app()
     proc = subprocess.Popen([os.path.join(ROOT, "target", "debug", "afterlight")], cwd=ROOT, env=env,
                             stdout=log, stderr=subprocess.STDOUT)
+    _give_back_focus(proc)
     try:
         deadline = time.time() + SHOT + 30
         while time.time() < deadline:
