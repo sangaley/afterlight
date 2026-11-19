@@ -236,20 +236,35 @@ pub fn percentile(sorted: &[f32], p: f32) -> f32 {
     sorted[i.min(sorted.len() - 1)]
 }
 
-/// Sprites on screen, and about how many draw calls they cost. Bevy draws 2D
-/// sprites back to front by z, and a run of neighbours with the same image is
-/// one draw; each change of image starts another. Within one z the order is
-/// the order it finds them in, which this follows too, so it is an estimate.
-fn sprite_batches(sprites: &Query<(&ViewVisibility, &GlobalTransform, &Sprite)>) -> (usize, usize) {
-    let mut drawn: Vec<(f32, AssetId<Image>)> = sprites
+/// Sprites and 2D meshes on screen, and about how many draw calls they
+/// cost. Bevy draws them back to front by z, and a run of neighbours with the
+/// same image (for a sprite) or the same material and mesh (for a mesh) is
+/// one draw; each change starts another. Within one z the order is the order
+/// it finds them in, which this follows too, so it is an estimate.
+fn draw_batches(sprites: &Query<(&ViewVisibility, &GlobalTransform, &Sprite)>, meshes: &Query<(&ViewVisibility, &GlobalTransform, &Mesh2d, AnyGlow)>) -> (usize, usize, usize) {
+    #[derive(PartialEq)]
+    enum Draw {
+        Sprite(AssetId<Image>),
+        Mesh(bevy::asset::UntypedAssetId, AssetId<Mesh>),
+    }
+    let mut drawn: Vec<(f32, Draw)> = sprites
         .iter()
         .filter(|(seen, _, _)| seen.get())
-        .map(|(_, at, sprite)| (at.translation().z, sprite.image.id()))
+        .map(|(_, at, sprite)| (at.translation().z, Draw::Sprite(sprite.image.id())))
         .collect();
+    let sprite_count = drawn.len();
+    drawn.extend(meshes.iter().filter(|(seen, ..)| seen.get()).map(|(_, at, mesh, (halo, glow))| {
+        let material = halo.map(|m| m.0.id().untyped()).or(glow.map(|m| m.0.id().untyped())).unwrap_or(AssetId::<Mesh>::default().untyped());
+        (at.translation().z, Draw::Mesh(material, mesh.0.id()))
+    }));
+    let mesh_count = drawn.len() - sprite_count;
     drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
     let batches = drawn.windows(2).filter(|w| w[0].1 != w[1].1).count() + usize::from(!drawn.is_empty());
-    (drawn.len(), batches)
+    (sprite_count, mesh_count, batches)
 }
+
+/// A 2D mesh's light material, whichever kind it is.
+type AnyGlow = (Option<&'static MeshMaterial2d<crate::vfx::module_glow::HaloMaterial>>, Option<&'static MeshMaterial2d<crate::vfx::module_glow::GlowMaterial>>);
 
 #[allow(clippy::too_many_arguments)]
 fn report_perf(
@@ -265,6 +280,7 @@ fn report_perf(
     mut overlay: Query<(&mut Text, &mut Visibility), With<PerfOverlayText>>,
     mut exit: MessageWriter<AppExit>,
     sprites: Query<(&ViewVisibility, &GlobalTransform, &Sprite)>,
+    meshes: Query<(&ViewVisibility, &GlobalTransform, &Mesh2d, AnyGlow)>,
 ) {
     if keys.just_pressed(KeyCode::F8) {
         state.overlay = !state.overlay;
@@ -298,7 +314,7 @@ fn report_perf(
         }
     }
     let entity_count = entities.iter().count();
-    let (drawn, batches) = sprite_batches(&sprites);
+    let (drawn, meshes_drawn, batches) = draw_batches(&sprites, &meshes);
 
     if state.elapsed > state.warmup {
         state.worst_second_ms = state.worst_second_ms.max(avg);
@@ -311,9 +327,9 @@ fn report_perf(
 
     if state.log {
         info!(
-            "PERF t={:.0} fps={:.1} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2} sim_avg={:.2} sim_p95={:.2} sim_p99={:.2} sim_max={:.2} entities={} player={} ai={} wreck={} colliders={} detached={} sprites={} batches={}",
+            "PERF t={:.0} fps={:.1} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2} sim_avg={:.2} sim_p95={:.2} sim_p99={:.2} sim_max={:.2} entities={} player={} ai={} wreck={} colliders={} detached={} sprites={} meshes={} batches={}",
             state.elapsed, fps, avg, p50, p95, p99, max, sim_avg, sim_p95, sim_p99, sim_max,
-            entity_count, counts.player, counts.ai, counts.wreck, colliders.iter().count(), detached.iter().count(), drawn, batches
+            entity_count, counts.player, counts.ai, counts.wreck, colliders.iter().count(), detached.iter().count(), drawn, meshes_drawn, batches
         );
     }
     if state.overlay {
@@ -322,7 +338,7 @@ fn report_perf(
                 "FPS {fps:.0}   frame {avg:.1} ms  (p99 {p99:.1}, max {max:.1})\n\
                  sim {sim_avg:.1} ms  (p99 {sim_p99:.1}, max {sim_max:.1})\n\
                  entities {entity_count}\n\
-                 sprites drawn {drawn} in about {batches} batches\n\
+                 sprites {drawn} + meshes {meshes_drawn} in about {batches} draws\n\
                  blocks: you {}  ai {}  wrecks {}",
                 counts.player, counts.ai, counts.wreck
             );
