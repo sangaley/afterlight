@@ -62,10 +62,37 @@ impl Plugin for PerfPlugin {
         })
         .init_resource::<SimStart>()
         .add_systems(Startup, spawn_perf_overlay)
+        .add_systems(PostStartup, size_up_schedules)
         .add_systems(First, mark_sim_start)
         .add_systems(Update, churn_player_blocks.run_if(|| churn_rate() > 0.0))
         .add_systems(Update, give_scrap.run_if(|| std::env::var("AFTERLIGHT_PERF_SCRAP").is_ok()))
         .add_systems(Last, (record_frame, report_perf).chain());
+    }
+}
+
+/// Logs how many systems each schedule holds under AFTERLIGHT_PERF, and
+/// under AFTERLIGHT_ONE_THREAD=1 runs them one after another on the main
+/// thread instead of handing each to Bevy's thread pool: a measuring tool
+/// for what the handing out costs, with over a thousand small systems.
+fn size_up_schedules(world: &mut World) {
+    use bevy::ecs::schedule::SingleThreadedExecutor;
+    let log = world.resource::<PerfState>().log;
+    let one_thread = std::env::var("AFTERLIGHT_ONE_THREAD").ok().as_deref() == Some("1");
+    let mut schedules = world.resource_mut::<Schedules>();
+    let mut sizes: Vec<(String, usize)> = Vec::new();
+    for (label, schedule) in schedules.iter_mut() {
+        sizes.push((format!("{label:?}"), schedule.systems_len()));
+        if one_thread {
+            // A default-built executor drops the commands left at the end
+            // of the schedule; the stock one applies them.
+            schedule.set_executor(SingleThreadedExecutor::default()).set_apply_final_deferred(true);
+        }
+    }
+    if log {
+        sizes.sort_by(|a, b| b.1.cmp(&a.1));
+        let total: usize = sizes.iter().map(|s| s.1).sum();
+        let top: Vec<String> = sizes.iter().take(8).map(|(l, n)| format!("{l}={n}")).collect();
+        info!("PERF SCHEDULES systems={total} one_thread={one_thread} {}", top.join(" "));
     }
 }
 
