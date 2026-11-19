@@ -238,18 +238,15 @@ pub fn percentile(sorted: &[f32], p: f32) -> f32 {
 
 /// Sprites on screen, and about how many draw calls they cost. Bevy draws 2D
 /// sprites back to front by z, and a run of neighbours with the same image is
-/// one draw; each change of image starts another. Within one z, sprites are
-/// grouped by image (crate::sprite_batching) unless that is switched off; then
-/// the order is the order found, which this follows too, so it is an estimate.
+/// one draw; each change of image starts another. Within one z the order is
+/// the order it finds them in, which this follows too, so it is an estimate.
 fn sprite_batches(sprites: &Query<(&ViewVisibility, &GlobalTransform, &Sprite)>) -> (usize, usize) {
     let mut drawn: Vec<(f32, AssetId<Image>)> = sprites
         .iter()
         .filter(|(seen, _, _)| seen.get())
         .map(|(_, at, sprite)| (at.translation().z, sprite.image.id()))
         .collect();
-    // Same image, same z: grouped together before drawing (sprite_batching).
-    let grouped = crate::sprite_batching::grouping_on();
-    drawn.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| if grouped { a.1.cmp(&b.1) } else { std::cmp::Ordering::Equal }));
+    drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
     let batches = drawn.windows(2).filter(|w| w[0].1 != w[1].1).count() + usize::from(!drawn.is_empty());
     (drawn.len(), batches)
 }
