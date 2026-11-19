@@ -1,0 +1,122 @@
+{
+ "broken_choir": {
+  "cut": {
+   "lament": "A round cracked gong ringed with gatlings at corvette size, which is what the reshaped Keen already is.",
+   "shard": "The plainest of the four same-size corvettes: two shards and some pipes, without the Syrinx's pan pipes or the Nocturne's hourglass to make it memorable.",
+   "requiem": "A bank of organ pipes that the Cathedral's great organ already owns, and it sits right on top of the Antiphon, which plays pipes as a two-sided broadside instead.",
+   "chorus": "Broken shards strung in a line on a spine pipe is the Procession's look, and it reads as a blocky in-between frigate next to the Verdict.",
+   "outcry": "Same frigate size as the Verdict, and its burst-outward shards are the idea the Shatterpoint does at full scale.",
+   "tympanum": "Its listening job belongs to the Whisper and its fan of forward pipes looks like the Antiphon's, while the Echo Chamber keeps the experimental voice-weapon slot."
+  },
+  "summary": "Fifteen ships: Whisper, Keen, Syrinx and Nocturne as four very different small hulls, Verdict, Echo Chamber, Threnody and Shatterpoint through the middle, Antiphon and Schism under the Cathedral, plus the three hearse-like traders and the Broken Spire."
+ },
+ "corpse_stars": {
+  "cut": {
+   "psychopomp": "Near-twin of the Knell: same scout job at the same size, and both are swept bone wings round a small fore pod, so the two are hard to tell apart.",
+   "pallbearer": "Third corvette at the Gravedigger and Mourner's size, and its crossed bier poles read like a bigger Rood; the Mourner (ram) and Gravedigger (salvage claws) each have a clearer job.",
+   "ossifrage": "A gun frigate in the most crowded part of the ladder, between the Dirge, Ossuary and Reaper; the Reaper does the bladed bone warship more strikingly.",
+   "pyre": "Its swept ribs are the Dirge's ribs with an outer bone closing them, so it reads as a bigger Dirge; the Dirge carries the rib idea more cleanly.",
+   "cortege": "Same size as the Hourglass and the Catacomb, and its spine with short bones off it repeats the Dirge and Reaper; the Hourglass gives this size a shape nobody else has.",
+   "hourglass": "Kept the Dead Sun instead: a dead star caged in bone is what the faction is named for, and the Hourglass is the next closest to another ship in its size band."
+  },
+  "summary": "Fifteen ships: Knell and Rood at the bottom, Gravedigger and Mourner as the two distinct corvettes, Dirge, Ossuary and Reaper in the middle, the Dead Sun, Memento and Sarcophagus up top under the Holy See, plus all three traders and the Reliquary. Every kept warship has its own bone silhouette."
+ },
+ "eternal_hegemony": {
+  "cut": {
+   "echo_escort": "Same old-pattern line ship as the Herald (crown bow, ziggurat sponsons, nave to the throne), and it sits at the same size as the Sceptre with a very similar outline.",
+   "herald": "The plainest of three similar stepped hulls at the same size; the Oriflamme (the banner) and the Basilica (the cross-shaped cathedral) each carry a clearer idea.",
+   "lictor": "Same corvette size as the Remembrancer, which you had redrawn and which reads more clearly.",
+   "exarch_heavy_cruiser": "Same size as the Catafalque, which carries the faction's core story of a dead emperor still giving orders, and the round silhouette is already the Thurible's.",
+   "imperator_battleship": "A second giant that competes with the Throne of Ages, and its ribbed, window-pierced nave looks very like the Sepulchre's.",
+   "sepulchre_carrier": "Same job as the Reliquary of Echoes, a carrier that calls back the ships the Hegemony lost, and the Reliquary's almond frame is far more recognisable."
+  },
+  "summary": "Fourteen ships: two small couriers, the redrawn Remembrancer and Thurible, the Sceptre, then Oriflamme, Basilica and the Reliquary in the middle, the Catafalque and the Throne of Ages at the top. The echo and dead-emperor story stays in nearly every hull that remains."
+ },
+ "free_haulers_compact": {
+  "cut": {
+   "wrangler": "An open ring held by tractor beams round the inside is the Mender's look already, here at twice the size, and the Ore Train already brings rock home.",
+   "smelter": "Makes a fourth ship at about the same size as the Convoy Tanker, Homesteader and Ore Train, and its drill-at-the-bow ore job overlaps the Ore Train's.",
+   "fuel_runner": "A second tanker next to the Convoy Tanker, whose lens of round bladders is the clearer fuel ship, and its 'Compact shoots back' idea is carried better by the Blunderbuss at the same size.",
+   "ore_hauler": "Hauls rock like the Gravel Barge, and its frame of mismatched loads looks like the Stacker's; the Gravel Barge's diamond of hoppers reads far more clearly.",
+   "hotshot": "A tiny tug with a bin or two strapped on, almost the same ship as the Push-Tug at the same size; the Push-Tug is the plainer, truer first Compact hull."
+  },
+  "summary": "Here hauling is the faction, so some haulers are cut too. Twelve haulers and civilians stay, each with its own shape and job, plus the depot, the Union Hall and both escorts (Flagman and Outrider). The bottom of the ladder is thin: the Push-Tug is the only hull under 1,000."
+ },
+ "gilded_throne": {
+  "cut": {
+   "notary": "A third scout at the same size as the Courier and Appraiser, and its swept-horn outline reads like a slightly bigger Courier; the Appraiser's balance-beam shape is the clearer second scout.",
+   "margin_call": "Same body as the Auditor minus the loupe, at nearly the same size and job; the two read as one ship twice.",
+   "auditor": "Reading a ship's books is the Appraiser's job already, and with the Margin Call gone its body has no twin to stand apart from, so the Dividend and Retainer cover the corvette slot; a close call against the Dividend, see summary.",
+   "foreclosure": "A second repossession tug at the same size as the Debt Collector; the Debt Collector's claws say 'takes your ship' far more clearly and carry the mind-theft story.",
+   "poison_pill": "A round body with horns that looks like a stretched Dividend, in the crowded middle; the Hostile Takeover already covers the step up from the frigates with a much stronger outline.",
+   "diadem": "A diamond jewel inside a crescent, just above the Throne Barge's size, so it reads as a second Throne Barge and crowds the top under the Eternal Boardroom."
+  },
+  "summary": "Two scouts, two corvettes plus the Retainer, the Underwriter and Debt Collector as frigates, the Hostile Takeover, Throne Barge and Eternal Boardroom on top, both mind-trade experimentals, and every trader and station kept; each warship now has its own jewel shape."
+ },
+ "merchant_princes": {
+  "cut": {
+   "bill_runner": "Same size and same courier job as the Pedlar, which most captains meet first, so the Bill Runner adds a second small courier.",
+   "tidewaiter": "Clamps a ship and confiscates its goods, which is the Bailiff's job too; the Bailiff does it more clearly and actually fights.",
+   "mining_barge": "A second mining ship next to the Claimstaker you had redrawn, and its pods-on-a-spine outline looks like the Container Hauler; the Claimstaker is the clearer industrial.",
+   "slipway": "A spine with long side booms at the size of the Company Town, Argosy and Grain Tow, which already crowd the top; it reads like a stripped Company Town and the Sale Ring is the stronger big experimental.",
+   "hauler": "Standard pods on a spine at the Reefer's size again, and box-carrying is already done by the Bulk Freighter and the Argosy, which show it more clearly."
+  },
+  "summary": "Here trading is the faction, so some traders are cut too. Nine stay, each with its own job (Pedlar, Rag-and-Bone, Reefer, the Tanker for fuel, Packet, Bulk Freighter, Company Town, Argosy, Grain Tow), guarded by the Bailiff, Claimstaker and Marque Carrier, with the Arms Bazaar and Sale Ring as the strange markets and the Palazzo on top."
+ },
+ "recursive_kingdom": {
+  "cut": {
+   "brood_raft": "You approved it, but it's the Triad's three-seed chevron again with docked children, and the Elder Carrier already does the carrier job with a clearer shape.",
+   "sierpinski": "A smaller version of The Original (chevrons of chevrons with open voids), and it crowds the big end beside the Parliament at almost the same size."
+  },
+  "summary": "You approved nearly every Kingdom ship, so only two are suggested: the Brood Raft repeats the Triad, and Majority of One is a smaller Original. Nineteen stay, each a different way of copying the seed, with the Mote and Skiff kept at the small end."
+ },
+ "shepherd": {
+  "cut": {
+   "pinfold": "A long staff ending in a round pen, which looks like a smaller Great Hook and does the Briar's catch-and-hold job at the same size; the Briar does it better.",
+   "lyre_cruiser": "Another staff ending in two crooks round a forward pocket, between the Pinfold and the Great Hook in shape and job; the Great Hook is the clearer big catcher.",
+   "lurcher": "Same job as the Shears (pull one ship out of a group) at nearly the same size; the Shears' loop and blades read more clearly than the Lurcher's barbed staff.",
+   "harrier": "Does the Sheepdog's herding job again at frigate size, right beside the Hurdle; the Hurdle's lane-fence role and H shape are the more distinct of the two frigates."
+  },
+  "summary": "Fifteen ships: Lamb, Bellwether, Sheepdog and Shears at the bottom, Ram, Hurdle, Briar and the Bleater in the middle, Flock-Mother and Great Hook under the Shepherd itself, plus the three kept haulers and the Fold. The staff-and-crook catchers are down to one per size (Briar, Great Hook, Shepherd)."
+ },
+ "stellar_preserve": {
+  "cut": {
+   "seed_ark": "A second seed-bank ark that competes with the Great Cradle's story, and its long hull with pods in a row looks like the Seed-wain trader.",
+   "lazaret": "Four pods in an X with a forward boom is the Lure's shape at half the size, and its quarantine job is already carried by the Hermitage and the Windbreak's sick pods.",
+   "snare_setter": "Same body as the Pruner at the same size with two booms forward; only the angle of the booms differs, and the Verderer's fork covers the open-Y look.",
+   "herd_keeper": "One of three herding ships, and its tangle of tethered pods is the hardest silhouette in the faction to read; the Net-weaver does the herding job far more clearly.",
+   "gleaner": "Swept-back pods on a slim spine with a long boom echo the Lure and Herd Ranger in miniature, and the Spoor Hound, Ringer, Warden Tug and Pruner still hold the small end."
+  },
+  "summary": "Sixteen ships: small catchers and scouts, the Drover's herding bar, the Net-weaver, Hermitage and Verderer through the middle, Lure and Herd Ranger as the cullers, the Windbreak under the Great Cradle, plus all three haulers and the Sanctuary."
+ },
+ "synthesis_collective": {
+  "cut": {
+   "myriad": "A second centipede beside the Sinew, which does the same walking-broadside job bigger and with a far more striking body of reaching limbs.",
+   "conjoined": "Same 'two bodies fused into one' idea as the Chimera at exactly the same size, and the Chimera's lopsided graft reads much more clearly than this boxy twin.",
+   "brood": "Same drone-carrier job as the Egg Case, and its round pouches on short necks look like a smaller copy of the Roe trader.",
+   "howl": "Its job is jamming every channel with screaming, which the Dendrite does with a far stronger neuron silhouette that also carries the one-mind idea.",
+   "assimilator": "Its claw of curling tendrils is the Lamprey's mouth scaled up, its captured-ship story is what the Gestalt already shows, and it crowds the Sinew and Cortex at the top."
+  },
+  "summary": "Sixteen ships with one clear body each: Spore, Mite and Graft at the small end, Lamprey and Stalker as small hunters, Bloom, Chimera, Egg Case and Dendrite in the middle, Sinew and Cortex as the heavy line under the Gestalt, plus all three vat traders and the Growth Node."
+ },
+ "terran_hegemony": {
+  "cut": {
+   "dispatch": "You approved it, but it's the same small fast arrowhead scout as the Lancer at nearly the same size, and the Lancer is the one a new captain meets first.",
+   "warden": "You approved it but said it feels basic; it does the same small-warship job as the Halberd and the Provost at about the same size, and both of those have a shape and a story of their own.",
+   "augur": "You approved it, but it does the same see-ahead sensor job as the Oracle, and with the Oracle and the Picket both in the roster a third sensor ship is one too many.",
+   "marshal": "You approved it, but it sits right beside the Arbiter in size with the same bracket stern and tapering hull, and the Claymore already carries the sword-with-a-crossguard look more clearly."
+  },
+  "summary": "You approved every Terran ship, so only four clear repeats are suggested. Nineteen stay: Picket, Lancer, Provost and Halberd for early fights, Bulwark, Javelin, Claymore and Tribune in the middle, and the Arbiter, Garrison, Sovereign and Unifier as the big ships. The Oracle sensor story and the martial-law story (Provost, Concord, Garrison) both survive."
+ },
+ "the_silence": {
+  "cut": {
+   "listener": "Same job as the Vow (a small cross-shaped picket that sits at the edge and listens) at nearly the same size; the Vow carries the novice story as well.",
+   "unison": "Another ear-tipped listening corvette at the Hark's size, and its job of pinpointing you is done more clearly by the Lauds' crossed bearings.",
+   "hush": "A plain twin-needle corvette whose yoked-needle look the Compline does again, bigger and with a clearer job; the small band is crowded without it.",
+   "vigil": "A long sensor lance with side rails that looks much like the Pilgrim and does the Vow's picket job at frigate size.",
+   "psaltery": "Keel threaded through rows of thin rails, which reads like the Quill at the same size; the Quill's archive role is the more distinct story.",
+   "pilgrim": "Same size as the Lauds with a plainer long-needle shape; the Lauds' crossed needles hold this size more clearly."
+  },
+  "summary": "Fifteen ships: Vow, Murmur, Hark and the Mirage at the bottom, Lauds, Still Water, Compline and the Lancet in the middle, Abbey and Quill as the big monastic ships under the Motherhouse, plus the three haulers and the Monastery. Each kept ship is a different needle-and-ear shape."
+ }
+}

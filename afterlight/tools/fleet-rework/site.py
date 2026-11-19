@@ -67,6 +67,11 @@ EXTRA = {"SalvageArm": "Salvage arm", "TractorBeam": "Tractor beam", "MiningDril
          "IonDisruptor": "Ion disruptor", "EMPPulse": "EMP pulse", "SignalJammer": "Signal jammer"}
 SCALE = 22.0  # game units per pixel in the lineup
 
+# The proposed trim (cuts.json): per faction, the ships suggested for cutting
+# and why, plus a line on what the roster looks like after.
+_CUTS_PATH = os.path.join(HERE, "cuts.json")
+CUTS = json.load(open(_CUTS_PATH)) if os.path.exists(_CUTS_PATH) else {}
+
 
 def section_of(cls):
     c = cls.lower()
@@ -198,8 +203,11 @@ def ship_card(slug, s):
     armour = ", ".join(f"{n} {k}" for k, n in s["armour"].items()) or "none"
     extras = "".join(f'<li><span class="n">{n}</span> {e(w)}</li>' for w, n in s["extras"])
     doc = f"{slug}__{s['key']}"
+    reason = CUTS.get(slug, {}).get("cut", {}).get(s["key"])
+    cut = (f'<p class="cutnote"><b>Proposed cut.</b> {e(reason)} '
+           f'<span>Reject to cut it, Approve to keep it.</span></p>') if reason else ""
     return f'''
-<article class="ship" id="{doc}">
+<article class="ship{' proposed-cut' if reason else ''}" id="{doc}">
   <header class="ship-head">
     <div>
       <p class="cls">{e(s["cls"])}{' <span class="reshaped">New shape</span>' if s["key"] in RESHAPED.get(slug, ()) else ''}</p>
@@ -210,6 +218,7 @@ def ship_card(slug, s):
       <div><dt>In game</dt><dd>{s["blocks"]:,} blocks</dd></div>
     </dl>
   </header>
+  {cut}
   <p class="note">{e(s["note"])}</p>
   <figure class="pair"><img src="img/{slug}/{s["key"]}.webp" width="{s["pair"][0]}" height="{s["pair"][1]}" alt="{e(s["name"])}: painted shell and lit interior" loading="lazy"><figcaption>{"Left" if s["side"] else "Top"}: painted shell. {"Right" if s["side"] else "Bottom"}: inside, lit.</figcaption></figure>
   <div class="facts">
@@ -226,6 +235,15 @@ def ship_card(slug, s):
     <p class="saved" aria-live="polite"></p>
   </div>
 </article>'''
+
+
+def trim(slug, f):
+    c = CUTS.get(slug)
+    if not c:
+        return ""
+    n = sum(1 for s in f["ships"] if s["key"] in c["cut"])
+    return (f'<p class="trim"><b>Proposed trim: cut {n}, keep {len(f["ships"]) - n}.</b> '
+            f'{html.escape(c.get("summary", ""))}</p>')
 
 
 def page(factions):
@@ -247,6 +265,7 @@ def page(factions):
     <h2>{e(info["name"])}</h2>
     <p class="tagline">{e(info["tagline"])}</p>
     <ul class="grammar">{grammar}</ul>
+    {trim(slug, f)}
   </header>
   <figure class="lineup"><img src="img/{slug}/_lineup.webp" width="{f["lineup"][0]}" height="{f["lineup"][1]}" alt="Every {e(info["name"])} ship to one scale"><figcaption>All {len(f["ships"])} ships to one scale, painted as they'll fly</figcaption></figure>
   {"".join(sections)}
@@ -291,6 +310,11 @@ h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; }
 .factions a:hover, .factions a:focus-visible { border-color: var(--faction); }
 .factions .left { font: 500 12px var(--mono); color: var(--muted); }
 .factions .left.done { color: var(--ok); }
+.ship.proposed-cut { border-color: var(--warn); }
+.cutnote { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); font-size: 14px; line-height: 1.45; }
+.cutnote b { color: var(--warn); }
+.cutnote span { display: block; margin-top: 2px; opacity: 0.75; font-size: 13px; }
+.trim { margin-top: 14px; padding: 10px 14px; border-left: 3px solid var(--warn); font-size: 15px; line-height: 1.5; }
 .reshaped { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--warn); color: #14110a; font: 600 11px var(--mono); letter-spacing: 0.04em; vertical-align: 1px; }
 @media (max-width: 640px) { .factions { flex-wrap: nowrap; overflow-x: auto; } }
 .eyebrow, .cls { font: 500 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0; }
@@ -354,6 +378,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <p>Every ship here is drawn by hand, then refit the way the game's current fleet was: doubled in size, armed with the turret, missile and point-defence kits, plated and painted. The pictures are the game's own renders of each design file. None of these ships is in the game yet.</p>
     <p>Ten ships marked <span class="reshaped">New shape</span> were redrawn so they stop reading as arrowheads: a skull, a mausoleum, a censer, a laurel wreath, an ensō, an alms bowl, a cracked bell, a crown of thorns, a survey frame and a peacock fan.</p>
     <p>Colour and detail pass: each faction now wears its own five-colour livery and motif, rooms are tinted by what they hold, and the plating carries panel seams, running lights and engine hatching. The Arbiter's stern blocks are now twin-drive engine nacelles.</p>
+    <p>Proposed trim: about 21 ships a faction is more than a player will meet, so each faction has a suggested cut to about 15, kept to a clear ladder from small to flagship, with every trader, station and new shape kept. Cards marked <b>Proposed cut</b> say why. Reject a marked ship to agree, Approve to keep it. Nothing is deleted until you decide.</p>
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>
