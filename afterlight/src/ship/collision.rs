@@ -269,7 +269,7 @@ pub fn shots_hit_terrain(
         for candidate in grid.candidates(pos, 8.0) {
             let Ok((terrain_transform, collider)) = terrain.get(candidate) else { continue };
             let center = world_point(terrain_transform, collider.bound_center);
-            if pos.distance_squared(center) < (collider.bound_radius + 6.0).powi(2) {
+            if shot_meets(collider, terrain_transform, center, pos) {
                 crate::combat::spawn_hit_effect(
                     &mut commands,
                     pos,
@@ -281,6 +281,19 @@ pub fn shots_hit_terrain(
             }
         }
     }
+}
+
+/// Does a shot at `pos` meet this body? Its bounding circle is only the broad
+/// phase: a station with arms, or a ring, has a bound tens of kilometres
+/// across that is mostly open space, and testing against it alone swallowed
+/// every shot anywhere inside it -- a whole fight near Haven fired rounds that
+/// vanished at the muzzle.
+fn shot_meets(collider: &Collider, tf: &Transform, center: Vec2, pos: Vec2) -> bool {
+    const PAD: f32 = 6.0;
+    if pos.distance_squared(center) >= (collider.bound_radius + PAD).powi(2) {
+        return false;
+    }
+    collider.circles.iter().any(|(c, r)| pos.distance_squared(world_point(tf, *c)) < (r + PAD).powi(2))
 }
 
 /// Gives freshly spawned static world objects their collision circle.
@@ -705,3 +718,30 @@ pub fn resolve_collisions(
         }
     }
 }
+
+#[cfg(test)]
+mod shot_terrain_tests {
+    use super::*;
+
+    #[test]
+    fn a_shot_in_the_open_space_of_a_big_body_flies_on() {
+        // Two far-apart parts: a hub at the origin and an arm 20 km out.
+        let c = Collider {
+            circles: vec![(Vec2::ZERO, 1_000.0), (Vec2::new(20_000.0, 0.0), 1_000.0)],
+            bound_center: Vec2::new(10_000.0, 0.0),
+            bound_radius: 11_000.0,
+            mass: f32::INFINITY,
+            awake: false,
+        };
+        let tf = Transform::default();
+        let centre = world_point(&tf, c.bound_center);
+        // Between them: inside the bound, outside both parts.
+        assert!(!shot_meets(&c, &tf, centre, Vec2::new(10_000.0, 0.0)));
+        // On a part: it stops.
+        assert!(shot_meets(&c, &tf, centre, Vec2::new(19_500.0, 300.0)));
+        assert!(shot_meets(&c, &tf, centre, Vec2::new(200.0, 0.0)));
+        // Outside the bound altogether.
+        assert!(!shot_meets(&c, &tf, centre, Vec2::new(40_000.0, 0.0)));
+    }
+}
+

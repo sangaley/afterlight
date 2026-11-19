@@ -54,7 +54,7 @@ fn lay_out(seed: u64, owner: AiShipType, cells: &[IVec2]) -> RaftPlan {
     let look = super::station_style::look(Some(owner));
     let pool = super::raft::pool_for(Some(owner));
     let mut hull = GivenHub::from_cells(cells);
-    let inside = Rect::from_center_half_size(Vec2::ZERO, hull.half);
+    let inside = Rect::from_center_half_size(Vec2::ZERO, hull.half.max(Vec2::ZERO));
     // Nothing moors where the deck and the collars on its rim are.
     hull.half += Vec2::splat((DECK + COLLAR / 2 + 2) as f32);
     let reach = cells.iter().map(|c| c.as_vec2().length()).fold(0.0, f32::max);
@@ -145,7 +145,7 @@ mod tests {
             let ships = plan.moorings.iter().filter(|m| m.slot.is_some()).count();
             assert!(ships >= 8, "{owner:?}: {ships} ships");
             // Nothing of the city's own where the hull is, but the arms.
-            let hull_rect = Rect::from_center_half_size(Vec2::ZERO, (hull.half - Vec2::splat(1.0)) * CELL);
+            let hull_rect = Rect::from_center_half_size(Vec2::ZERO, ((hull.half - Vec2::splat(1.0)) * CELL).max(Vec2::ZERO));
             for m in plan.moorings.iter().chain(&plan.spares).filter(|m| !m.design.starts_with("arm/") && !m.design.starts_with("deck/")) {
                 let r = super::super::raft::outline(m, 0.0).unwrap();
                 assert!(r.intersect(hull_rect).is_empty(), "{owner:?}: {} under the hull", m.design);

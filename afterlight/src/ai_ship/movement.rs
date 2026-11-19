@@ -266,17 +266,27 @@ pub fn ai_ship_movement_system(
     };
     // Each ship's disablers (ion, EMP) and the shortest of their reaches: a
     // doctrine that closes in fights from there (ai_ship::doctrine).
-    let disabler_reach: bevy::platform::collections::HashMap<Entity, f32> = {
+    // A ship armed mostly with disablers closes in whatever its faction:
+    // a Debt Collector's ion fire is its point, and from a Throne sniper's
+    // 22 km every bolt fizzled.
+    let (disabler_reach, mostly_disablers) = {
         let mut out: bevy::platform::collections::HashMap<Entity, f32> = Default::default();
+        let mut counts: bevy::platform::collections::HashMap<Entity, (u32, u32)> = Default::default();
         for (weapon, module, owner) in weapon_query.iter() {
-            if module.is_active && module.health > 0.0
-                && matches!(module.module_type, ModuleType::IonDisruptor | ModuleType::EMPPulse)
-            {
+            if !module.is_active || module.health <= 0.0 {
+                continue;
+            }
+            let c = counts.entry(owner.root).or_insert((0, 0));
+            c.1 += 1;
+            if matches!(module.module_type, ModuleType::IonDisruptor | ModuleType::EMPPulse) {
+                c.0 += 1;
                 let r = out.entry(owner.root).or_insert(f32::MAX);
                 *r = r.min(weapon.range);
             }
         }
-        out
+        let mostly: bevy::platform::collections::HashSet<Entity> =
+            counts.into_iter().filter(|(_, (d, all))| *d * 2 >= *all && *d > 0).map(|(e, _)| e).collect();
+        (out, mostly)
     };
     for (_entity, mut transform, mut velocity, behavior, mut nav, state, ship_type, children, collider, member, escort, target) in ai_ships.iter_mut() {
         if *behavior == AiShipBehavior::Dead || state.is_destroyed {
@@ -434,7 +444,7 @@ pub fn ai_ship_movement_system(
             let max_weapon_range = field.hulls.get(&_entity).map_or(longest, |h| h.fighting()).max(1.0).min(longest.max(1.0));
             let max_weapon_range = if longest > 0.0 { max_weapon_range } else { 0.0 };
             let max_weapon_range = match disabler_reach.get(&_entity) {
-                Some(r) if super::doctrine::doctrine(*ship_type).close_in && max_weapon_range > 0.0 => max_weapon_range.min(*r),
+                Some(r) if (super::doctrine::doctrine(*ship_type).close_in || mostly_disablers.contains(&_entity)) && max_weapon_range > 0.0 => max_weapon_range.min(*r),
                 _ => max_weapon_range,
             };
 

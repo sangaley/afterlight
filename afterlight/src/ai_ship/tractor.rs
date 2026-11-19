@@ -75,8 +75,15 @@ pub fn ai_tractor_system(
     mut targets: Query<(&Transform, &mut Velocity, Has<Ship>), Without<TractorFx>>,
     mut fx: Query<(&mut Transform, &mut Sprite), (With<TractorFx>, Without<AiShip>, Without<Ship>)>,
     mut beams_drawn: Local<HashMap<Entity, Entity>>,
+    // Each hull's live beams, counted twice a second rather than every frame.
+    mut counted: Local<(f32, HashMap<Entity, u32>)>,
 ) {
     let dt = time.delta_secs();
+    counted.0 -= dt;
+    if counted.0 <= 0.0 {
+        counted.0 = 0.5;
+        counted.1.clear();
+    }
     let mut pulling: HashMap<Entity, (Vec2, Vec2)> = HashMap::default();
 
     for (ship, tf, behavior, target, state, children) in ships.iter() {
@@ -84,11 +91,13 @@ pub fn ai_tractor_system(
             continue;
         }
         let Some(catch) = target.entity else { continue };
-        let beams = children
-            .iter()
-            .filter_map(|c| modules.get(c).ok())
-            .filter(|m| m.module_type == ModuleType::TractorBeam && m.is_active)
-            .count() as u32;
+        let beams = *counted.1.entry(ship).or_insert_with(|| {
+            children
+                .iter()
+                .filter_map(|c| modules.get(c).ok())
+                .filter(|m| m.module_type == ModuleType::TractorBeam && m.is_active)
+                .count() as u32
+        });
         if beams == 0 {
             continue;
         }

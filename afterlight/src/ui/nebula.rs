@@ -414,8 +414,11 @@ pub fn sky_window(cloud: Vec2, galaxy_pos: Vec2, camera: Vec2, aspect: f32) -> R
     let drift = camera / 2_000_000.0;
     let centre = Vec2::new(cloud.x * wf, cloud.y * hf)
         + Vec2::new(galaxy.x + drift.x, -(galaxy.y + drift.y)) * Vec2::new(wf * 0.32, hf * 0.32);
+    // A zero-sized window gives a NaN aspect: keep the window sane rather
+    // than fail Rect's assert and crash.
+    let size = if size.is_finite() { size.max(Vec2::ONE) } else { Vec2::new(wf / SKY_ZOOM, wf / SKY_ZOOM * 0.5625) };
     let half = size * 0.5;
-    let centre = centre.clamp(half, Vec2::new(wf, hf) - half);
+    let centre = if centre.is_finite() { centre.clamp(half, Vec2::new(wf, hf) - half) } else { Vec2::new(wf, hf) * 0.5 };
     Rect::from_center_size(centre, size)
 }
 

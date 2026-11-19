@@ -44,12 +44,15 @@ pub fn update_station_detail(
     let close = scale < FINE_FROM;
     let size = screens.single().map_or(Vec2::new(1280.0, 720.0), |w| Vec2::new(w.width(), w.height())) * scale;
     // What's on screen, with a margin so panning doesn't show the swap.
-    let view = Rect::from_center_half_size(cam.translation().truncate(), size * 0.75);
+    // Guarded: a half size that is NaN (a zero-sized window, a camera scale
+    // gone bad for a frame) or negative fails Rect's assert and takes the
+    // whole game down mid-battle.
+    let view = Rect::from_center_half_size(cam.translation().truncate(), (size * 0.75).max(Vec2::ZERO));
     for (entity, hull, mut sprite, global, showing) in &mut hulls {
         if sprite.color == Color::NONE {
             continue;
         }
-        let half = sprite.custom_size.unwrap_or(Vec2::ZERO) * 0.5;
+        let half = (sprite.custom_size.unwrap_or(Vec2::ZERO).abs() * 0.5).max(Vec2::ZERO);
         let on_screen = !Rect::from_center_half_size(global.translation().truncate(), half).intersect(view).is_empty();
         if close && on_screen {
             bakes.ask_fine(hull.key, now);

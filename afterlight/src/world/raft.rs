@@ -767,7 +767,7 @@ pub fn outline(m: &Mooring, margin: f32) -> Option<Rect> {
     let d = design_of(m.design)?;
     let span = d.span().as_vec2() * CELL;
     let half = if m.quarter % 2 == 0 { span * 0.5 } else { Vec2::new(span.y, span.x) * 0.5 };
-    Some(Rect::from_center_half_size(m.at, half + Vec2::splat(margin)))
+    Some(Rect::from_center_half_size(m.at, (half + Vec2::splat(margin)).max(Vec2::ZERO)))
 }
 
 /// Each ship as a row of circles down its length, and each street as a

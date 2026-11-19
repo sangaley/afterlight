@@ -465,6 +465,25 @@ pub fn ai_brain_system(
                     }
                 }
 
+                // Catch and keep (its doctrine, ai_ship::doctrine): a ship
+                // nearby that is already failing is theirs to take. They close
+                // in, stop it (EMP, then the tractor booms) and tow it off.
+                // They never pick a fair fight: a healthy ship is left alone,
+                // and a hurt ark goes home.
+                if hull_pct > 0.5 {
+                    if let Some((t_entity, t_pos)) = best_target {
+                        let failing = field.hulls.get(&t_entity).is_some_and(|h| h.blocks_left() < 0.6 || h.guns_left() < 0.5);
+                        if failing && pos.distance(t_pos) < engage_range * 1.5 {
+                            actions.push(ScoredAction {
+                                score: 80.0,
+                                behavior: AiShipBehavior::Engaging,
+                                destination: Some(t_pos),
+                                target: Some((t_entity, t_pos)),
+                            });
+                        }
+                    }
+                }
+
                 // Chase creatures to capture them (primary purpose)
                 if let Some((_, dist, c_pos, _)) = nearest_creature {
                     if dist < 500.0 {

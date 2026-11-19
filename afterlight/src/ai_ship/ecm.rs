@@ -13,7 +13,7 @@
 //!  - A ship with stealth coating stays off your radar scope until it is
 //!    close. You see it when you look out of the window, not before.
 
-use bevy::platform::collections::HashSet;
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 
 use super::components::*;
@@ -54,24 +54,37 @@ pub fn ai_ecm_system(
     modules: Query<&Module, Without<DestroyedModule>>,
     player: Query<&Transform, (With<Ship>, Without<AiShip>)>,
     mut was_jammed: Local<bool>,
+    time: Res<Time>,
     mut notifications: MessageWriter<ShowNotification>,
+    // What each hull carries, counted twice a second rather than every frame:
+    // a battle can hold dozens of hulls of thousands of blocks each.
+    mut kit: Local<(f32, HashMap<Entity, (u32, bool)>)>,
 ) {
     ecm.fields.clear();
     ecm.hidden.clear();
+    kit.0 -= time.delta_secs();
+    let recount = kit.0 <= 0.0;
+    if recount {
+        kit.0 = 0.5;
+        kit.1.clear();
+    }
     for (ship, tf, behavior, state, children) in ships.iter() {
         if state.is_destroyed {
             continue;
         }
-        let (mut jammers, mut coated) = (0u32, false);
-        for m in children.iter().filter_map(|c| modules.get(c).ok()) {
-            match m.module_type {
-                // Enemy utility blocks aren't switched on the way the
-                // player's are: a jammer works while it's whole.
-                ModuleType::SignalJammer if m.health > 0.0 => jammers += 1,
-                ModuleType::StealthCoating => coated = true,
-                _ => {}
+        let (jammers, coated) = *kit.1.entry(ship).or_insert_with(|| {
+            let (mut jammers, mut coated) = (0u32, false);
+            for m in children.iter().filter_map(|c| modules.get(c).ok()) {
+                match m.module_type {
+                    // Enemy utility blocks aren't switched on the way the
+                    // player's are: a jammer works while it's whole.
+                    ModuleType::SignalJammer if m.health > 0.0 => jammers += 1,
+                    ModuleType::StealthCoating => coated = true,
+                    _ => {}
+                }
             }
-        }
+            (jammers, coated)
+        });
         if coated {
             ecm.hidden.insert(ship);
         }
