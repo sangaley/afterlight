@@ -932,6 +932,33 @@ pub fn round_profile(
 /// to dial enemy fire back if parity is too much.
 pub const AI_ROUND_DAMAGE_SCALE: f32 = 1.0;
 
+/// The round an enemy's energy weapon fires when nothing is loaded: what the
+/// weapon does in the player's hands, carried on the round. Enemy ion
+/// disruptors, EMP pulses and plasma casters used to fire plain shells, so the
+/// factions built round them (the Collective, the Corpse Stars, the Shepherd)
+/// fought like everyone else.
+pub fn signature_round(module_type: ModuleType) -> Option<crate::combat::ammo_types::KineticAmmoType> {
+    use crate::combat::ammo_types::KineticAmmoType;
+    match module_type {
+        // Knocks out the systems it lands among, for a few seconds.
+        ModuleType::IonDisruptor | ModuleType::EMPPulse => Some(KineticAmmoType::EMPShell),
+        // A superheated bolt that bursts over a ring of blocks.
+        ModuleType::PlasmaCaster => Some(KineticAmmoType::HEFrag),
+        _ => None,
+    }
+}
+
+/// The colour an enemy round reads in: red, except the energy weapons, so
+/// you can see an ion burst or a plasma bolt coming.
+fn enemy_round_colour(signature: Option<crate::combat::ammo_types::KineticAmmoType>) -> Color {
+    use crate::combat::ammo_types::KineticAmmoType;
+    match signature {
+        Some(KineticAmmoType::EMPShell) => Color::srgb(0.45, 0.6, 1.0),
+        Some(KineticAmmoType::HEFrag) => Color::srgb(1.0, 0.75, 0.3),
+        _ => Color::srgb(1.0, 0.2, 0.2),
+    }
+}
+
 /// An AI gun's round: the same `Projectile` the player's guns fire, resolved
 /// by the same check_projectile_hits -- so an enemy shell meets your plating
 /// the way yours meets theirs (angle, ricochet, spall, the ammo's own effect),
@@ -961,7 +988,8 @@ pub fn spawn_ai_round(
     let direction = (aim_point - muzzle).normalize_or_zero();
     let speed = if built.is_some() { speed } else { speed * ammo_type.speed_mult() };
     let lifetime = (range / speed.max(1.0)).max(0.1);
-    let loaded = built.map(|g| g.parts.shell.analogue()).or(loaded);
+    let signature = if built.is_none() && loaded.is_none() { signature_round(module_type) } else { None };
+    let loaded = built.map(|g| g.parts.shell.analogue()).or(loaded).or(signature);
     let (damage_type, damage_mult, penetration) = round_profile(loaded, module_type);
     let (damage_mult, penetration, effect, caliber, size) = match built {
         Some(g) => {
@@ -984,8 +1012,9 @@ pub fn spawn_ai_round(
     commands.spawn((
         Sprite {
             image: asset_server.load(ROUND_ART),
-            // Enemy fire reads red whatever it's loaded with.
-            color: Color::srgb(1.0, 0.2, 0.2),
+            // Enemy fire reads red whatever it's loaded with, but an energy
+            // weapon's bolt shows what it is.
+            color: enemy_round_colour(signature),
             custom_size: Some(size * fx_scale()),
             ..default()
         },
@@ -2268,6 +2297,34 @@ mod pierce_tests {
         // The same round into 40-thick plate runs out of penetration first.
         assert!(blocks_through(434.0, 142.0, 30.0, 40.0) <= 5);
         assert!(blocks_through(434.0, 142.0, 30.0, 0.0) > 5);
+    }
+}
+
+#[cfg(test)]
+mod signature_round_tests {
+    use super::*;
+    use crate::combat::ammo_types::KineticAmmoType;
+
+    #[test]
+    fn enemy_energy_weapons_fire_what_they_are() {
+        // An ion disruptor or an EMP pulse knocks systems out; a plasma caster bursts.
+        assert_eq!(signature_round(ModuleType::IonDisruptor), Some(KineticAmmoType::EMPShell));
+        assert_eq!(signature_round(ModuleType::EMPPulse), Some(KineticAmmoType::EMPShell));
+        assert_eq!(signature_round(ModuleType::PlasmaCaster), Some(KineticAmmoType::HEFrag));
+        // A plain gun keeps whatever it has loaded.
+        assert_eq!(signature_round(ModuleType::Cannon), None);
+        // And the round does what the player's own does: the EMP shell disables,
+        // the plasma bolt bursts.
+        assert!(matches!(KineticAmmoType::EMPShell.hit_behavior(10.0), crate::combat::ammo_types::AmmoHitBehavior::EMPDisable { .. }));
+        assert!(matches!(KineticAmmoType::HEFrag.hit_behavior(10.0), crate::combat::ammo_types::AmmoHitBehavior::SurfaceExplode { .. }));
+    }
+
+    #[test]
+    fn energy_weapons_are_never_reloaded_with_a_kinetic_round() {
+        use crate::building::customization::tuning::is_kinetic_weapon;
+        for m in [ModuleType::IonDisruptor, ModuleType::EMPPulse, ModuleType::PlasmaCaster] {
+            assert!(!is_kinetic_weapon(m), "{m:?} would get a loaded round and lose its effect");
+        }
     }
 }
 

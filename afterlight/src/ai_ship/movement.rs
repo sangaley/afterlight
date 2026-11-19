@@ -66,16 +66,7 @@ fn turn_toward(rotation: Quat, target_angle: f32, blend: f32, max_rate: f32, dt:
 /// The distances a faction likes to fight at (from its target's hull), or
 /// None for one that rams.
 pub fn fighting_band(faction: AiShipType) -> Option<(f32, f32)> {
-    use AiShipType::*;
-    match faction {
-        RecursiveKingdom => None,
-        // Snipers: big guns and the discipline to stay out of reach.
-        EternalHegemony | TerranHegemony | GildedThrone => Some((18_000.0, 22_000.0)),
-        // Brawlers: frag swarms, EMP and tractor beams want it close.
-        BrokenChoir | CorpseStars | Shepherd => Some((5_000.0, 9_000.0)),
-        // Everyone else holds the line between.
-        _ => Some((12_000.0, 18_000.0)),
-    }
+    super::doctrine::doctrine(faction).band
 }
 
 use super::awareness::Tactic;
@@ -824,8 +815,11 @@ mod fighting_band_tests {
 
     #[test]
     fn snipers_hold_far_out_brawlers_close_and_the_kingdom_rams() {
-        let (lo, hi) = fighting_band(AiShipType::EternalHegemony).unwrap();
+        let (lo, hi) = fighting_band(AiShipType::TerranHegemony).unwrap();
         assert!(lo >= 18_000.0 && hi <= 22_000.0);
+        // The empire stands a little closer, round its command ship.
+        let (lo, _) = fighting_band(AiShipType::EternalHegemony).unwrap();
+        assert!(lo < 18_000.0);
         let (_, brawl) = fighting_band(AiShipType::BrokenChoir).unwrap();
         assert!(brawl <= 9_000.0);
         assert!(fighting_band(AiShipType::RecursiveKingdom).is_none());

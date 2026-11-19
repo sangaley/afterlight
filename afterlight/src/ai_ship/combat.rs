@@ -241,7 +241,11 @@ pub fn ai_weapon_fire_system(
         // a ship holding at the edge of its reach measured to the far centre
         // of a big target, sat out of "range", and never fired.
         let target_radius = ai_target.entity.and_then(|e| field.hulls.get(&e)).map_or(0.0, |h| h.radius);
-        let salvo = super::awareness::salvo_open(time.elapsed_secs(), mind);
+        // The faction's doctrine: when its launchers let go, how true its
+        // gunners aim, how much faster a breaking hull fires.
+        let doctrine = super::doctrine::doctrine(*ship_type);
+        let salvo = super::doctrine::salvo_open(time.elapsed_secs(), &doctrine, mind.salvo_beat / 8.0);
+        let fury = super::doctrine::fury_scale(doctrine.fury, field.hulls.get(&ai_entity).map_or(1.0, |h| h.blocks_left()));
 
         // The hull's own weapons, then whatever stands on its turrets.
         let guns: Vec<(Entity, Option<Entity>)> = children
@@ -345,7 +349,7 @@ pub fn ai_weapon_fire_system(
             }
 
             // Tick cooldown
-            cooldown.timer.tick(time.delta());
+            cooldown.timer.tick(time.delta().mul_f32(fury));
             if !cooldown.timer.is_finished() {
                 continue;
             }
@@ -409,7 +413,7 @@ pub fn ai_weapon_fire_system(
             // so every battery in a fleet put every shell on one reactor from
             // 7 km the moment its guns could bear.
             let aim_point = match gun {
-                Some((g, _)) => crate::combat::apply_accuracy_spread(muzzle, lead.aim_point, lead.distance_accuracy * 0.85, g.stats.spread_deg * 4.0),
+                Some((g, _)) => crate::combat::apply_accuracy_spread(muzzle, lead.aim_point, lead.distance_accuracy * 0.85, g.stats.spread_deg * 4.0 * doctrine.spread),
                 None => lead.aim_point,
             };
 
@@ -503,23 +507,7 @@ fn aim_matches(module_type: ModuleType, category: crate::components::ModuleCateg
 /// professionals defang you, gatekeepers strand you, zealots and bosses go for
 /// the core, dumb swarms just hammer the middle.
 fn aim_priority(faction: AiShipType) -> &'static [crate::components::ModuleCategory] {
-    use crate::components::ModuleCategory::*;
-    use AiShipType::*;
-    match faction {
-        // Elite mercs: disable your guns, then your drive — a clean takedown.
-        GildedThrone => &[Weapons, Propulsion],
-        // Battleship doctrine: silence the guns, then crack the reactor.
-        TerranHegemony => &[Weapons, Power],
-        // Deep-zone gatekeepers: kill your engines, strand you in the dark.
-        CorpseStars => &[Propulsion, Weapons],
-        // Bosses: methodical — guns first, then the reactor for the kill.
-        EternalHegemony => &[Weapons, Power],
-        Shepherd => &[Power, Weapons],
-        // Zealots: fixate on the reactor, a holy execution.
-        SynthesisCollective => &[Power],
-        // Mindless ghosts / dumb swarm / everything else: centre of mass.
-        _ => &[],
-    }
+    super::doctrine::doctrine(faction).aim
 }
 
 // ============================================================================
@@ -643,7 +631,10 @@ pub fn ai_distress_system(
             let d = pos.distance(*bpos);
             // A trader's ally answers from twice as far: it's what the
             // trader pays it for.
-            let reach = if *bfaction != *ftype { DISTRESS_RADIUS * 2.0 } else { DISTRESS_RADIUS };
+            // How far a faction's calls carry is its doctrine's: the
+            // Compact's haulers answer each other from a long way off.
+            let reach = if *bfaction != *ftype { DISTRESS_RADIUS * 2.0 } else { DISTRESS_RADIUS }
+                * super::doctrine::doctrine(*bfaction).rally;
             if d > reach { continue; }
             if nearest.map_or(true, |(nd, _)| d < nd) {
                 nearest = Some((d, *btgt));

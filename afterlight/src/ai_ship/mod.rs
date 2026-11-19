@@ -1,4 +1,5 @@
 pub mod awareness;
+pub mod doctrine;
 pub mod traffic;
 pub mod components;
 mod layouts;

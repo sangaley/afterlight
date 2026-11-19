@@ -144,7 +144,8 @@ pub struct Awareness {
     pub aim_engines: bool,
 }
 
-/// How much of all this a faction's crews use.
+/// How much of all this a faction's crews use (part of its doctrine,
+/// doctrine.rs).
 #[derive(Clone, Copy, Debug)]
 pub struct Temperament {
     /// The strength ratio under which it pulls out. 0 never does.
@@ -155,29 +156,13 @@ pub struct Temperament {
     pub jink: f32,
     /// Will back off to outrange someone.
     pub kites: bool,
+    /// Never gives ground while its fleet's command ship lives, and scatters
+    /// the moment it dies (the Eternal Hegemony).
+    pub leader_bound: bool,
 }
 
 pub fn temperament(faction: AiShipType) -> Temperament {
-    use AiShipType::*;
-    let t = |withdraw, cunning, jink, kites| Temperament { withdraw, cunning, jink, kites };
-    match faction {
-        // Mercenaries: clever, quick, and not paid to die.
-        GildedThrone => t(0.65, 1.0, 1.0, true),
-        // A navy: disciplined, slow to give ground.
-        TerranHegemony => t(0.3, 0.8, 0.5, true),
-        // Never retreats. Too big to dance, not too proud to out-range you.
-        EternalHegemony => t(0.0, 0.6, 0.2, true),
-        Shepherd => t(0.0, 0.8, 0.1, false),
-        // Ghosts. They come straight on.
-        BrokenChoir => t(0.0, 0.0, 0.3, false),
-        // Scrap crews: they rush, they swerve, they don't think about tomorrow.
-        RecursiveKingdom => t(0.0, 0.3, 0.7, false),
-        CorpseStars => t(0.3, 0.5, 0.4, false),
-        // Fanatics.
-        SynthesisCollective => t(0.0, 0.6, 0.5, false),
-        // Not soldiers: they run first and think after.
-        _ => t(1.0, 0.5, 0.6, false),
-    }
+    super::doctrine::doctrine(faction).temper
 }
 
 /// The dials on all of it, tuned by tools/combat-lab/train.py. AFTERLIGHT_AI_WEIGHTS
@@ -280,8 +265,12 @@ pub fn target_worth(me: &Hull, them: &Hull, shooting_me: bool, called: bool, all
     if shooting_me {
         worth *= 1.5;
     }
+    let doctrine = me.faction.map(super::doctrine::doctrine);
     if called {
-        worth *= mind.focus;
+        worth *= mind.focus * doctrine.map_or(1.0, |d| d.focus);
+    }
+    if let Some(d) = doctrine {
+        worth *= super::doctrine::hunt_bias(&d.hunt, them.blocks_left(), them.blocks);
     }
     worth *= 1.0 + 0.15 * allies_on_it as f32;
     if held {
@@ -297,10 +286,16 @@ pub struct Reading {
     pub peers: u32,
     /// Seconds since anything hit it.
     pub quiet_for: f32,
+    /// Its fleet's command ship (the biggest hull it set out with) is gone.
+    pub leader_down: bool,
 }
 
 /// What a ship does about the fight in front of it, and why.
 pub fn choose_tactic(me: &Hull, them: &Hull, t: &Temperament, mind: &Mind, r: &Reading, current: Tactic) -> (Tactic, &'static str) {
+    // The throne has fallen: a fleet bound to its command ship breaks.
+    if t.leader_bound && r.leader_down {
+        return (Tactic::Withdraw, "the throne has fallen");
+    }
     let withdraw_under = t.withdraw * mind.withdraw;
     if withdraw_under > 0.0 {
         if me.disarmed() {
@@ -421,13 +416,6 @@ pub fn retreat_point(me: &Hull, them: &Hull, friends: impl Iterator<Item = Vec2>
     }
 }
 
-/// Should this launcher let go now? Launchers across a fleet wait for the same
-/// beat, so a salvo arrives together and swamps point defence instead of
-/// feeding it one missile at a time.
-pub fn salvo_open(now: f32, mind: &Mind) -> bool {
-    mind.salvo_beat <= 0.0 || (now / mind.salvo_beat).fract() * mind.salvo_beat < 1.0
-}
-
 /// Survey every fighting hull and let each AI ship read the fight.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn survey_battlefield(
@@ -438,6 +426,7 @@ pub fn survey_battlefield(
     standing: Res<crate::diplomacy::FactionStanding>,
     mut hits: MessageReader<AiShipDamaged>,
     mut player_hit: Local<HashMap<Entity, f32>>,
+    mut leaders: Local<HashMap<u32, (Entity, u32)>>,
     mut ai: Query<
         (
             Entity,
@@ -601,6 +590,17 @@ pub fn survey_battlefield(
         held.1 = held.1.min(eta);
     }
 
+    // Each fleet's command ship: the biggest hull it has had. Once that hull
+    // is gone from the field, a fleet bound to it breaks.
+    for (e, h) in field.hulls.iter() {
+        let Some(f) = h.fleet else { continue };
+        let lead = leaders.entry(f).or_insert((*e, h.peak_blocks));
+        if h.peak_blocks > lead.1 {
+            *lead = (*e, h.peak_blocks);
+        }
+    }
+    leaders.retain(|f, _| field.hulls.values().any(|h| h.fleet == Some(*f)));
+
     // Each fleet calls one target: the best one from where its centre stands.
     field.fleet_calls.clear();
     // (Who last shot it, and who it was called to fight.)
@@ -674,7 +674,11 @@ pub fn survey_battlefield(
         };
 
         let temper = temperament(*faction);
-        let reading = Reading { balance: aware.balance, peers, quiet_for: state.last_hit_timer };
+        let leader_down = me
+            .fleet
+            .and_then(|f| leaders.get(&f))
+            .is_some_and(|(lead, _)| *lead != entity && !field.hulls.contains_key(lead));
+        let reading = Reading { balance: aware.balance, peers, quiet_for: state.last_hit_timer, leader_down };
         let (choice, why) = choose_tactic(&me, them, &temper, &mind, &reading, aware.tactic);
         // Settled tactics stay a moment; running for its life doesn't wait.
         let changing = choice != aware.tactic;
@@ -715,7 +719,7 @@ mod tests {
         }
     }
     fn reading() -> Reading {
-        Reading { balance: 1.0, peers: 0, quiet_for: 99.0 }
+        Reading { balance: 1.0, peers: 0, quiet_for: 99.0, leader_down: false }
     }
     fn think(me: &Hull, them: &Hull, r: Reading) -> Tactic {
         choose_tactic(me, them, &temperament(AiShipType::GildedThrone), &Mind::default(), &r, Tactic::Hold).0
@@ -898,9 +902,26 @@ mod tests {
 
     #[test]
     fn launchers_hold_for_the_beat() {
-        let mind = Mind::default();
-        assert!(salvo_open(16.2, &mind));
-        assert!(!salvo_open(20.0, &mind));
-        assert!(salvo_open(20.0, &Mind { salvo_beat: 0.0, ..mind }));
+        use super::super::doctrine::{doctrine, salvo_open};
+        // The Collective's ships (an 8 s beat, no offset) let go in the first
+        // second of each beat and hold otherwise.
+        let d = super::super::doctrine::Doctrine { salvo_beat: 8.0, salvo_phase: 0.0, ..doctrine(AiShipType::CorpseStars) };
+        assert!(salvo_open(16.2, &d, 1.0));
+        assert!(!salvo_open(20.0, &d, 1.0));
+        assert!(salvo_open(20.0, &super::super::doctrine::Doctrine { salvo_beat: 0.0, ..d }, 1.0));
+    }
+
+    #[test]
+    fn a_fleet_bound_to_its_throne_breaks_when_it_falls() {
+        let t = temperament(AiShipType::EternalHegemony);
+        let me = hull(7000.0);
+        let them = hull(7000.0);
+        let standing = Reading { balance: 0.2, ..reading() };
+        assert_ne!(choose_tactic(&me, &them, &t, &Mind::default(), &standing, Tactic::Hold).0, Tactic::Withdraw);
+        let fallen = Reading { leader_down: true, ..standing };
+        assert_eq!(choose_tactic(&me, &them, &t, &Mind::default(), &fallen, Tactic::Hold).0, Tactic::Withdraw);
+        // Nobody else cares whose ship is biggest.
+        let navy = temperament(AiShipType::TerranHegemony);
+        assert_ne!(choose_tactic(&me, &them, &navy, &Mind::default(), &Reading { leader_down: true, ..reading() }, Tactic::Hold).0, Tactic::Withdraw);
     }
 }
