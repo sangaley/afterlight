@@ -173,7 +173,7 @@ def refit(slug, key, station=False):
         if new:
             m["module_type"] = new
             swapped += 1
-    out["paint"] = livery.paint(slug, out)  # palette, rooms by kind, motif, details
+    out["paint"] = livery.paint(slug, out, key)  # palette, rooms by kind, motif, details
     os.makedirs(os.path.join(OUT, slug), exist_ok=True)
     path = os.path.join(OUT, slug, f"{key}.json")
     json.dump(out, open(path, "w"), indent=1)
