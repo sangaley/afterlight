@@ -30,6 +30,7 @@ mod tutorial;
 mod tips;
 mod diplomacy;
 mod perf;
+mod sprite_batching;
 
 use states::GameState;
 use events::EventsPlugin;
@@ -137,6 +138,7 @@ fn main() {
         .add_plugins(narrative::NarrativePlugin)
         .add_plugins(ship::towing::TowingPlugin)
         .add_plugins(perf::PerfPlugin)
+        .add_plugins(sprite_batching::SpriteBatchingPlugin)
 
         .run();
 }
