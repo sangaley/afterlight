@@ -353,6 +353,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <h1>Fleet Rework</h1>
     <p>Every ship here is drawn by hand, then refit the way the game's current fleet was: doubled in size, armed with the turret, missile and point-defence kits, plated and painted. The pictures are the game's own renders of each design file. None of these ships is in the game yet.</p>
     <p>Ten ships marked <span class="reshaped">New shape</span> were redrawn so they stop reading as arrowheads: a skull, a mausoleum, a censer, a laurel wreath, an ensō, an alms bowl, a cracked bell, a crown of thorns, a survey frame and a peacock fan.</p>
+    <p>Colour and detail pass: each faction now wears its own five-colour livery and motif, rooms are tinted by what they hold, and the plating carries panel seams, running lights and engine hatching. The Arbiter's stern blocks are now twin-drive engine nacelles.</p>
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>
