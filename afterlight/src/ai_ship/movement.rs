@@ -278,7 +278,12 @@ pub fn ai_ship_movement_system(
             }
             let c = counts.entry(owner.root).or_insert((0, 0));
             c.1 += 1;
-            if matches!(module.module_type, ModuleType::IonDisruptor | ModuleType::EMPPulse) {
+            // Catching gear counts with the disablers: a ship that is mostly
+            // tractor booms and ion guns wants to be close (a Debt Collector
+            // carries forty-odd beams round a handful of disruptors).
+            if module.module_type == ModuleType::TractorBeam {
+                c.0 += 1;
+            } else if matches!(module.module_type, ModuleType::IonDisruptor | ModuleType::EMPPulse) {
                 c.0 += 1;
                 let r = out.entry(owner.root).or_insert(f32::MAX);
                 *r = r.min(weapon.range);

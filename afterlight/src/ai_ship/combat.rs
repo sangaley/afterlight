@@ -269,6 +269,10 @@ pub fn ai_weapon_fire_system(
                 || (!crate::combat::INFINITE_AMMO && weapon.ammo == 0) {
                 continue;
             }
+            // A tractor beam pulls (ai_ship::tractor); it has no round to fire.
+            if module.module_type == ModuleType::TractorBeam {
+                continue;
+            }
 
             // Unstaffed weapon stations produce nothing — same rule the
             // player's own ship runs under (compute_module_efficiency,
