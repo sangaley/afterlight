@@ -1,0 +1,104 @@
+{
+ "name": "Hegemony Compact Rifle",
+ "description": "The long rifle cut down for a compact deck: one more metre of barrel than the stock gun, and the same armour-piercing dart.",
+ "parts": [
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Mantlet",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    3,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    4,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    5,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "Tracer",
+  "casings": 3,
+  "bodies": [
+   "Solid",
+   "Solid"
+  ],
+  "head": "Ap"
+ },
+ "faction": "TerranHegemony"
+}

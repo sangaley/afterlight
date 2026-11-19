@@ -1,0 +1,79 @@
+{
+ "name": "Kingdom 60 mm Scrap Thrower",
+ "description": "Two loaders on a stub of barrel, throwing high-explosive scrap as fast as the copies can feed it. Short, loud and everywhere.",
+ "parts": [
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Mantlet",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    3,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "None",
+  "casings": 2,
+  "bodies": [
+   "Frag"
+  ],
+  "head": "He"
+ },
+ "faction": "RecursiveKingdom"
+}

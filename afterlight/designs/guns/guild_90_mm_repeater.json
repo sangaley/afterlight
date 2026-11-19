@@ -1,0 +1,96 @@
+{
+ "name": "Guild 90 mm Repeater",
+ "description": "Escort work: a quick-firing flak gun that bursts beside small craft and missiles, so the cargo gets through.",
+ "parts": [
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Mantlet",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    3,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    4,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "Tracer",
+  "casings": 2,
+  "bodies": [
+   "Frag",
+   "ProximityFuse"
+  ],
+  "head": "Frag"
+ },
+ "faction": "MerchantPrinces"
+}

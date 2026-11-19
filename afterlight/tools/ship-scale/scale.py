@@ -81,7 +81,12 @@ MISSILES = {
 # Faction guns where they have their own (designs/guns), else the kits'.
 FACTION_GUNS = {
     "eternal_hegemony": {"ciws": "eternal_ciws.json", "turret": "eternal_170_mm_lance.json"},
-    "terran_hegemony": {"ciws": "terran_ciws.json"},
+    # Each faction's own turret gun (its doctrine, ai_ship/doctrine.rs): on
+    # the full turret and on the compact one.
+    "terran_hegemony": {"ciws": "terran_ciws.json", "turret": "terran_170_mm_long_rifle.json", "compact": "terran_compact_rifle.json"},
+    "recursive_kingdom": {"turret": "kingdom_60_mm_scrap_thrower.json", "compact": "kingdom_scrap_gun.json", "autocannon": "kingdom_scrap_gun.json"},
+    "free_haulers_compact": {"turret": "union_170_mm_breaker.json", "compact": "union_compact_breaker.json", "autocannon": "union_scattergun.json"},
+    "merchant_princes": {"turret": "guild_90_mm_repeater.json", "compact": "guild_compact_repeater.json", "autocannon": "guild_flak_gun.json"},
 }
 # Two modifiers on a full laser bank's core, by faction.
 LASER_FLAVOUR = {

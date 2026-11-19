@@ -1,0 +1,87 @@
+{
+ "name": "Union 170 mm Breaker",
+ "description": "A rock-breaker on a turret: a fat high-explosive shell from a short barrel. No reach to speak of; you have to be close, and then it hurts.",
+ "parts": [
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Mantlet",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    3,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "None",
+  "casings": 2,
+  "bodies": [
+   "He"
+  ],
+  "head": "He"
+ },
+ "faction": "FreeHaulersCompact"
+}

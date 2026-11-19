@@ -1,0 +1,96 @@
+{
+ "name": "Guild Compact Repeater",
+ "description": "The repeater on a compact deck: proximity flak for the screen.",
+ "parts": [
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GaugeIncreaser",
+   "offset": [
+    0,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Mantlet",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    3,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    4,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "Tracer",
+  "casings": 2,
+  "bodies": [
+   "Frag",
+   "ProximityFuse"
+  ],
+  "head": "Frag"
+ },
+ "faction": "MerchantPrinces"
+}

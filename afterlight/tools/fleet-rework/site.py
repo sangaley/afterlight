@@ -240,6 +240,46 @@ def ship_card(slug, s):
 </article>'''
 
 
+# How each faction fights (the game's ai_ship/doctrine.rs), what it carries
+# to do it, and how you beat it.
+DOCTRINE = {
+    "terran_hegemony": ("The line", "Holds long range in a battle line, every gun on one target, armour-piercing missiles in one timed salvo; the best aim in the game.",
+                        "Long rifles firing solid armour-piercing darts.", "Get inside their range or round their flank: they turn slowly."),
+    "eternal_hegemony": ("The throne", "Every fleet fights round its command ship and never gives ground while it stands; guns first, then the reactor, the biggest prey first.",
+                         "The old pattern's lances, armour-piercing with a burst behind.", "Kill the command ship and the fleet breaks."),
+    "gilded_throne": ("Hired precision", "Lasers from long range, working round your flank, your guns then your drive. Not paid to die: they leave when it gets costly.",
+                      "Laser banks and mirror plate.", "Plain shells (the mirror plate only turns lasers), and pressing them."),
+    "merchant_princes": ("Business", "Escorts screen with flak while the traders run, and shoot your engines so you stop chasing. Nobody fights to the death.",
+                         "Proximity flak guns.", "Thin armour, but they call the Gilded Throne."),
+    "free_haulers_compact": ("Brawl", "Cheap crews who close hard in groups that answer each other's calls from a long way off.",
+                             "Breakers and scatterguns: high explosive from short barrels.", "Keep your distance: they have no reach."),
+    "synthesis_collective": ("The swarm", "Small hulls rushing in from several sides, ion fire on your power, then plasma up close; the small and weak first.",
+                             "Ion disruptors that knock systems out, plasma casters that burst, tractor tendrils.", "Point defence, gatlings and area damage; keep your shields up."),
+    "stellar_preserve": ("Catch and keep", "They don't trade blows: they stop a ship (drive, then power) and tow it away, preferring the ones already failing.",
+                         "EMP missiles and tractor booms.", "Keep your engines and power up, or break the tractors."),
+    "broken_choir": ("The scream", "Ghosts that come straight on and never flee, jamming your radar and seekers, missiles in waves.",
+                     "Signal jammers by the hundred, missile silos.", "Guns, not missiles; the jammers are big targets."),
+    "corpse_stars": ("Entropy", "Ion and EMP on your drive and reactor, then the bone prow. They grow stronger as they break, and only a gutted ship turns away.",
+                     "Ion disruptors, EMP pulses, railguns.", "Stay mobile and keep the range."),
+    "the_silence": ("They leave", "Never shoot. Stealth keeps them off your scope until they're close; they shadow you, and if attacked they jam and slip away.",
+                    "Stealth coating, jammers, no guns.", "Nothing to beat: they were only watching."),
+    "shepherd": ("The hook", "A lone apex hunter that tractors one ship out of your group into its hook, then ion and plasma at close range.",
+                 "Tractor beams lining the hook, ion disruptors, plasma casters.", "Stay together, keep your power up, shoot out the hook's beams."),
+    "recursive_kingdom": ("Numbers", "Cheap identical copies that fly straight in, each on whatever is nearest, and let every rocket go at once.",
+                          "Scrap guns throwing high explosive, dumb-rocket silos, scrap plate.", "Sidestep the salvo; gatlings and flak shred them."),
+}
+
+
+def doctrine_block(slug):
+    d = DOCTRINE.get(slug)
+    if not d:
+        return ""
+    e = html.escape
+    name, how, gun, beat = d
+    return (f'<div class="doctrine"><p><b>How they fight: {e(name)}.</b> {e(how)}</p>'
+            f'<p><b>Carries:</b> {e(gun)} <b>Beat them:</b> {e(beat)}</p></div>')
+
+
 def trim(slug, f):
     c = CUTS.get(slug)
     if not c:
@@ -269,6 +309,7 @@ def page(factions):
     <h2>{e(info["name"])}</h2>
     <p class="tagline">{e(info["tagline"])}</p>
     <ul class="grammar">{grammar}</ul>
+    {doctrine_block(slug)}
     {trim(slug, f)}
   </header>
   <figure class="lineup"><img src="img/{slug}/_lineup.webp" width="{f["lineup"][0]}" height="{f["lineup"][1]}" alt="Every {e(info["name"])} ship to one scale"><figcaption>All {len(f["ships"])} ships to one scale, painted as they'll fly</figcaption></figure>
@@ -318,6 +359,8 @@ h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; }
 .cutnote { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); font-size: 14px; line-height: 1.45; }
 .cutnote b { color: var(--warn); }
 .cutnote span { display: block; margin-top: 2px; opacity: 0.75; font-size: 13px; }
+.doctrine { margin-top: 14px; padding: 10px 14px; border-left: 3px solid var(--faction, var(--warn)); font-size: 15px; line-height: 1.5; }
+.doctrine p { margin: 0 0 6px; }
 .trim { margin-top: 14px; padding: 10px 14px; border-left: 3px solid var(--warn); font-size: 15px; line-height: 1.5; }
 .reshaped { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--warn); color: #14110a; font: 600 11px var(--mono); letter-spacing: 0.04em; vertical-align: 1px; }
 @media (max-width: 640px) { .factions { flex-wrap: nowrap; overflow-x: auto; } }
@@ -383,6 +426,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <p>Ten ships marked <span class="reshaped">New shape</span> were redrawn so they stop reading as arrowheads: a skull, a mausoleum, a censer, a laurel wreath, an ensō, an alms bowl, a cracked bell, a crown of thorns, a survey frame and a peacock fan.</p>
     <p>Colour and detail pass: each faction now wears its own five-colour livery and motif, rooms are tinted by what they hold, and the plating carries panel seams, running lights and engine hatching. The Arbiter's stern blocks are now twin-drive engine nacelles.</p>
     <p>Trimmed: 60 near-repeats were taken out (each faction's header lists them), leaving 192 ships, 14 to 19 a faction. Every trader, station, flagship and new shape stayed.</p>
+    <p>Each faction now fights its own way: its header says how, what it carries to do it, and how you beat it. The Terran, Kingdom, Compact and Merchant guns are new.</p>
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>

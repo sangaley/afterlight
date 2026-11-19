@@ -1,0 +1,64 @@
+{
+ "name": "Guild Flak Gun",
+ "description": "A light escort gun firing proximity flak: it bursts beside small craft and missiles.",
+ "parts": [
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "Tracer",
+  "casings": 2,
+  "bodies": [
+   "Frag",
+   "ProximityFuse"
+  ],
+  "head": "Frag"
+ },
+ "faction": "MerchantPrinces"
+}

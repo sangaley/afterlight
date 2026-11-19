@@ -1,0 +1,63 @@
+{
+ "name": "Union Scattergun",
+ "description": "A mining blaster on a ring: a short barrel and a high-explosive charge. Close in or don't bother.",
+ "parts": [
+  {
+   "module_type": "FiringPiece",
+   "offset": [
+    0,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "Loader",
+   "offset": [
+    -1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "ClipRack",
+   "offset": [
+    -1,
+    1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "BreechCooler",
+   "offset": [
+    -1,
+    -1
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    1,
+    0
+   ],
+   "rotation": "East"
+  },
+  {
+   "module_type": "GunBarrel",
+   "offset": [
+    2,
+    0
+   ],
+   "rotation": "East"
+  }
+ ],
+ "shell": {
+  "base": "None",
+  "casings": 2,
+  "bodies": [
+   "He"
+  ],
+  "head": "He"
+ },
+ "faction": "FreeHaulersCompact"
+}

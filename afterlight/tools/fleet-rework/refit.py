@@ -158,6 +158,10 @@ def refit(slug, key, station=False):
         own["ciws"] = scale.with_gun(kits["ciws"], guns["ciws"])
     if "turret" in guns:
         own["turret"] = scale.with_gun(kits["turret"], guns["turret"])
+    if "compact" in guns:
+        own["compact"] = scale.with_gun(kits["compact"], guns["compact"])
+    if "autocannon" in guns:
+        own["autocannon"] = scale.with_gun(kits["autocannon"], guns["autocannon"])
     s = scale.Scaled(src, slug, 3 if station else 2)
     s.scale()
     armed = bool(s.slots) or s.exotic
