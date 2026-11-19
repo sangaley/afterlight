@@ -189,7 +189,9 @@ def refit(slug, key, station=False):
 
 def main():
     slug = sys.argv[1]
-    keys = sys.argv[2:] or sorted(f[:-5] for f in os.listdir(os.path.join(CONCEPTS, slug)) if f.endswith(".json"))
+    # Ships cut from the roster (cuts.json) are only refit when asked for by name.
+    cuts = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuts.json"))).get(slug, {}).get("cut", {})
+    keys = sys.argv[2:] or sorted(f[:-5] for f in os.listdir(os.path.join(CONCEPTS, slug)) if f.endswith(".json") and f[:-5] not in cuts)
     # Stations and platforms are drawn three times as big, not twice.
     stations = {"hive", "broken_spire", "depot", "citadel", "reliquary", "exchange", "trade_post",
                 "velvet_rope", "sanctuary", "monastery", "growth_node", "gun_platform", "bastion", "the_fold"}

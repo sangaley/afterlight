@@ -13,6 +13,9 @@ at once on the 8 GB Mac; start the next job when one finishes.
 Paint: every faction from its in-game livery (refit.py LIVERY). Story: each brief carries the
 faction's lore from space-empire-story-bible.md and capital_worlds.rs.
 
+Trim 2026-11-18: the developer approved cutting 60 near-repeats (tools/fleet-rework/cuts.json, a reason each) -> 192 ships, 14-19 a faction. Cut ships are skipped by refit.py and site.py; their designs and renders sit in designs/rework/_cut and out/_cut; the drawings stay in tools/fleet-concepts for the record.
+Livery: settled at c611402 (the developer rejected a 5-scheme multi-colour pass and a quiet per-ship variant pass).
+
 Status 2026-11-18: ALL DRAWING DONE (12 factions, 252 ships), refit, rendered, and PUBLISHED to the review site (v4). Waiting on user verdicts. RK verdicts: 17 approved; hive, parliament, sierpinski, spiral unreviewed. Open: RK Ram shares a name with the approved Shepherd Ram (rename the RK one before integration).
 Left to launch: none.
 

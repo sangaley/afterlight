@@ -67,8 +67,8 @@ EXTRA = {"SalvageArm": "Salvage arm", "TractorBeam": "Tractor beam", "MiningDril
          "IonDisruptor": "Ion disruptor", "EMPPulse": "EMP pulse", "SignalJammer": "Signal jammer"}
 SCALE = 22.0  # game units per pixel in the lineup
 
-# The proposed trim (cuts.json): per faction, the ships suggested for cutting
-# and why, plus a line on what the roster looks like after.
+# The trim (cuts.json), approved by the developer on 2026-11-18: per faction,
+# the ships taken out of the roster and why. They are left off the site.
 _CUTS_PATH = os.path.join(HERE, "cuts.json")
 CUTS = json.load(open(_CUTS_PATH)) if os.path.exists(_CUTS_PATH) else {}
 
@@ -138,9 +138,12 @@ def faction(slug, ships_out):
     img = os.path.join(SITE, "img", slug)
     shutil.rmtree(img, ignore_errors=True)  # only this build's pictures get published
     os.makedirs(img, exist_ok=True)
-    ships = []
+    ships, removed = [], []
     for mod in mods:
         for key, _fn, name, cls, note in mod.CONCEPTS:
+            if key in CUTS.get(slug, {}).get("cut", {}):
+                removed.append(name)
+                continue
             rep_path = os.path.join(REWORK, slug, f"{key}.report.json")
             shell = os.path.join(OUT, slug, f"{key}_shell.png")
             if not (os.path.exists(rep_path) and os.path.exists(shell)):
@@ -189,7 +192,7 @@ def faction(slug, ships_out):
         lineup.alpha_composite(im, (px, py))
     lineup.save(os.path.join(img, "_lineup.webp"), "WEBP", quality=88)
     ships_out.extend((slug, s["key"]) for s in ships)
-    return {"slug": slug, "info": info, "ships": ships, "lineup": lineup.size}
+    return {"slug": slug, "info": info, "ships": ships, "lineup": lineup.size, "removed": removed}
 
 
 SECTION_NAMES = {1: "Warships", 2: "Experimental", 3: "Traders and civilians", 4: "Station"}
@@ -241,9 +244,10 @@ def trim(slug, f):
     c = CUTS.get(slug)
     if not c:
         return ""
-    n = sum(1 for s in f["ships"] if s["key"] in c["cut"])
-    return (f'<p class="trim"><b>Proposed trim: cut {n}, keep {len(f["ships"]) - n}.</b> '
-            f'{html.escape(c.get("summary", ""))}</p>')
+    gone = f.get("removed", [])
+    if not gone:
+        return ""
+    return (f'<p class="trim"><b>Trimmed to {len(f["ships"])} ships.</b> Removed: {html.escape(", ".join(gone))}.</p>')
 
 
 def page(factions):
@@ -378,7 +382,7 @@ textarea { flex: 1; min-width: 0; font: 14px/1.4 var(--body); color: var(--fg); 
     <p>Every ship here is drawn by hand, then refit the way the game's current fleet was: doubled in size, armed with the turret, missile and point-defence kits, plated and painted. The pictures are the game's own renders of each design file. None of these ships is in the game yet.</p>
     <p>Ten ships marked <span class="reshaped">New shape</span> were redrawn so they stop reading as arrowheads: a skull, a mausoleum, a censer, a laurel wreath, an ensō, an alms bowl, a cracked bell, a crown of thorns, a survey frame and a peacock fan.</p>
     <p>Colour and detail pass: each faction now wears its own five-colour livery and motif, rooms are tinted by what they hold, and the plating carries panel seams, running lights and engine hatching. The Arbiter's stern blocks are now twin-drive engine nacelles.</p>
-    <p>Proposed trim: about 21 ships a faction is more than a player will meet, so each faction has a suggested cut to about 15, kept to a clear ladder from small to flagship, with every trader, station and new shape kept. Cards marked <b>Proposed cut</b> say why. Reject a marked ship to agree, Approve to keep it. Nothing is deleted until you decide.</p>
+    <p>Trimmed: 60 near-repeats were taken out (each faction's header lists them), leaving 192 ships, 14 to 19 a faction. Every trader, station, flagship and new shape stayed.</p>
     <p>Give each one a verdict. Rework or Reject with a note says what to change; your verdicts are saved here for the next round.</p>
     <div class="tally" aria-live="polite"><span><b id="t-total">{{TOTAL}}</b> ships</span><span><b id="t-approve">0</b> approved</span><span><b id="t-rework">0</b> to rework</span><span><b id="t-reject">0</b> rejected</span><span class="status" id="db-status">Loading verdicts…</span></div>
   </header>
