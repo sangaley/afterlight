@@ -223,6 +223,7 @@ struct SimStart(Option<std::time::Instant>);
 
 fn mark_sim_start(mut start: ResMut<SimStart>) {
     start.0 = Some(std::time::Instant::now());
+    crate::perf_stutter::frame_begin();
 }
 
 fn record_frame(time: Res<Time<Real>>, start: Res<SimStart>, mut state: ResMut<PerfState>) {
@@ -233,6 +234,7 @@ fn record_frame(time: Res<Time<Real>>, start: Res<SimStart>, mut state: ResMut<P
     state.elapsed += dt;
     let ms = dt * 1000.0;
     let sim = start.0.map_or(0.0, |t| t.elapsed().as_secs_f32() * 1000.0);
+    crate::perf_stutter::frame_end(sim, state.elapsed > state.warmup);
     state.window.push(ms);
     state.sim_window.push(sim);
     if state.elapsed > state.warmup {
@@ -384,6 +386,7 @@ fn report_perf(
                 s_avg, s_p50, s_p95, s_p99, s_max, state.worst_second_sim_ms,
                 state.peak_entities, state.peak_blocks.player, state.peak_blocks.ai, state.peak_blocks.wreck,
             );
+            crate::perf_stutter::report();
             exit.write(AppExit::Success);
         }
     }

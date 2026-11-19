@@ -20,6 +20,17 @@
 //! looked over about ten times a second, what's being drawn is compared with
 //! what was painted, and only the squares of the picture around a difference
 //! are painted over. A square comes out exactly as a whole new bake would.
+//!
+//! The painting is not done on the frame. Looking a ship over (which sprites,
+//! where, what colour) has to happen here, but comparing that with what was
+//! painted, painting, and shrinking the result into its smaller copies are
+//! handed to a background task, and the picture is swapped in when it comes
+//! back a frame or three later. Done in the frame, one capital's whole
+//! repaint was a 20 ms hitch, and every 12 degrees a ship turned its roof
+//! shading changed enough to need one: measured 2026-11-18, that was the
+//! stutter in fleet fights (one frame in twenty at three times the usual).
+//! Only pictures of a few hundred sprites or fewer (fighters, turrets) are
+//! still painted on the spot.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
@@ -27,6 +38,8 @@ use bevy::image::ImageSampler;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
+use std::sync::Arc;
 
 use crate::ai_ship::components::AiShip;
 use crate::camera::CameraState;
@@ -73,6 +86,9 @@ const SQUARE_CELLS: f32 = 8.0;
 const HIDDEN_LAYER: usize = 29;
 /// Biggest picture side, in pixels (a 680-block-long ship).
 const MAX_SIDE: u32 = 4096;
+/// A picture made from this many sprites or fewer is painted on the spot:
+/// cheaper than handing it over, and it shows the same frame.
+const INLINE_SPRITES: usize = 400;
 
 /// How much of the picture shows at a zoom: 0 close in, 1 far out.
 pub fn art_alpha(zoom: f32) -> f32 {
@@ -96,6 +112,12 @@ pub struct FarArt {
     painted: HashMap<PaintKey, Rect>,
     /// Times the picture has been painted on, whole or in part.
     repaints: u32,
+    /// A picture has been handed to the renderer. (`picture` itself is away
+    /// with the painter while a job runs.)
+    shown: bool,
+    /// The painter at work on it, and the blocks to stop drawing once the
+    /// picture that shows them is in.
+    job: Option<(Task<Baked>, Vec<Entity>)>,
 }
 
 /// What one sprite in a picture looks like, near enough: too small a change
@@ -241,6 +263,205 @@ impl Stamp<'_> {
             texel.alpha * t.alpha,
         ))
     }
+}
+
+/// A stamp the painter can keep on another thread: its art shared, not
+/// borrowed.
+struct Kept {
+    at: Vec2,
+    angle: f32,
+    size: Vec2,
+    rect: Rect,
+    flip_x: bool,
+    flip_y: bool,
+    tint: LinearRgba,
+    burn: f32,
+    art: Arc<Mip>,
+    source: AssetId<Image>,
+    z: f32,
+}
+
+impl Kept {
+    fn stamp(&self) -> Stamp<'_> {
+        Stamp {
+            at: self.at,
+            angle: self.angle,
+            size: self.size,
+            rect: self.rect,
+            flip_x: self.flip_x,
+            flip_y: self.flip_y,
+            tint: self.tint,
+            burn: self.burn,
+            art: &self.art,
+            source: self.source,
+            z: self.z,
+        }
+    }
+}
+
+/// A look at a ship, for the painter: what's being drawn now, in painting
+/// order, and the picture as it stands.
+struct Job {
+    stamps: Vec<Kept>,
+    picture: Option<Picture>,
+    /// What the picture shows.
+    painted: HashMap<PaintKey, Rect>,
+    /// False when this frame has painted a whole picture on the spot
+    /// already: another waits its turn.
+    may_paint_whole: bool,
+    /// AFTERLIGHT_FAR_TRACE: say what kind of difference was found.
+    trace: bool,
+}
+
+/// What the painter did.
+enum Painted {
+    Nothing,
+    Squares(usize),
+    Whole { centre: Vec2, size: Vec2 },
+    /// It needs painting whole and wasn't allowed to: look again.
+    Waiting,
+}
+
+/// The painter's answer: the picture and what it now shows, and the image
+/// to hand the renderer if anything was painted.
+pub struct Baked {
+    picture: Option<Picture>,
+    painted: HashMap<PaintKey, Rect>,
+    image: Option<Image>,
+    what: Painted,
+    sprites: usize,
+    diff: Option<String>,
+}
+
+/// Compare what's drawn with what's painted and paint the difference: the
+/// squares round it, or all of it when that's most of it. Touches nothing
+/// but what it's given, so it runs as well off the frame as on it.
+fn paint_job(job: Job) -> Baked {
+    let Job { stamps: kept, mut picture, painted: was, may_paint_whole, trace } = job;
+    let stamps: Vec<Stamp> = kept.iter().map(Kept::stamp).collect();
+    let side = SQUARE_CELLS * crate::building::GRID_SIZE;
+    let sprites = stamps.len();
+
+    // What's different from what was painted?
+    let now: HashMap<PaintKey, Rect> = stamps.iter().map(|s| (s.key(), s.bounds())).collect();
+    let mut squares: HashSet<IVec2> = HashSet::default();
+    let mut room = true;
+    for (key, bounds) in &was {
+        if !now.contains_key(key) {
+            mark_squares(*bounds, &mut squares);
+        }
+    }
+    for (key, bounds) in &now {
+        if !was.contains_key(key) {
+            mark_squares(*bounds, &mut squares);
+            room &= picture.as_ref().is_some_and(|p| p.has_room_for(*bounds));
+        }
+    }
+    let diff = (trace && !squares.is_empty()).then(|| {
+        let gone: Vec<&PaintKey> = was.keys().filter(|k| !now.contains_key(*k)).collect();
+        let by_place: HashMap<([i32; 2], AssetId<Image>), &PaintKey> = gone.iter().map(|k| ((k.at, k.source), *k)).collect();
+        let (mut fresh, mut tint, mut other) = (0, 0, 0);
+        for k in now.keys().filter(|k| !was.contains_key(*k)) {
+            match by_place.get(&(k.at, k.source)) {
+                None => fresh += 1,
+                Some(o) if o.tint != k.tint => tint += 1,
+                Some(_) => other += 1,
+            }
+        }
+        format!("{} squares, room {room}; of {} sprites {} gone, {fresh} new, {tint} recoloured, {other} otherwise changed", squares.len(), now.len(), gone.len())
+    });
+
+    // Painting nearly all of it a square at a time is slower than once.
+    let whole = match &picture {
+        None => true,
+        Some(p) => {
+            let squares_in_it = (p.w * p.h) as f32 * p.upp * p.upp / (side * side);
+            !stamps.is_empty() && (!room || squares.len() as f32 * 2.0 > squares_in_it)
+        }
+    };
+    let unchanged = |picture, what| Baked { picture, painted: was.clone(), image: None, what, sprites, diff: diff.clone() };
+    if whole && !may_paint_whole {
+        return unchanged(picture, Painted::Waiting);
+    }
+    let what = if whole {
+        let Some(bounds) = stamps.iter().map(Stamp::bounds).reduce(|a, b| a.union(b)) else { return unchanged(picture, Painted::Nothing) };
+        let Some(mut canvas) = Canvas::over(bounds) else { return unchanged(picture, Painted::Nothing) };
+        for stamp in &stamps {
+            canvas.paint(stamp);
+        }
+        canvas.rim();
+        let (centre, size) = canvas.placement();
+        picture = Some(canvas.finish());
+        Painted::Whole { centre, size }
+    } else if squares.is_empty() {
+        return unchanged(picture, Painted::Nothing);
+    } else if let Some(picture) = picture.as_mut() {
+        let bounded: Vec<(Rect, &Stamp)> = stamps.iter().map(|s| (s.bounds(), s)).collect();
+        for square in &squares {
+            picture.repaint(*square, &bounded);
+        }
+        Painted::Squares(squares.len())
+    } else {
+        return unchanged(picture, Painted::Nothing);
+    };
+    let image = picture.as_ref().map(Picture::image);
+    Baked { picture, painted: now, image, what, sprites, diff }
+}
+
+/// Take the painter's answer: the picture back in its place, the new image
+/// to the renderer, and, fully out, the blocks it now shows off the screen.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn take_in(
+    owner: Entity,
+    art: &mut FarArt,
+    baked: Baked,
+    hide: Vec<Entity>,
+    full: bool,
+    zoom: f32,
+    commands: &mut Commands,
+    sprites: &mut Query<(&mut Sprite, &mut Transform), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
+    images: &mut Assets<Image>,
+) {
+    let Baked { picture, painted, image, what, sprites: count, diff } = baked;
+    art.picture = picture;
+    art.painted = painted;
+    if let Some(diff) = diff {
+        info!("FAR ART diff {owner}: {diff}");
+    }
+    if matches!(what, Painted::Waiting) {
+        art.dirty = true;
+        return;
+    }
+    // Fully out, what's painted stops drawing (blocks built or roofs laid
+    // since it was last looked at included).
+    if full {
+        for block in hide {
+            commands.entity(block).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
+        }
+    }
+    if let Painted::Whole { centre, size } = what {
+        if let Ok((mut sprite, mut t)) = sprites.get_mut(art.sprite) {
+            sprite.custom_size = Some(size);
+            t.translation = centre.extend(t.translation.z);
+        }
+    }
+    let (Some(image), Some(picture)) = (image, art.picture.as_ref()) else { return };
+    art.repaints += 1;
+    art.shown = true;
+    // AFTERLIGHT_FAR_TRACE=1 logs each bake; AFTERLIGHT_FAR_DUMP=<dir> writes
+    // each picture there as raw RGBA.
+    if std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some() {
+        let what = match what {
+            Painted::Squares(n) => format!("patched {n} squares of"),
+            _ => "baked".to_string(),
+        };
+        info!("FAR ART {what} {owner}: {}x{} px from {count} sprites, zoom {zoom:.1}", picture.w, picture.h);
+    }
+    if let Some(dir) = std::env::var_os("AFTERLIGHT_FAR_DUMP") {
+        let path = std::path::Path::new(&dir).join(format!("{owner}_{}x{}.rgba", picture.w, picture.h));
+        let _ = std::fs::write(path, &picture.bytes);
+    }
+    let _ = images.insert(&art.image, image);
 }
 
 /// A picture being painted: premultiplied linear pixels, rows bottom up.
@@ -476,12 +697,12 @@ fn mark_squares(bounds: Rect, squares: &mut HashSet<IVec2>) {
 
 /// Shrunk copies of the art that's been baked from, by image.
 #[derive(Default)]
-pub struct MipCache(HashMap<AssetId<Image>, Mip>);
+pub struct MipCache(HashMap<AssetId<Image>, Arc<Mip>>);
 
 impl MipCache {
     /// The shrunk art for a sprite, made the first time it's asked for. None
     /// while the art is still loading or can't be read back.
-    fn get(&mut self, images: &Assets<Image>, handle: &Handle<Image>) -> Option<&Mip> {
+    fn get(&mut self, images: &Assets<Image>, handle: &Handle<Image>) -> Option<&Arc<Mip>> {
         let id = handle.id();
         if id == Handle::<Image>::default().id() {
             return None;
@@ -491,7 +712,7 @@ impl MipCache {
             image.data.as_ref()?;
             let (w, h) = (image.width(), image.height());
             let mip = Mip::build(w, h, |x, y| image.get_color_at(x, y).map(|c| c.to_linear()).unwrap_or(LinearRgba::NONE));
-            self.0.insert(id, mip);
+            self.0.insert(id, Arc::new(mip));
         }
         self.0.get(&id)
     }
@@ -527,7 +748,7 @@ pub fn attach_far_art(
                 ChildOf(owner),
             ))
             .id();
-        commands.entity(owner).try_insert(FarArt { sprite, image, seen_at: f32::NEG_INFINITY, dirty: true, picture: None, painted: HashMap::default(), repaints: 0 });
+        commands.entity(owner).try_insert(FarArt { sprite, image, seen_at: f32::NEG_INFINITY, dirty: true, picture: None, painted: HashMap::default(), repaints: 0, shown: false, job: None });
     }
 }
 
@@ -631,6 +852,17 @@ pub fn bake_far_art(
     frames: Query<(&Transform, &Children), (With<super::ship_roof::RoofFrame>, Without<FarArtSprite>)>,
 ) {
     let alpha = art_alpha(camera.zoom);
+    let full = alpha >= 1.0;
+    // Pictures the painter has finished, whatever the zoom is by now.
+    for (owner, mut art, ..) in owners.iter_mut() {
+        if art.job.is_none() {
+            continue;
+        }
+        let art = &mut *art;
+        let Some(baked) = art.job.as_mut().and_then(|(task, _)| bevy::tasks::futures::check_ready(task)) else { continue };
+        let hide = art.job.take().map(|(_, hide)| hide).unwrap_or_default();
+        take_in(owner, art, baked, hide, full, camera.zoom, &mut commands, &mut sprites, &mut images);
+    }
     if alpha <= 0.0 {
         *was_far = false;
         return;
@@ -638,7 +870,6 @@ pub fn bake_far_art(
     // Nothing was watching while the camera was in close.
     let back_out = !std::mem::replace(&mut *was_far, true);
     let now = time.elapsed_secs();
-    let full = alpha >= 1.0;
     for parent in changed.iter() {
         if let Ok((_, mut art, ..)) = owners.get_mut(parent.parent()) {
             art.dirty = true;
@@ -647,6 +878,13 @@ pub fn bake_far_art(
     // Never looked at first, then changed, then the stalest.
     let mut due: Vec<(u8, f32, Entity)> = Vec::new();
     for (owner, mut art, children, scars) in owners.iter_mut() {
+        // The painter has it: what's changed since waits for the answer.
+        if art.job.is_some() {
+            if back_out || children.is_some_and(|c| c.is_changed()) || scars.is_some_and(|s| s.is_changed()) {
+                art.dirty = true;
+            }
+            continue;
+        }
         if back_out || children.is_some_and(|c| c.is_changed()) || scars.is_some_and(|s| s.is_changed()) {
             art.dirty = true;
         }
@@ -664,8 +902,8 @@ pub fn bake_far_art(
     }
     due.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
 
-    let white = Mip::white();
-    let side = SQUARE_CELLS * crate::building::GRID_SIZE;
+    let white = Arc::new(Mip::white());
+    let trace = std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some();
     let (mut looked, mut baked_whole) = (0, false);
     for (_, _, owner) in due {
         if looked >= SPRITES_PER_FRAME {
@@ -718,17 +956,17 @@ pub fn bake_far_art(
         for layer in &layers {
             cache.get(&images, &layer.sprite.image);
         }
-        let mut stamps: Vec<Stamp> = layers
+        let mut stamps: Vec<Kept> = layers
             .iter()
             .filter_map(|layer| {
                 let sprite = layer.sprite;
                 let t = layer.transform;
                 let source = sprite.image.id();
-                let mip = if source == default_art { &white } else { cache.0.get(&source)? };
+                let mip = if source == default_art { white.clone() } else { cache.0.get(&source)?.clone() };
                 let (src_w, src_h) = (mip.w as f32 * mip.step, mip.h as f32 * mip.step);
                 let rect = sprite.rect.unwrap_or(Rect::new(0.0, 0.0, src_w, src_h));
                 let size = sprite.custom_size.unwrap_or(rect.size()) * t.scale.truncate().abs();
-                Some(Stamp {
+                Some(Kept {
                     at: t.translation.truncate(),
                     angle: t.rotation.to_euler(EulerRot::ZYX).0,
                     size,
@@ -747,7 +985,7 @@ pub fn bake_far_art(
         if let Some(scars) = &scars {
             let standing = layers.iter().filter_map(|layer| layer.cell).collect();
             for (cell, bright) in super::ship_roof::embers(scars, &standing) {
-                stamps.push(Stamp {
+                stamps.push(Kept {
                     at: crate::building::grid_to_local(cell),
                     angle: 0.0,
                     size: Vec2::splat(crate::building::GRID_SIZE * 1.3),
@@ -756,86 +994,27 @@ pub fn bake_far_art(
                     flip_y: false,
                     tint: LinearRgba::new(EMBER.0 * bright, EMBER.1 * bright, EMBER.2 * bright, 0.95),
                     burn: 0.0,
-                    art: &white,
+                    art: white.clone(),
                     source: default_art,
                     z: SHIP_ART_Z,
                 });
             }
         }
 
-        // What's different from what was painted?
-        let painted: HashMap<PaintKey, Rect> = stamps.iter().map(|s| (s.key(), s.bounds())).collect();
-        let mut squares: HashSet<IVec2> = HashSet::default();
-        let mut room = true;
-        for (key, bounds) in &art.painted {
-            if !painted.contains_key(key) {
-                mark_squares(*bounds, &mut squares);
-            }
-        }
-        for (key, bounds) in &painted {
-            if !art.painted.contains_key(key) {
-                mark_squares(*bounds, &mut squares);
-                room &= art.picture.as_ref().is_some_and(|p| p.has_room_for(*bounds));
-            }
-        }
         art.seen_at = now;
         art.dirty = false;
-
-        // Painting nearly all of it a square at a time is slower than once.
-        let whole = match &art.picture {
-            None => true,
-            Some(p) => {
-                let squares_in_it = (p.w * p.h) as f32 * p.upp * p.upp / (side * side);
-                !stamps.is_empty() && (!room || squares.len() as f32 * 2.0 > squares_in_it)
-            }
-        };
-        if whole && baked_whole {
-            art.dirty = true;
-            continue;
+        // Fully out, what gets painted stops drawing once its picture is in.
+        let hide: Vec<Entity> = if full { layers.iter().filter(|l| !l.hidden).map(|l| l.block).collect() } else { Vec::new() };
+        let job = Job { stamps, picture: art.picture.take(), painted: std::mem::take(&mut art.painted), may_paint_whole: true, trace };
+        if job.stamps.len() > INLINE_SPRITES {
+            art.job = Some((AsyncComputeTaskPool::get().spawn(async move { paint_job(job) }), hide));
+        } else {
+            // One whole picture painted on the spot a frame: a wing of
+            // fighters coming into view spreads out.
+            let baked = paint_job(Job { may_paint_whole: !baked_whole, ..job });
+            baked_whole |= matches!(baked.what, Painted::Whole { .. });
+            take_in(owner, art, baked, hide, full, camera.zoom, &mut commands, &mut sprites, &mut images);
         }
-        // Fully out, what's painted stops drawing (blocks built or roofs laid
-        // since it was last looked at included).
-        if full {
-            for layer in layers.iter().filter(|l| !l.hidden) {
-                commands.entity(layer.block).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
-            }
-        }
-        if whole {
-            let Some(bounds) = stamps.iter().map(Stamp::bounds).reduce(|a, b| a.union(b)) else { continue };
-            let Some(mut canvas) = Canvas::over(bounds) else { continue };
-            for stamp in &stamps {
-                canvas.paint(stamp);
-            }
-            canvas.rim();
-            let (centre, size) = canvas.placement();
-            art.picture = Some(canvas.finish());
-            baked_whole = true;
-            if let Ok((mut sprite, mut t)) = sprites.get_mut(art.sprite) {
-                sprite.custom_size = Some(size);
-                t.translation = centre.extend(t.translation.z);
-            }
-        } else if squares.is_empty() {
-            continue;
-        } else if let Some(picture) = art.picture.as_mut() {
-            let bounded: Vec<(Rect, &Stamp)> = stamps.iter().map(|s| (s.bounds(), s)).collect();
-            for square in &squares {
-                picture.repaint(*square, &bounded);
-            }
-        }
-        art.painted = painted;
-        art.repaints += 1;
-        let Some(picture) = art.picture.as_ref() else { continue };
-        // AFTERLIGHT_FAR_TRACE=1 logs each bake; AFTERLIGHT_FAR_DUMP=<dir> writes
-        // each picture there as raw RGBA.
-        if std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some() {
-            let what = if whole { "baked".to_string() } else { format!("patched {} squares of", squares.len()) };
-            info!("FAR ART {what} {owner}: {}x{} px from {} sprites, zoom {:.1}", picture.w, picture.h, stamps.len(), camera.zoom);
-        }
-        if let Some(dir) = std::env::var_os("AFTERLIGHT_FAR_DUMP") {
-            let path = std::path::Path::new(&dir).join(format!("{owner}_{}x{}.rgba", picture.w, picture.h));
-            let _ = std::fs::write(path, &picture.bytes);
-        }
-        let _ = images.insert(&art.image, picture.image());
     }
 }
 
@@ -856,7 +1035,7 @@ pub fn show_far_art(
         let Ok((mut sprite, mut vis)) = sprites.get_mut(art.sprite) else { continue };
         let want = alpha;
         // Not shown until it's been baked once.
-        let want_vis = if want > 0.0 && art.picture.is_some() { Visibility::Inherited } else { Visibility::Hidden };
+        let want_vis = if want > 0.0 && art.shown { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != want_vis {
             *vis = want_vis;
         }
@@ -874,7 +1053,7 @@ pub fn show_far_art(
     }
     if full {
         for (art, children) in owners.iter() {
-            if art.picture.is_none() {
+            if !art.shown {
                 continue;
             }
             for child in children.into_iter().flatten() {
@@ -1117,6 +1296,79 @@ mod tests {
         assert!(after[2] < before[2], "not darker: {before:?} to {after:?}");
         assert!(after[0] as f32 / after[2] as f32 > before[0] as f32 / before[2] as f32, "not hotter: {before:?} to {after:?}");
         assert_eq!(pixel(&app, s, other), other_before, "a block that wasn't hit changed");
+    }
+
+    /// A big ship's picture is painted off the frame: nothing shows (and no
+    /// block is hidden behind a picture that isn't there) until the painter
+    /// is done, then it's the same picture, and a hit patches it the same way.
+    #[test]
+    fn a_big_ship_is_painted_off_the_frame_and_shows_when_done() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let side = 24;
+        assert!(side * side > INLINE_SPRITES as i32);
+        let blocks: Vec<Entity> = (0..side).flat_map(|x| (0..side).map(move |y| IVec2::new(x, y))).map(|c| hull(&mut app, s, c)).collect();
+        let wait = |app: &mut App, repaints_wanted: u32| {
+            for _ in 0..2000 {
+                app.update();
+                if repaints(app, s) >= repaints_wanted {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            panic!("the painter never answered");
+        };
+        app.update();
+        app.update();
+        {
+            let art = app.world().get::<FarArt>(s).unwrap();
+            if art.job.is_some() {
+                assert!(!art.shown && app.world().get::<FarHidden>(blocks[0]).is_none(), "blocks hidden with no picture to stand in");
+            }
+        }
+        wait(&mut app, 1);
+        let art = app.world().get::<FarArt>(s).unwrap();
+        assert!(art.shown && art.picture.is_some() && art.painted.len() == blocks.len());
+        assert!(app.world().get::<FarHidden>(blocks[0]).is_some(), "fully out, the blocks it shows stop drawing");
+        let (before, far_before) = (pixel(&app, s, IVec2::ZERO), pixel(&app, s, IVec2::new(20, 20)));
+        assert!(before[3] > 200, "the block isn't in the picture: {before:?}");
+
+        app.world_mut().get_mut::<HullSegment>(blocks[0]).unwrap().health = 20.0;
+        app.world_mut().get_mut::<FarArt>(s).unwrap().seen_at = -100.0;
+        wait(&mut app, 2);
+        let after = pixel(&app, s, IVec2::ZERO);
+        assert!(after[2] < before[2], "not darker: {before:?} to {after:?}");
+        assert_eq!(pixel(&app, s, IVec2::new(20, 20)), far_before, "a block that wasn't hit changed");
+    }
+
+    /// The painter gives the same answer wherever it runs: handed the same
+    /// look twice, the second finds nothing to paint.
+    #[test]
+    fn the_painter_paints_a_look_once() {
+        let art = Arc::new(solid(LinearRgba::RED));
+        let look = || -> Vec<Kept> {
+            (0..6)
+                .map(|x| Kept {
+                    at: Vec2::new(x as f32 * 66.0, 0.0),
+                    angle: 0.0,
+                    size: Vec2::splat(66.0),
+                    rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+                    flip_x: false,
+                    flip_y: false,
+                    tint: LinearRgba::WHITE,
+                    burn: 0.0,
+                    art: art.clone(),
+                    source: AssetId::default(),
+                    z: 0.0,
+                })
+                .collect()
+        };
+        let first = paint_job(Job { stamps: look(), picture: None, painted: HashMap::default(), may_paint_whole: true, trace: false });
+        assert!(matches!(first.what, Painted::Whole { .. }) && first.image.is_some() && first.painted.len() == 6);
+        let waiting = paint_job(Job { stamps: look(), picture: None, painted: HashMap::default(), may_paint_whole: false, trace: false });
+        assert!(matches!(waiting.what, Painted::Waiting) && waiting.image.is_none());
+        let again = paint_job(Job { stamps: look(), picture: first.picture, painted: first.painted, may_paint_whole: true, trace: false });
+        assert!(matches!(again.what, Painted::Nothing) && again.image.is_none() && again.picture.is_some() && again.painted.len() == 6);
     }
 
     /// From 20 km a dead ship's name-plate used to be the only sign it had died.

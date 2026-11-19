@@ -30,6 +30,7 @@ mod tutorial;
 mod tips;
 mod diplomacy;
 mod perf;
+mod perf_stutter;
 
 use states::GameState;
 use events::EventsPlugin;
