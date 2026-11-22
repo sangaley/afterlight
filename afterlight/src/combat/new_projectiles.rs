@@ -1552,6 +1552,9 @@ pub fn check_projectile_hits(
                         }
                     }
                     if is_player {
+                        if crate::combat::gun_assembly::trace() {
+                            info!("PLAYER HIT (ricochet) by {:?}, {:.0} damage", owner_ship, incoming);
+                        }
                         player_hits.report(incoming, hit_pos, dir_local_world, false);
                     } else {
                         ai_damage_events.write(crate::events::AiShipDamaged {
@@ -1714,6 +1717,9 @@ pub fn check_projectile_hits(
                 }
 
                 if is_player {
+                    if crate::combat::gun_assembly::trace() {
+                        info!("PLAYER HIT by {:?}, {:.0} damage", owner_ship, incoming);
+                    }
                     player_hits.report(incoming, hit_pos, dir_local_world, true);
                 } else {
                     ai_damage_events.write(crate::events::AiShipDamaged {

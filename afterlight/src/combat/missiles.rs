@@ -1198,6 +1198,45 @@ fn fly_built(
     false
 }
 
+/// Does an enemy missile fly past the player's ship? Yes unless the player is
+/// its target or its launcher's side is at war with the player. One with no
+/// known launcher (the player's own, a creature's) never does.
+fn missile_passes_you(
+    missile: &MissileProjectile,
+    you: Entity,
+    standing: &crate::diplomacy::FactionStanding,
+    factions: &Query<&crate::ai_ship::components::AiShipType>,
+) -> bool {
+    let at_war = missile.owner_ship.and_then(|s| factions.get(s).ok()).map(|f| standing.attacks_player(*f));
+    passes(missile.target, you, at_war)
+}
+
+/// The rule itself: `at_war` is None for a missile with no AI launcher.
+fn passes(target: Option<Entity>, you: Entity, at_war: Option<bool>) -> bool {
+    match at_war {
+        None => false,
+        Some(war) => target != Some(you) && !war,
+    }
+}
+
+#[cfg(test)]
+mod passing_tests {
+    use super::*;
+
+    #[test]
+    fn someone_elses_missile_flies_past_you() {
+        let you = Entity::from_raw_u32(7).unwrap();
+        let them = Entity::from_raw_u32(9).unwrap();
+        // Fired at another ship by a side not at war with you: it passes.
+        assert!(passes(Some(them), you, Some(false)));
+        // Fired at you, or by a side at war with you: it hits.
+        assert!(!passes(Some(you), you, Some(false)));
+        assert!(!passes(Some(them), you, Some(true)));
+        // Not an AI's (yours, a creature's): the old rule.
+        assert!(!passes(Some(them), you, None));
+    }
+}
+
 /// Largest creature hit radius (Leviathan) — used to size the spatial grid query margin.
 const MAX_CREATURE_HIT_RADIUS: f32 = 100.0;
 
@@ -1331,6 +1370,10 @@ pub fn check_missile_hits(
         MessageWriter<crate::events::HullBreached>,
         MessageWriter<crate::events::RoomDepressurized>,
         Res<crate::building::rooms::RoomMap>,
+        // Whose side a launcher is on, and whether that side is at war with
+        // you: a missile flies past a ship its side isn't fighting.
+        Res<crate::diplomacy::FactionStanding>,
+        Query<&crate::ai_ship::components::AiShipType>,
     ),
     // The player's shield rides along here (a 16th parameter would hit
     // Bevy's ceiling). Without<AiShip> is what lets this &mut ShipShield sit
@@ -1358,6 +1401,14 @@ pub fn check_missile_hits(
         for ship in [missile.owner_ship, player_ship].into_iter().flatten() {
             let Ok((ship_gt, grid)) = parent_hulls.get(ship) else { continue };
             let own = missile.owner_ship == Some(ship);
+            // Someone else's fight: an enemy's missile flies on past your
+            // ship unless you are what it was fired at, or its side is at war
+            // with you -- the rule its rounds already follow (Sides::flies_past).
+            // A Terran salvo at a ship leaving Haven used to burst on you if
+            // you were parked in the way.
+            if !own && Some(ship) == player_ship && missile_passes_you(&missile, ship, &player_hit.4, &player_hit.5) {
+                continue;
+            }
 
             // An enemy warhead meets your shield before your hull, the same
             // way an enemy round does (projectiles::projectile_collision).
@@ -1917,6 +1968,7 @@ mod missile_hits_blocks_tests {
         app.add_message::<crate::events::HullBreached>();
         app.add_message::<crate::events::RoomDepressurized>();
         app.init_resource::<crate::building::rooms::RoomMap>();
+        app.init_resource::<crate::diplomacy::FactionStanding>();
         app.add_message::<ShowNotification>();
         app.add_systems(Update, check_missile_hits);
 
@@ -2033,6 +2085,7 @@ mod missile_hits_blocks_tests {
         app.add_message::<crate::events::HullBreached>();
         app.add_message::<crate::events::RoomDepressurized>();
         app.init_resource::<crate::building::rooms::RoomMap>();
+        app.init_resource::<crate::diplomacy::FactionStanding>();
         app.add_message::<ShowNotification>();
         app.add_systems(Update, check_missile_hits);
 
