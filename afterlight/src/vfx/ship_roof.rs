@@ -2400,20 +2400,42 @@ pub fn fit_roofs(
     inside: Res<SeeInside>,
     view: PlayerRoofView,
     owners: Query<(&GlobalTransform, Has<Ship>, Has<PressureOverlayVisible>)>,
-    mut tiles: Query<(&mut Sprite, &RoofTile, Option<&Edge>, &mut Transform, &ChildOf)>,
-    mut seen: Local<HashMap<Entity, Option<(f32, Quat)>>>,
+    mut tiles: Query<(&mut Sprite, Ref<RoofTile>, Option<Ref<Edge>>, &mut Transform, &ChildOf)>,
+    mut seen: Local<HashMap<Entity, Option<(f32, Quat, bool)>>>,
+    mut fitted: Local<(f32, HashMap<Entity, (f32, Quat)>)>,
 ) {
+    // A tile's look comes from its ship's roof alpha, heading step and the
+    // zoom alone. A ship whose three are as they were last frame keeps its
+    // tiles as they are, unless something else touched a tile (or it is new):
+    // fitting every tile every frame was ~1 ms of a fleet fight.
     seen.clear();
+    let zoomed = fitted.0 != camera.zoom;
+    fitted.0 = camera.zoom;
+    let mut last: Option<(Entity, Option<(f32, Quat, bool)>)> = None;
     for (mut sprite, tile, edge, mut tf, parent) in tiles.iter_mut() {
         let owner = parent.parent();
-        let Some((alpha, turn)) = *seen.entry(owner).or_insert_with(|| {
-            owners.get(owner).ok().map(|(gt, mine, air)| {
-                let alpha = if mine { view.alpha(own_roof_alpha(camera.zoom, &inside, air)) } else { roof_alpha(camera.zoom) };
-                (alpha, shading_heading(gt.to_scale_rotation_translation().1, camera.zoom))
-            })
-        }) else {
+        // Tiles of one ship mostly come one after another.
+        let found = match last {
+            Some((e, found)) if e == owner => found,
+            _ => {
+                let found = *seen.entry(owner).or_insert_with(|| {
+                    owners.get(owner).ok().map(|(gt, mine, air)| {
+                        let alpha = if mine { view.alpha(own_roof_alpha(camera.zoom, &inside, air)) } else { roof_alpha(camera.zoom) };
+                        let turn = shading_heading(gt.to_scale_rotation_translation().1, camera.zoom);
+                        let moved = fitted.1.insert(owner, (alpha, turn)) != Some((alpha, turn));
+                        (alpha, turn, zoomed || moved)
+                    })
+                });
+                last = Some((owner, found));
+                found
+            }
+        };
+        let Some((alpha, turn, moved)) = found else {
             continue;
         };
+        if !moved && !sprite.is_changed() && !tf.is_changed() && !tile.is_changed() && !edge.as_ref().is_some_and(|e| e.is_changed()) {
+            continue;
+        }
         if let Some(edge) = edge {
             edge.fit(&mut sprite, &mut tf, camera.zoom, turn, alpha);
             continue;
@@ -2423,6 +2445,8 @@ pub fn fit_roofs(
             sprite.color.set_alpha(want);
         }
     }
+    let seen = &*seen;
+    fitted.1.retain(|owner, _| seen.contains_key(owner));
 }
 
 /// The roof plate texture for a hull material.
@@ -2740,6 +2764,42 @@ mod tests {
     }
 
     use super::*;
+
+    /// Tiles are fitted when new, when touched, when their ship turns a step
+    /// or the zoom moves; otherwise they're left as they are.
+    #[test]
+    fn roof_tiles_are_refitted_only_when_something_moved() {
+        let mut world = World::new();
+        world.insert_resource(CameraState { zoom: 12.0, ..default() });
+        world.insert_resource(SeeInside::default());
+        let mut schedule = Schedule::default();
+        schedule.add_systems(fit_roofs);
+        let ship = world.spawn((Transform::default(), GlobalTransform::default())).id();
+        let tile = world.spawn((Sprite { color: Color::srgba(1.0, 1.0, 1.0, 0.0), ..default() }, RoofTile(1.0), Transform::default(), ChildOf(ship))).id();
+        let alpha = |world: &World| world.get::<Sprite>(tile).unwrap().color.alpha();
+        let want = roof_alpha(12.0);
+        assert!(want > 0.5);
+
+        schedule.run(&mut world);
+        assert_eq!(alpha(&world), want, "a new tile is fitted");
+
+        world.get_mut::<Sprite>(tile).unwrap().color.set_alpha(0.3);
+        schedule.run(&mut world);
+        assert_eq!(alpha(&world), want, "a tile something else touched is fitted again");
+
+        world.get_mut::<Sprite>(tile).unwrap().bypass_change_detection().color.set_alpha(0.5);
+        schedule.run(&mut world);
+        assert_eq!(alpha(&world), 0.5, "nothing moved: the tile is left alone");
+
+        *world.get_mut::<GlobalTransform>(ship).unwrap() = GlobalTransform::from(Transform::from_rotation(Quat::from_rotation_z(1.0)));
+        schedule.run(&mut world);
+        assert_eq!(alpha(&world), want, "the ship turned a step: fitted");
+
+        world.get_mut::<Sprite>(tile).unwrap().bypass_change_detection().color.set_alpha(0.5);
+        world.resource_mut::<CameraState>().zoom = 14.0;
+        schedule.run(&mut world);
+        assert_eq!(alpha(&world), roof_alpha(14.0), "the zoom moved: fitted");
+    }
 
     #[test]
     fn the_roof_fades_in_as_you_pull_back() {
