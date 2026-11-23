@@ -464,6 +464,7 @@ pub fn survey_battlefield(
         (Without<Engine>, Without<SeveredBlock>),
     >,
     missiles: Query<(&Transform, &crate::combat::new_projectiles::MissileProjectile)>,
+    blocks: super::Blocks,
 ) {
     let dt = time.delta_secs();
     let now = time.elapsed_secs();
@@ -565,7 +566,7 @@ pub fn survey_battlefield(
             facing: (tf.rotation * Vec3::X).truncate(),
             radius: collider.map_or(300.0, |c| c.bound_radius),
             faction: None,
-            blocks: children.len() as u32,
+            blocks: super::block_count(children, &blocks) as u32,
             shield: shield.filter(|s| s.enabled && s.max > 0.0).map_or(0.0, |s| (s.current / s.max).clamp(0.0, 1.0)),
             target: player_hit.iter().max_by(|a, b| a.1.total_cmp(b.1)).map(|(e, _)| *e),
             ..default()
@@ -582,7 +583,7 @@ pub fn survey_battlefield(
             facing: (tf.rotation * Vec3::X).truncate(),
             radius: collider.map_or(300.0, |c| c.bound_radius),
             faction: Some(*faction),
-            blocks: children.len() as u32,
+            blocks: super::block_count(children, &blocks) as u32,
             shield: shield.filter(|s| s.max > 0.0).map_or(0.0, |s| (s.current / s.max).clamp(0.0, 1.0)),
             target: target.entity,
             fleet: member.map(|m| m.fleet),

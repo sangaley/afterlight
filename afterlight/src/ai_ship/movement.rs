@@ -237,6 +237,7 @@ pub fn ai_ship_movement_system(
     mind: Res<super::awareness::Mind>,
     minds: Query<&super::awareness::Awareness>,
     trading: Res<super::traffic::TradingFleets>,
+    blocks: super::Blocks,
 ) {
     let dt = time.delta_secs();
     let player_obstacle = player.single().ok().map(|(tf, c)| {
@@ -351,7 +352,7 @@ pub fn ai_ship_movement_system(
             AiShipType::FreeHaulersCompact => 0.8, // pushing a load
         };
 
-        let blocks = children.len();
+        let blocks = super::block_count(children, &blocks);
         let max_speed = (ai_top_speed(total_thrust, blocks, faction_mult) * behavior_mult).min(AI_MAX_SPEED);
         // A trader about its business gets on with it.
         let max_speed = match member.filter(|m| *behavior == AiShipBehavior::Patrolling && trading.0.contains(&m.fleet)) {
