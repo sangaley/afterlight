@@ -1271,7 +1271,7 @@ fn obstructs_tube(launch_cell: IVec2, axis: IVec2, cell: IVec2) -> bool {
 /// the registry on purpose: the registry figure also feeds the player's own
 /// damage pipeline when ENEMY missiles hit you, and raising it there would
 /// make every enemy launcher three times as deadly too.
-const WARHEAD_VS_STRUCTURE: f32 = 3.0;
+const WARHEAD_VS_STRUCTURE: f32 = 3.75;
 
 /// Blast radius for a launcher with `bays` bays (`size_mult`, never under 1).
 ///
@@ -1281,7 +1281,7 @@ const WARHEAD_VS_STRUCTURE: f32 = 3.0;
 /// one it hit -- then `60 + bays * 40`. Now about three cells for a single
 /// bay. A feel number: raise it for a heavier warhead, lower it for precision.
 pub(crate) fn blast_radius_for(size_mult: f32) -> f32 {
-    140.0 + size_mult.max(1.0) * 60.0
+    200.0 + size_mult.max(1.0) * 90.0
 }
 
 /// How much of a warhead one block `d` away takes.

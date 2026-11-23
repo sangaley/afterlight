@@ -348,7 +348,7 @@ pub const EMP_SECONDS: f32 = 6.0;
 /// On every warhead's damage (HE, frag, shaped charge), on top of the
 /// Missile Bay's figures. Played 2026-11-03: missiles felt a little light
 /// beside the slower, harder guns. Enemy missiles too, as with guns.
-pub const WARHEAD_SCALE: f32 = 1.25;
+pub const WARHEAD_SCALE: f32 = 1.9;
 
 /// A missile's toughness against point defence at the 250 mm gauge, before
 /// sheaths. Was 50; doubled 2026-11-18 when every flak gun learned to stay on
@@ -430,9 +430,9 @@ pub fn stats(d: &MissileDesign, launcher: LauncherSpec) -> MissileStats {
         fool_chance: fool_base * 0.45f32.powi(procs),
         reload_s: (2.0 + 0.8 * parts as f32) * (launcher.gauge_mm / 250.0).powf(0.6) * launcher.reload_mult,
         he_damage: 260.0 * WARHEAD_SCALE * k * n_he,
-        he_radius: if n_he > 0.0 { 90.0 + 70.0 * (n_he * k).sqrt() } else { 0.0 },
+        he_radius: if n_he > 0.0 { 130.0 + 100.0 * (n_he * k).sqrt() } else { 0.0 },
         frag_damage: 110.0 * WARHEAD_SCALE * k * n_frag,
-        frag_radius: if n_frag > 0.0 { 160.0 + 110.0 * (n_frag * k).sqrt() } else { 0.0 },
+        frag_radius: if n_frag > 0.0 { 220.0 + 150.0 * (n_frag * k).sqrt() } else { 0.0 },
         shaped_damage: 380.0 * WARHEAD_SCALE * k * n_shaped,
         emp_radius: if n_emp > 0.0 { 150.0 + 90.0 * (n_emp * k).sqrt() } else { 0.0 },
         ram_damage: 40.0 * k,

@@ -118,14 +118,14 @@ pub const PIERCE_COST_MIN: f32 = 5.0;
 /// carrying on with.
 pub const PIERCE_MIN_DAMAGE: f32 = 5.0;
 /// The share of a designed shell's blast a block at the very rim takes.
-pub const HE_EDGE: f32 = 0.4;
+pub const HE_EDGE: f32 = 0.6;
 
 /// Below this caliber (a 150 mm gun is 1.0) a shell just makes its hole.
 const SHOCK_MIN_CALIBER: f32 = 1.0;
 /// Reach of the shock from a 150 mm shell. It grows steeply with size, because
 /// past a block's health a shell's damage does nothing unless it reaches more
 /// blocks: 40,000 damage at 280 mm used to take about 30 of them.
-const SHOCK_RADIUS: f32 = 88.0;
+const SHOCK_RADIUS: f32 = 110.0;
 const SHOCK_GROWTH: f32 = 1.8;
 /// The share of the shell's damage the blocks at the middle of the shock take.
 const SHOCK_SHARE: f32 = 0.1;

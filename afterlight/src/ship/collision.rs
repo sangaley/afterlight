@@ -155,24 +155,37 @@ pub fn terrain_segment_hit(
     for entity in grid.candidates(mid, len * 0.5 + pad) {
         let Ok((transform, collider)) = terrain.get(entity) else { continue };
         let center = world_point(transform, collider.bound_center);
-        let radius = collider.bound_radius + pad;
-        // Ray-circle intersection along the segment.
-        let m = from - center;
-        let b = m.dot(dir);
-        let c = m.length_squared() - radius * radius;
-        if c > 0.0 && b > 0.0 {
-            continue; // starts outside, pointing away
-        }
-        let disc = b * b - c;
-        if disc < 0.0 {
+        // The bounding circle is only the broad phase: a station with arms
+        // has a bound tens of kilometres across that is mostly open space,
+        // and stopping at it cut every beam fired inside it to nothing.
+        if segment_meets_circle(from, dir, len, center, collider.bound_radius + pad).is_none() {
             continue;
         }
-        let t = (-b - disc.sqrt()).max(0.0);
-        if t <= len && best.map(|(bt, _)| t < bt).unwrap_or(true) {
-            best = Some((t, entity));
+        for (c, r) in &collider.circles {
+            let Some(t) = segment_meets_circle(from, dir, len, world_point(transform, *c), r + pad) else { continue };
+            if best.map(|(bt, _)| t < bt).unwrap_or(true) {
+                best = Some((t, entity));
+            }
         }
     }
     best.map(|(t, entity)| (entity, from + dir * t))
+}
+
+/// How far along a segment (`from`, unit `dir`, length `len`) it first meets
+/// a circle; 0 if it starts inside.
+fn segment_meets_circle(from: Vec2, dir: Vec2, len: f32, center: Vec2, radius: f32) -> Option<f32> {
+    let m = from - center;
+    let b = m.dot(dir);
+    let c = m.length_squared() - radius * radius;
+    if c > 0.0 && b > 0.0 {
+        return None; // starts outside, pointing away
+    }
+    let disc = b * b - c;
+    if disc < 0.0 {
+        return None;
+    }
+    let t = (-b - disc.sqrt()).max(0.0);
+    (t <= len).then_some(t)
 }
 
 /// Bends a desired travel direction to slide around blocking terrain — the
@@ -742,6 +755,23 @@ mod shot_terrain_tests {
         assert!(shot_meets(&c, &tf, centre, Vec2::new(200.0, 0.0)));
         // Outside the bound altogether.
         assert!(!shot_meets(&c, &tf, centre, Vec2::new(40_000.0, 0.0)));
+    }
+
+    #[test]
+    fn a_beam_inside_a_big_body_reaches_its_parts_not_its_bound() {
+        let parts = [(Vec2::ZERO, 1_000.0), (Vec2::new(20_000.0, 0.0), 1_000.0)];
+        let bound = (Vec2::new(10_000.0, 0.0), 11_000.0);
+        let first = |from: Vec2, to: Vec2| -> Option<f32> {
+            let (d, len) = ((to - from).normalize(), from.distance(to));
+            segment_meets_circle(from, d, len, bound.0, bound.1)?;
+            parts.iter().filter_map(|(c, r)| segment_meets_circle(from, d, len, *c, *r)).min_by(f32::total_cmp)
+        };
+        // Fired across open space inside the bound, away from both parts: the
+        // whole beam, not a stub at the muzzle.
+        assert_eq!(first(Vec2::new(10_000.0, 0.0), Vec2::new(10_000.0, 8_000.0)), None);
+        // Fired at the arm: stops on its face, 1 km short of its centre.
+        let t = first(Vec2::new(10_000.0, 0.0), Vec2::new(25_000.0, 0.0)).unwrap();
+        assert!((t - 9_000.0).abs() < 1.0, "{t}");
     }
 }
 

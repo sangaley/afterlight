@@ -295,7 +295,7 @@ impl ShellDesign {
         match self.dominant_payload() {
             Some(ShellBody::He) => {
                 let blast_damage = HE_DAMAGE_PER_UNIT * g * g * p.he;
-                let blast_radius = 50.0 + 20.0 * p.he;
+                let blast_radius = 80.0 + 35.0 * p.he;
                 if self.head == ShellHead::Ap {
                     AmmoHitBehavior::PenetrateExplode { penetration, blast_damage, blast_radius, min_armor_to_arm: 10.0 }
                 } else {

@@ -158,7 +158,8 @@ pub fn range_for(stats: &GunStats) -> f32 {
 /// two or three minutes of focused fire (the user's call): 6x and 10x
 /// made the enemy's guns as deadly, and a sniper fight is decided by range
 /// more than by damage.
-pub const BUILT_DAMAGE_SCALE: f32 = 4.0;
+/// Raised to 6x on 2026-11-23 at the user's ask: cannons felt weak.
+pub const BUILT_DAMAGE_SCALE: f32 = 6.0;
 
 /// BUILT_DAMAGE_SCALE, or AFTERLIGHT_GUN_DAMAGE for tuning runs (tools/combat-lab).
 pub fn built_damage_scale() -> f32 {
