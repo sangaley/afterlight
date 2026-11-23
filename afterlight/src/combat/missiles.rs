@@ -1273,6 +1273,24 @@ fn obstructs_tube(launch_cell: IVec2, axis: IVec2, cell: IVec2) -> bool {
 /// make every enemy launcher three times as deadly too.
 const WARHEAD_VS_STRUCTURE: f32 = 3.75;
 
+/// An enemy warhead on the player's ship, against what the same warhead
+/// does to an enemy. The 2026-11-23 boost (warheads x1.25 -> x1.9, blasts
+/// about 45% wider) was the user's ask for THEIR weapons; enemy fire at the
+/// full boost was too much, and back at the old figures too little, so the
+/// user chose the middle: about x1.58 and blasts about 25% wider than before.
+const ENEMY_WARHEAD_SCALE: f32 = 0.83;
+const ENEMY_BLAST_REACH: f32 = 0.85;
+
+fn enemy_warhead(s: &super::missile_design::MissileStats) -> super::missile_design::MissileStats {
+    let mut s = *s;
+    s.he_damage *= ENEMY_WARHEAD_SCALE;
+    s.frag_damage *= ENEMY_WARHEAD_SCALE;
+    s.shaped_damage *= ENEMY_WARHEAD_SCALE;
+    s.he_radius *= ENEMY_BLAST_REACH;
+    s.frag_radius *= ENEMY_BLAST_REACH;
+    s
+}
+
 /// Blast radius for a launcher with `bays` bays (`size_mult`, never under 1).
 ///
 /// One function, used by the launcher and by the tests, so the tests check
@@ -1444,7 +1462,7 @@ pub fn check_missile_hits(
             // An enemy's designed missile on the player's ship: its own fuse
             // and warheads, the same as one of ours on theirs.
             if let Some(built) = built.as_deref().filter(|_| !own) {
-                let s = &built.stats;
+                let s = &enemy_warhead(&built.stats);
                 let contact = grid.get(cell);
                 let fused = contact.is_some() || (s.proximity && near_a_block(grid, ship_gt, cell, missile_pos_now, s.fuse_radius));
                 if !fused { continue; }

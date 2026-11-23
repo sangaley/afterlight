@@ -932,6 +932,11 @@ pub fn round_profile(
 /// to dial enemy fire back if parity is too much.
 pub const AI_ROUND_DAMAGE_SCALE: f32 = 1.0;
 
+/// An enemy's BUILT gun round, on top of that. Built guns went from 4x to 6x
+/// on 2026-11-23 at the user's ask; enemy fire at 6x put 9,000-damage 170 mm
+/// shells through the starter, and the user chose the middle ground: 5x.
+pub const AI_BUILT_ROUND_SCALE: f32 = 5.0 / 6.0;
+
 /// The round an enemy's energy weapon fires when nothing is loaded: what the
 /// weapon does in the player's hands, carried on the round. Enemy ion
 /// disruptors, EMP pulses and plasma casters used to fire plain shells, so the
@@ -1024,7 +1029,7 @@ pub fn spawn_ai_round(
             ..default()
         },
         Projectile {
-            damage: damage * damage_mult * AI_ROUND_DAMAGE_SCALE,
+            damage: damage * damage_mult * AI_ROUND_DAMAGE_SCALE * if built.is_some() { AI_BUILT_ROUND_SCALE } else { 1.0 },
             speed,
             lifetime,
             max_lifetime: lifetime,
@@ -1038,7 +1043,7 @@ pub fn spawn_ai_round(
             last_hit: None,
             prev_pos: muzzle,
             bounces: 0,
-            flak: built.and_then(|g| Flak::of(g, damage * damage_mult * AI_ROUND_DAMAGE_SCALE)),
+            flak: built.and_then(|g| Flak::of(g, damage * damage_mult * AI_ROUND_DAMAGE_SCALE * AI_BUILT_ROUND_SCALE)),
         },
         Velocity(direction * speed),
     )).id()
