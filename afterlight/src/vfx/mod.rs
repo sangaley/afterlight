@@ -79,6 +79,7 @@ impl Plugin for VfxPlugin {
             .add_systems(Update, interior_light::light_interiors)
             // The modules' lights glow in their system's colour.
             .add_plugins(bevy::sprite_render::Material2dPlugin::<module_glow::GlowMaterial>::default())
+            .add_plugins(bevy::sprite_render::Material2dPlugin::<module_glow::HaloMaterial>::default())
             .add_systems(Update, (module_glow::add_module_glow, module_glow::put_out_module_glow))
             // Path lights at the walkways' turns and junctions.
             .add_systems(Update, path_lights::lay_path_lights)

@@ -519,8 +519,35 @@ pub fn mount_pending_turret_blocks(
 /// Each turret's shape this frame, for turrets that must not turn into each
 /// other or shoot each other: where every block on it stands, in its own
 /// frame, and where it stands on its ship.
+///
+/// Kept sorted by ship, so one ship's turrets are a single run of the list
+/// (`on_ship`), with each turret's place in it indexed (`of`): a fleet fight
+/// has hundreds of turrets, and each one used to search all of them, twice,
+/// every frame.
 #[derive(Resource, Default, Debug)]
-pub struct TurretShapes(pub Vec<TurretShape>);
+pub struct TurretShapes(pub Vec<TurretShape>, std::collections::HashMap<Entity, usize>);
+
+impl TurretShapes {
+    /// Replace the list, sorting it by ship and indexing it.
+    pub fn set(&mut self, mut shapes: Vec<TurretShape>) {
+        shapes.sort_by_key(|s| (s.ship, s.body));
+        self.1.clear();
+        self.1.extend(shapes.iter().enumerate().map(|(i, s)| (s.body, i)));
+        self.0 = shapes;
+    }
+
+    /// One turret's shape.
+    pub fn of(&self, body: Entity) -> Option<&TurretShape> {
+        self.1.get(&body).map(|&i| &self.0[i])
+    }
+
+    /// Every turret on one ship (the list must have come through `set`).
+    pub fn on_ship(&self, ship: Entity) -> &[TurretShape] {
+        let start = self.0.partition_point(|s| s.ship < ship);
+        let end = start + self.0[start..].partition_point(|s| s.ship == ship);
+        &self.0[start..end]
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TurretShape {
@@ -558,8 +585,11 @@ pub fn fouling(a: &TurretShape, angle: f32, others: &[TurretShape]) -> usize {
     if near.is_empty() {
         return 0;
     }
+    // The neighbours stand where they stand: place their blocks once, not
+    // once for every block of `a`.
+    let theirs: Vec<Vec2> = near.iter().flat_map(|o| o.at(o.angle)).collect();
     a.at(angle)
-        .filter(|p| near.iter().any(|o| o.at(o.angle).any(|q| q.distance(*p) < TURRET_CLEARANCE)))
+        .filter(|p| theirs.iter().any(|q| q.distance(*p) < TURRET_CLEARANCE))
         .count()
 }
 
@@ -568,7 +598,7 @@ pub fn measure_turrets(
     bodies: Query<(Entity, &TurretBody, &Transform, &ChildOf, Option<&Children>)>,
     blocks: Query<&Transform, (Or<(With<Module>, With<HullSegment>)>, Without<DestroyedModule>, Without<crate::components::HullDestroyed>)>,
 ) {
-    shapes.0.clear();
+    let mut list = Vec::with_capacity(shapes.0.len());
     for (body, t, tf, parent, children) in bodies.iter() {
         let parts: Vec<Vec2> = children
             .into_iter()
@@ -577,8 +607,9 @@ pub fn measure_turrets(
             .map(|b| b.translation.truncate())
             .collect();
         let reach = parts.iter().map(|p| p.length()).fold(0.0, f32::max);
-        shapes.0.push(TurretShape { body, ship: parent.parent(), centre: tf.translation.truncate(), angle: t.angle, parts, reach });
+        list.push(TurretShape { body, ship: parent.parent(), centre: tf.translation.truncate(), angle: t.angle, parts, reach });
     }
+    shapes.set(list);
 }
 
 /// Parts that come out through the front of a gun house rather than under it.
@@ -597,7 +628,6 @@ pub fn traverse_turrets(
     ships: Query<
         (
             &GlobalTransform,
-            Option<&Children>,
             Option<&crate::ai_ship::components::AiShipTarget>,
             Option<&crate::components::Velocity>,
             Option<&crate::combat::missile_defence::MissileWarning>,
@@ -606,7 +636,8 @@ pub fn traverse_turrets(
     >,
     // Where an AI ship's target is now.
     whereabouts: Query<&GlobalTransform>,
-    hull_modules: Query<&Module, Without<DestroyedModule>>,
+    // Every live block with its parent, read once a frame for the motors.
+    hull_modules: Query<(&Module, &ChildOf), Without<DestroyedModule>>,
     rings: Query<&Module>,
     aim: Res<PlayerAimPoint>,
     build: Option<Res<State<crate::states::BuildState>>>,
@@ -622,8 +653,19 @@ pub fn traverse_turrets(
         // where the missile is, not where it will be.
         Query<(), (With<crate::combat::lasers::LaserEmitter>, With<crate::combat::targeting::fire_groups::InterceptMode>)>,
     ),
+    // Each ship's Traverse Motor cells, gathered in one pass over the blocks:
+    // a turret used to walk every block of its ship for them, every frame.
+    mut motor_cells: Local<std::collections::HashMap<Entity, Vec<IVec2>>>,
 ) {
     let dt = time.delta_secs();
+    motor_cells.clear();
+    if !bodies.is_empty() {
+        for (m, parent) in hull_modules.iter() {
+            if m.module_type == ModuleType::TraverseMotor {
+                motor_cells.entry(parent.parent()).or_default().push(m.grid_position);
+            }
+        }
+    }
     // While building, turrets stand squared to the hull, so a turret's cell
     // lies exactly over a hull cell (building::turret_build).
     let building = build.is_some_and(|s| *s.get() != crate::states::BuildState::Inactive);
@@ -648,15 +690,14 @@ pub fn traverse_turrets(
         // Motors: Traverse Motor blocks on the hull deck touching the ring.
         let ring_cells: Vec<IVec2> = rings.get(body.ring).map(ring_cells).unwrap_or_default();
         // A turret on a severed section has no ship to aim for.
-        let Ok((ship_gt, ship_children, ai_target, ship_vel, warning)) = ships.get(parent.parent()) else {
+        let Ok((ship_gt, ai_target, ship_vel, warning)) = ships.get(parent.parent()) else {
             continue;
         };
-        body.motors = ship_children
+        body.motors = motor_cells
+            .get(&parent.parent())
             .into_iter()
             .flatten()
-            .filter_map(|c| hull_modules.get(*c).ok())
-            .filter(|m| m.module_type == ModuleType::TraverseMotor)
-            .filter(|m| ring_cells.iter().any(|r| (m.grid_position - *r).abs().max_element() <= 1 && !ring_cells.contains(&m.grid_position)))
+            .filter(|at| ring_cells.iter().any(|r| (**at - *r).abs().max_element() <= 1 && !ring_cells.contains(at)))
             .count() as u32;
         body.traverse_deg_s = if body.motors == 0 || body.jammed {
             0.0
@@ -753,8 +794,10 @@ pub fn traverse_turrets(
         // A physical stop: it won't turn its guns into another turret. It
         // may always turn the way that fouls less, so two built overlapping
         // can still work themselves apart.
-        let blocked = shapes.as_ref().and_then(|s| s.0.iter().find(|t| t.body == entity).map(|shape| (shape, s)))
-            .is_some_and(|(shape, s)| fouling(shape, next, &s.0) > fouling(shape, body.angle, &s.0));
+        // (Standing still, it can't foul anything it doesn't already.)
+        let blocked = next != body.angle
+            && shapes.as_ref().and_then(|s| s.of(entity).map(|shape| (shape, s.on_ship(shape.ship))))
+                .is_some_and(|(shape, mates)| fouling(shape, next, mates) > fouling(shape, body.angle, mates));
         if crate::combat::gun_assembly::trace() && (time.elapsed_secs() % 1.0) < dt && !on_pd {
             info!("TURRET {:?}: {} motors, {:.0} t, {:.0} deg/s, at {:.0} deg, wants {:.0} deg, stopped by another turret {}", entity, body.motors, body.mass_t, body.traverse_deg_s, body.angle.to_degrees(), want.to_degrees(), blocked);
         }
@@ -762,7 +805,12 @@ pub fn traverse_turrets(
             continue;
         }
         body.angle = next;
-        transform.rotation = Quat::from_rotation_z(body.angle);
+        // Written only when it moves: a rewrite marks the turret and all its
+        // blocks moved, for every system that watches for that.
+        let turned = Quat::from_rotation_z(body.angle);
+        if transform.rotation != turned {
+            transform.rotation = turned;
+        }
     }
 }
 
@@ -889,6 +937,40 @@ mod turret_deck_tests {
         assert_eq!(fouling(&gun, 0.0, &all), 0, "pointing ahead it clears");
         assert!(fouling(&gun, std::f32::consts::FRAC_PI_2, &all) > 0, "swung toward the neighbour it hits it");
         assert_eq!(fouling(&gun, -std::f32::consts::FRAC_PI_2, &all), 0, "the other way is clear");
+    }
+
+    /// The sorted, indexed list finds each turret and its shipmates exactly
+    /// as searching the whole list did -- the same answer, without the search.
+    #[test]
+    fn the_indexed_list_fouls_exactly_as_the_whole_list_did() {
+        let e = |n: u32| Entity::from_raw_u32(n).unwrap();
+        let mut all = Vec::new();
+        // Three ships' turrets, handed over out of order, packed close enough
+        // to foul when they swing.
+        for (i, ship) in [7u32, 3, 9, 3, 7, 9, 3, 7].into_iter().enumerate() {
+            all.push(TurretShape {
+                body: e(100 + i as u32), ship: e(ship), centre: Vec2::new(0.0, (i % 3) as f32 * 132.0), angle: i as f32 * 0.7,
+                parts: (0..4).map(|x| Vec2::new(x as f32 * 66.0, 0.0)).collect(), reach: 198.0,
+            });
+        }
+        let mut shapes = TurretShapes::default();
+        shapes.set(all.clone());
+        let mut fouled = 0;
+        for a in &all {
+            let found = shapes.of(a.body).expect("every turret is indexed");
+            assert_eq!(found.body, a.body);
+            let mates = shapes.on_ship(a.ship);
+            assert!(mates.iter().all(|m| m.ship == a.ship));
+            assert_eq!(mates.len(), all.iter().filter(|o| o.ship == a.ship).count());
+            for k in 0..12 {
+                let angle = k as f32 * std::f32::consts::TAU / 12.0;
+                let n = fouling(found, angle, mates);
+                assert_eq!(n, fouling(a, angle, &all), "turret {:?} at {angle}", a.body);
+                fouled += n;
+            }
+        }
+        assert!(fouled > 0, "the layout should foul somewhere, or this proves nothing");
+        assert!(shapes.on_ship(e(42)).is_empty(), "a ship with no turrets has none");
     }
 
     #[test]

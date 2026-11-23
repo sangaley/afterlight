@@ -11,7 +11,7 @@ use crate::ai_ship::components::OwnedByAiShip;
 use crate::combat::shields::ShieldBubble;
 use crate::vfx::block_height::HeightShadow;
 use crate::vfx::far_art::FarArtSprite;
-use crate::vfx::ship_roof::{AiRoofTile, RoofTile};
+use crate::vfx::ship_roof::{AiRoofTile, RoofFrame, RoofTile};
 
 /// A command whose entity is already gone is skipped and logged. Anything else
 /// goes the way Bevy would send it, panics included.
@@ -34,7 +34,7 @@ pub fn reap_stranded(
     drawn: Query<
         Entity,
         (
-            Or<(With<RoofTile>, With<AiRoofTile>, With<HeightShadow>, With<ShieldBubble>, With<FarArtSprite>)>,
+            Or<(With<RoofTile>, With<RoofFrame>, With<AiRoofTile>, With<HeightShadow>, With<ShieldBubble>, With<FarArtSprite>)>,
             Without<ChildOf>,
         ),
     >,

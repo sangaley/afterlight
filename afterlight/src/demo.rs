@@ -180,6 +180,71 @@ fn open_build_tab(
     );
 }
 
+/// Once, 30 s in (AFTERLIGHT_CENSUS=1): the commonest kinds of entity, by the
+/// components they carry, and how many of the placed ones are hidden. Every
+/// placed entity under a moving ship costs transform work each frame,
+/// shown or not.
+fn archetype_census(world: &mut World, mut done: Local<bool>) {
+    if *done || world.resource::<Time>().elapsed_secs() < 30.0 {
+        return;
+    }
+    *done = true;
+    // Names need Bevy's debug feature; these markers tell the kinds apart.
+    macro_rules! marks {
+        ($($t:ty),* $(,)?) => { vec![$((world.components().component_id::<$t>(), stringify!($t).rsplit("::").next().unwrap().trim())),*] };
+    }
+    use crate::combat::turret_deck::{OnTurret, TurretBody, TurretPlate};
+    use crate::components::{DestroyedModule, HullDestroyed, HullSegment, Module};
+    use crate::vfx::{block_height::{CastsShadow, HeightShadow}, far_art::{FarArtSprite, FarHidden}, module_glow::{GlowLight, Glowing}, ship_roof::{AiRoofTile, Edge, RoofTile}};
+    let marks: Vec<(Option<bevy::ecs::component::ComponentId>, &str)> = marks!(
+        crate::ai_ship::components::AiShip,
+        crate::components::Ship,
+        HullSegment,
+        Module,
+        crate::ai_ship::components::OwnedByAiShip,
+        crate::ai_ship::interior::Concealed,
+        DestroyedModule,
+        HullDestroyed,
+        Sprite,
+        Mesh2d,
+        Text2d,
+        RoofTile,
+        AiRoofTile,
+        Edge,
+        HeightShadow,
+        CastsShadow,
+        Glowing,
+        GlowLight,
+        FarHidden,
+        FarArtSprite,
+        OnTurret,
+        TurretPlate,
+        TurretBody,
+        Children,
+    );
+    let mut rows: Vec<(usize, String)> = world
+        .archetypes()
+        .iter()
+        .filter(|a| !a.is_empty())
+        .map(|a| {
+            let names: Vec<&str> = marks.iter().filter(|(id, _)| id.is_some_and(|id| a.contains(id))).map(|(_, n)| *n).collect();
+            (a.len() as usize, format!("{} [{} components]", names.join(" "), a.component_count()))
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut placed = world.query::<(&GlobalTransform, Option<&InheritedVisibility>, Has<ChildOf>)>();
+    let (mut all, mut hidden, mut children) = (0, 0, 0);
+    for (_, seen, child) in placed.iter(world) {
+        all += 1;
+        hidden += usize::from(seen.is_some_and(|v| !v.get()));
+        children += usize::from(child);
+    }
+    info!("ARCHETYPES placed={all} children={children} hidden={hidden} kinds={}", rows.len());
+    for (n, names) in rows.iter().take(45) {
+        info!("ARCHETYPE {n:>6} {names}");
+    }
+}
+
 /// Counts what is actually resident, once a second, under AFTERLIGHT_CENSUS=1.
 ///
 /// The world holds dozens of ships but only simulates most of them as numbers;
@@ -506,7 +571,7 @@ impl Plugin for DemoPlugin {
             )));
         }
         if std::env::var("AFTERLIGHT_CENSUS").ok().as_deref() == Some("1") {
-            app.add_systems(Update, census);
+            app.add_systems(Update, (census, archetype_census));
         }
         // AFTERLIGHT_ZOOM=<z>: hold the camera at this zoom (scripted key holds
         // don't reach the zoom in an offscreen run). 1.8 is the default; 20

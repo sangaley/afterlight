@@ -92,15 +92,14 @@ pub fn ai_brain_system(
     field: Res<super::awareness::Battlefield>,
     mind: Res<super::awareness::Mind>,
     minds: Query<&super::awareness::Awareness>,
+    blocks: super::Blocks,
 ) {
     // --- Pre-pass: snapshot every living ship's position + "threat value"
     // (block count + 2x active weapon damage — cheap proxies for size and
     // firepower) BEFORE the mutable per-ship loop below. Two sequential
     // .iter() calls on the same query is fine in Bevy; it's the same
     // pattern as any read-then-mutate pass, just split across two loops.
-    fn threat_value(children: &Children, weapon_dmg: f32) -> f32 {
-        children.iter().count() as f32 + weapon_dmg * 2.0
-    }
+    let threat_value = |children: &Children, weapon_dmg: f32| super::block_count(children, &blocks) as f32 + weapon_dmg * 2.0;
 
     let mut ai_snapshot: Vec<(Entity, Vec2, f32)> = Vec::new();
     let mut ai_factions: Vec<(Entity, AiShipType)> = Vec::new();

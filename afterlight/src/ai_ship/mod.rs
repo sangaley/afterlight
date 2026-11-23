@@ -30,6 +30,38 @@ use crate::states::{GameState, SpatialSet};
 use components::*;
 pub use layouts::design_slug;
 
+/// What a ship's size is counted in: its hull and parts. A ship's children
+/// are more than its blocks -- shadows, glows, its roof frame -- and once
+/// every AI ship wore the full roof, counting them all made each one about
+/// twice as heavy as it is: slower to speed up and turn, and bigger in every
+/// other ship's eyes.
+pub type Blocks<'w, 's> = Query<'w, 's, (), Or<(With<crate::components::HullSegment>, With<crate::components::Module>)>>;
+
+/// How many of `children` are blocks.
+pub fn block_count(children: &Children, blocks: &Blocks) -> usize {
+    children.iter().filter(|c| blocks.contains(*c)).count()
+}
+
+#[cfg(test)]
+mod block_count_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn a_ships_size_is_its_blocks_not_its_roof() {
+        let mut world = World::new();
+        let ship = world.spawn_empty().id();
+        for x in 0..3 {
+            world.spawn((crate::components::HullSegment { grid_position: IVec2::new(x, 0), ..default() }, ChildOf(ship)));
+        }
+        let frame = world.spawn((crate::vfx::ship_roof::RoofFrame, ChildOf(ship))).id();
+        world.spawn((Sprite::default(), ChildOf(frame)));
+        world.spawn((Sprite::default(), ChildOf(ship)));
+        let n = world.run_system_once(move |ships: Query<&Children>, blocks: Blocks| block_count(ships.get(ship).unwrap(), &blocks)).unwrap();
+        assert_eq!(n, 3);
+    }
+}
+
 pub struct AiShipPlugin;
 
 impl Plugin for AiShipPlugin {

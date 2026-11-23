@@ -62,10 +62,37 @@ impl Plugin for PerfPlugin {
         })
         .init_resource::<SimStart>()
         .add_systems(Startup, spawn_perf_overlay)
+        .add_systems(PostStartup, size_up_schedules)
         .add_systems(First, mark_sim_start)
         .add_systems(Update, churn_player_blocks.run_if(|| churn_rate() > 0.0))
         .add_systems(Update, give_scrap.run_if(|| std::env::var("AFTERLIGHT_PERF_SCRAP").is_ok()))
         .add_systems(Last, (record_frame, report_perf).chain());
+    }
+}
+
+/// Logs how many systems each schedule holds under AFTERLIGHT_PERF, and
+/// under AFTERLIGHT_ONE_THREAD=1 runs them one after another on the main
+/// thread instead of handing each to Bevy's thread pool: a measuring tool
+/// for what the handing out costs, with over a thousand small systems.
+fn size_up_schedules(world: &mut World) {
+    use bevy::ecs::schedule::SingleThreadedExecutor;
+    let log = world.resource::<PerfState>().log;
+    let one_thread = std::env::var("AFTERLIGHT_ONE_THREAD").ok().as_deref() == Some("1");
+    let mut schedules = world.resource_mut::<Schedules>();
+    let mut sizes: Vec<(String, usize)> = Vec::new();
+    for (label, schedule) in schedules.iter_mut() {
+        sizes.push((format!("{label:?}"), schedule.systems_len()));
+        if one_thread {
+            // A default-built executor drops the commands left at the end
+            // of the schedule; the stock one applies them.
+            schedule.set_executor(SingleThreadedExecutor::default()).set_apply_final_deferred(true);
+        }
+    }
+    if log {
+        sizes.sort_by(|a, b| b.1.cmp(&a.1));
+        let total: usize = sizes.iter().map(|s| s.1).sum();
+        let top: Vec<String> = sizes.iter().take(8).map(|(l, n)| format!("{l}={n}")).collect();
+        info!("PERF SCHEDULES systems={total} one_thread={one_thread} {}", top.join(" "));
     }
 }
 
@@ -196,6 +223,7 @@ struct SimStart(Option<std::time::Instant>);
 
 fn mark_sim_start(mut start: ResMut<SimStart>) {
     start.0 = Some(std::time::Instant::now());
+    crate::perf_stutter::frame_begin();
 }
 
 fn record_frame(time: Res<Time<Real>>, start: Res<SimStart>, mut state: ResMut<PerfState>) {
@@ -206,6 +234,7 @@ fn record_frame(time: Res<Time<Real>>, start: Res<SimStart>, mut state: ResMut<P
     state.elapsed += dt;
     let ms = dt * 1000.0;
     let sim = start.0.map_or(0.0, |t| t.elapsed().as_secs_f32() * 1000.0);
+    crate::perf_stutter::frame_end(sim, state.elapsed > state.warmup);
     state.window.push(ms);
     state.sim_window.push(sim);
     if state.elapsed > state.warmup {
@@ -236,6 +265,36 @@ pub fn percentile(sorted: &[f32], p: f32) -> f32 {
     sorted[i.min(sorted.len() - 1)]
 }
 
+/// Sprites and 2D meshes on screen, and about how many draw calls they
+/// cost. Bevy draws them back to front by z, and a run of neighbours with the
+/// same image (for a sprite) or the same material and mesh (for a mesh) is
+/// one draw; each change starts another. Within one z the order is the order
+/// it finds them in, which this follows too, so it is an estimate.
+fn draw_batches(sprites: &Query<(&ViewVisibility, &GlobalTransform, &Sprite)>, meshes: &Query<(&ViewVisibility, &GlobalTransform, &Mesh2d, AnyGlow)>) -> (usize, usize, usize) {
+    #[derive(PartialEq)]
+    enum Draw {
+        Sprite(AssetId<Image>),
+        Mesh(bevy::asset::UntypedAssetId, AssetId<Mesh>),
+    }
+    let mut drawn: Vec<(f32, Draw)> = sprites
+        .iter()
+        .filter(|(seen, _, _)| seen.get())
+        .map(|(_, at, sprite)| (at.translation().z, Draw::Sprite(sprite.image.id())))
+        .collect();
+    let sprite_count = drawn.len();
+    drawn.extend(meshes.iter().filter(|(seen, ..)| seen.get()).map(|(_, at, mesh, (halo, glow))| {
+        let material = halo.map(|m| m.0.id().untyped()).or(glow.map(|m| m.0.id().untyped())).unwrap_or(AssetId::<Mesh>::default().untyped());
+        (at.translation().z, Draw::Mesh(material, mesh.0.id()))
+    }));
+    let mesh_count = drawn.len() - sprite_count;
+    drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let batches = drawn.windows(2).filter(|w| w[0].1 != w[1].1).count() + usize::from(!drawn.is_empty());
+    (sprite_count, mesh_count, batches)
+}
+
+/// A 2D mesh's light material, whichever kind it is.
+type AnyGlow = (Option<&'static MeshMaterial2d<crate::vfx::module_glow::HaloMaterial>>, Option<&'static MeshMaterial2d<crate::vfx::module_glow::GlowMaterial>>);
+
 #[allow(clippy::too_many_arguments)]
 fn report_perf(
     time: Res<Time<Real>>,
@@ -249,6 +308,8 @@ fn report_perf(
     ai: Query<&AiShipState, With<AiShip>>,
     mut overlay: Query<(&mut Text, &mut Visibility), With<PerfOverlayText>>,
     mut exit: MessageWriter<AppExit>,
+    sprites: Query<(&ViewVisibility, &GlobalTransform, &Sprite)>,
+    meshes: Query<(&ViewVisibility, &GlobalTransform, &Mesh2d, AnyGlow)>,
 ) {
     if keys.just_pressed(KeyCode::F8) {
         state.overlay = !state.overlay;
@@ -282,6 +343,7 @@ fn report_perf(
         }
     }
     let entity_count = entities.iter().count();
+    let (drawn, meshes_drawn, batches) = draw_batches(&sprites, &meshes);
 
     if state.elapsed > state.warmup {
         state.worst_second_ms = state.worst_second_ms.max(avg);
@@ -294,9 +356,9 @@ fn report_perf(
 
     if state.log {
         info!(
-            "PERF t={:.0} fps={:.1} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2} sim_avg={:.2} sim_p95={:.2} sim_p99={:.2} sim_max={:.2} entities={} player={} ai={} wreck={} colliders={} detached={}",
+            "PERF t={:.0} fps={:.1} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2} sim_avg={:.2} sim_p95={:.2} sim_p99={:.2} sim_max={:.2} entities={} player={} ai={} wreck={} colliders={} detached={} sprites={} meshes={} batches={}",
             state.elapsed, fps, avg, p50, p95, p99, max, sim_avg, sim_p95, sim_p99, sim_max,
-            entity_count, counts.player, counts.ai, counts.wreck, colliders.iter().count(), detached.iter().count()
+            entity_count, counts.player, counts.ai, counts.wreck, colliders.iter().count(), detached.iter().count(), drawn, meshes_drawn, batches
         );
     }
     if state.overlay {
@@ -305,6 +367,7 @@ fn report_perf(
                 "FPS {fps:.0}   frame {avg:.1} ms  (p99 {p99:.1}, max {max:.1})\n\
                  sim {sim_avg:.1} ms  (p99 {sim_p99:.1}, max {sim_max:.1})\n\
                  entities {entity_count}\n\
+                 sprites {drawn} + meshes {meshes_drawn} in about {batches} draws\n\
                  blocks: you {}  ai {}  wrecks {}",
                 counts.player, counts.ai, counts.wreck
             );
@@ -323,6 +386,7 @@ fn report_perf(
                 s_avg, s_p50, s_p95, s_p99, s_max, state.worst_second_sim_ms,
                 state.peak_entities, state.peak_blocks.player, state.peak_blocks.ai, state.peak_blocks.wreck,
             );
+            crate::perf_stutter::report();
             exit.write(AppExit::Success);
         }
     }
