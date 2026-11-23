@@ -850,6 +850,7 @@ pub fn bake_far_art(
     mut cache: Local<MipCache>,
     mut was_far: Local<bool>,
     frames: Query<(&Transform, &Children), (With<super::ship_roof::RoofFrame>, Without<FarArtSprite>)>,
+    frame_of: Query<&ChildOf, With<super::ship_roof::RoofFrame>>,
 ) {
     let alpha = art_alpha(camera.zoom);
     let full = alpha >= 1.0;
@@ -871,7 +872,9 @@ pub fn bake_far_art(
     let back_out = !std::mem::replace(&mut *was_far, true);
     let now = time.elapsed_secs();
     for parent in changed.iter() {
-        if let Ok((_, mut art, ..)) = owners.get_mut(parent.parent()) {
+        // A roof tile's parent is its ship's roof frame.
+        let owner = frame_of.get(parent.parent()).map_or(parent.parent(), |p| p.parent());
+        if let Ok((_, mut art, ..)) = owners.get_mut(owner) {
             art.dirty = true;
         }
     }
@@ -915,8 +918,8 @@ pub fn bake_far_art(
         if art.picture.is_none() && baked_whole {
             continue;
         }
-        // A broken-off piece's roof hangs off a frame of its own (ship_roof::
-        // RoofFrame): its tiles are painted where the frame puts them.
+        // A roof hangs off a frame of its own (ship_roof::RoofFrame): its
+        // tiles are painted where the frame puts them.
         let mut drawn: Vec<(Entity, (&Sprite, Transform, &Visibility, Option<&HullSegment>, Option<&Module>, bool))> = Vec::new();
         for child in children.iter().flat_map(|c| c.iter()) {
             if let Ok((frame_tf, kids)) = frames.get(child) {
@@ -1029,6 +1032,7 @@ pub fn show_far_art(
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<FarArtSprite>, Without<HullSegment>, Without<Module>)>,
     hidden: Query<Entity, With<FarHidden>>,
     mut was_full: Local<bool>,
+    frames: Query<&Children, With<super::ship_roof::RoofFrame>>,
 ) {
     let alpha = art_alpha(camera.zoom);
     for (art, _) in owners.iter() {
@@ -1057,8 +1061,12 @@ pub fn show_far_art(
                 continue;
             }
             for child in children.into_iter().flatten() {
-                if pictured.contains(*child) {
-                    commands.entity(*child).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
+                // The roof, a level down on its frame, goes with the rest.
+                let roof = frames.get(*child).into_iter().flat_map(|kids| kids.iter());
+                for block in std::iter::once(*child).chain(roof) {
+                    if pictured.contains(block) {
+                        commands.entity(block).try_insert((RenderLayers::layer(HIDDEN_LAYER), FarHidden));
+                    }
                 }
             }
         }
@@ -1445,6 +1453,49 @@ mod tests {
         look(&mut app, s);
         let after = pixel(&app, s, IVec2::ZERO);
         assert!(after[2] < before[2], "the roof hid it: {before:?} to {after:?}");
+    }
+
+    /// A ship's roof hangs off a frame of its own (ship_roof::RoofFrame), a
+    /// level down: it's painted, hidden behind the picture, and a change to
+    /// it is a change to its ship's picture.
+    #[test]
+    fn a_roof_on_its_frame_is_painted_hidden_and_watched() {
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        for x in [-4, 0, 4] {
+            hull(&mut app, s, IVec2::new(x, 0));
+        }
+        let frame = app.world_mut().spawn((Transform::default(), Visibility::Inherited, crate::vfx::ship_roof::RoofFrame, ChildOf(s))).id();
+        let tile = app
+            .world_mut()
+            .spawn((
+                Sprite { color: Color::srgb(0.9, 0.1, 0.1), custom_size: Some(Vec2::splat(66.0)), ..default() },
+                Transform::from_translation(crate::building::grid_to_local(IVec2::ZERO).extend(0.5)),
+                Visibility::Inherited,
+                crate::vfx::ship_roof::RoofTile(1.0),
+                ChildOf(frame),
+            ))
+            .id();
+        app.update();
+        app.update();
+        let red = pixel(&app, s, IVec2::ZERO);
+        assert!(red[0] > red[2], "the roof isn't in the picture: {red:?}");
+        assert!(app.world().get::<FarHidden>(tile).is_some(), "the roof draws over its picture");
+
+        app.world_mut().get_mut::<Sprite>(tile).unwrap().color = Color::srgb(0.1, 0.1, 0.9);
+        app.world_mut().get_mut::<FarArt>(s).unwrap().seen_at = app.world().resource::<Time>().elapsed_secs() + 100.0;
+        app.update();
+        assert!(app.world().get::<FarArt>(s).unwrap().dirty, "a roof tile changed and its ship's picture didn't notice");
+
+        // In close and out again: hidden again with the rest.
+        app.world_mut().resource_mut::<CameraState>().zoom = 3.0;
+        app.update();
+        app.update();
+        assert!(app.world().get::<FarHidden>(tile).is_none());
+        app.world_mut().resource_mut::<CameraState>().zoom = 20.0;
+        app.update();
+        app.update();
+        assert!(app.world().get::<FarHidden>(tile).is_some(), "the roof draws over its picture once back out");
     }
 
     /// A roof relaid the same is all new entities and nothing to paint; a ship

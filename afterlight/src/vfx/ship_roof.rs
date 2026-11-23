@@ -208,7 +208,7 @@ pub fn update_ship_roof(
     ships: Query<(Entity, &Scars, Has<PressureOverlayVisible>, &GlobalTransform, Option<&ShipPaint>), With<Ship>>,
     hull: Query<(&HullSegment, &ChildOf), (Without<HullDestroyed>, Without<OwnedByAiShip>)>,
     modules: Query<(&Module, &ChildOf), (Without<DestroyedModule>, Without<OwnedByAiShip>)>,
-    tiles: Query<(Entity, &ChildOf), With<RoofTile>>,
+    frames: Query<(Entity, &ChildOf), With<RoofFrame>>,
     mut last: Local<Option<(Entity, usize, usize, usize, u64)>>,
 ) {
     let Ok((ship, scars, air_view, ship_gt, paint)) = ships.single() else { return };
@@ -216,8 +216,8 @@ pub fn update_ship_roof(
     let mine = |t: &(Entity, &ChildOf)| t.1.parent() == ship;
     if alpha <= 0.0 {
         if last.is_some() {
-            for (tile, _) in tiles.iter().filter(mine) {
-                commands.entity(tile).try_despawn();
+            for (frame, _) in frames.iter().filter(mine) {
+                commands.entity(frame).try_despawn();
             }
             *last = None;
         }
@@ -227,19 +227,21 @@ pub fn update_ship_roof(
     let mine_modules: Vec<&Module> = modules.iter().filter(|(_, p)| p.parent() == ship).map(|(m, _)| m).collect();
     let paint = paint.cloned().unwrap_or_default();
     let key = (ship, mine_hull.len(), mine_modules.len(), scars.0.len(), paint.stamp());
-    // Tiles cleared from outside (clear_ship_roof) are laid again too.
-    if *last == Some(key) && tiles.iter().any(|t| mine(&t)) {
+    // A roof cleared from outside (clear_ship_roof) is laid again too.
+    if *last == Some(key) && frames.iter().any(|t| mine(&t)) {
         return;
     }
     *last = Some(key);
-    for (tile, _) in tiles.iter().filter(mine) {
-        commands.entity(tile).try_despawn();
+    for (frame, _) in frames.iter().filter(mine) {
+        commands.entity(frame).try_despawn();
     }
     let turn = ship_gt.to_scale_rotation_translation().1;
-    lay_roof(&mut commands, &assets, ship, (camera.zoom, turn, alpha), &mine_hull, &mine_modules, scars, &paint.resolve(), false);
+    let frame = roof_frame(&mut commands, ship, ship_gt, Vec2::ZERO);
+    lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), &mine_hull, &mine_modules, scars, &paint.resolve(), false);
 }
 
-/// Lay a ship's whole roof: plates, skin, layers, angles, art and edges.
+/// Lay a ship's whole roof: plates, skin, layers, angles, art and edges, as
+/// children of `ship` -- a ship's RoofFrame (roof_frame), not the ship.
 #[allow(clippy::too_many_arguments)]
 pub fn lay_roof(
     commands: &mut Commands,
@@ -2172,7 +2174,7 @@ pub fn update_ai_ship_roofs(
         (&Module, &OwnedByAiShip),
         (Without<DestroyedModule>, Without<crate::combat::turret_deck::OnTurret>, Without<crate::combat::turret_deck::PendingTurretMount>),
     >,
-    tiles: Query<(Entity, &ChildOf), With<RoofTile>>,
+    frames: Query<(Entity, &ChildOf), With<RoofFrame>>,
     mut turn_of: Local<usize>,
 ) {
     if !roof_all() {
@@ -2180,9 +2182,9 @@ pub fn update_ai_ship_roofs(
     }
     let alpha = roof_alpha(camera.zoom);
     let despawn_on = |commands: &mut Commands, root: Entity| {
-        for (tile, parent) in tiles.iter() {
+        for (frame, parent) in frames.iter() {
             if parent.parent() == root {
-                commands.entity(tile).try_despawn();
+                commands.entity(frame).try_despawn();
             }
         }
     };
@@ -2229,7 +2231,8 @@ pub fn update_ai_ship_roofs(
         let (root, key, scars, gt, faction, wrecked, hulls, mods) = stale[(first + i) % stale.len()];
         despawn_on(&mut commands, root);
         let turn = gt.to_scale_rotation_translation().1;
-        lay_roof(&mut commands, &assets, root, (camera.zoom, turn, alpha), hulls, mods, scars, &ship_paint_for(*faction, root), wrecked);
+        let frame = roof_frame(&mut commands, root, gt, Vec2::ZERO);
+        lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), hulls, mods, scars, &ship_paint_for(*faction, root), wrecked);
         commands.entity(root).try_insert(RoofLaid(key));
         if std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some() {
             info!("ROOF laid on {root}: {} hull, {} parts, wrecked {wrecked}", hulls.len(), mods.len());
@@ -2237,11 +2240,22 @@ pub fn update_ai_ship_roofs(
     }
 }
 
-/// The roof of a piece broken off a ship: laid on a frame of its own, set
-/// back by where the piece's blocks were moved to (a piece turns about its
-/// own middle, so its blocks no longer sit at their cells).
+/// What a roof is laid on: one child of the ship holding every plate and
+/// edge. A big ship's roof is thousands of sprites; hung straight off the ship
+/// they were most of its children, and everything that looks a ship's blocks
+/// over walked through them every frame. A piece broken off a ship has its
+/// frame set back by where the piece's blocks were moved to (a piece turns
+/// about its own middle, so its blocks no longer sit at their cells).
 #[derive(Component)]
 pub struct RoofFrame;
+
+/// A new frame on `ship` (standing at `ship_gt`) for its roof, `offset` from
+/// the ship's middle. Placed from the start: fit_roofs lights the roof by the
+/// frame's turn before the frame would otherwise have one.
+pub fn roof_frame(commands: &mut Commands, ship: Entity, ship_gt: &GlobalTransform, offset: Vec2) -> Entity {
+    let local = Transform::from_translation(offset.extend(0.0));
+    commands.spawn((local, ship_gt.mul_transform(local), Visibility::default(), RoofFrame, ChildOf(ship))).id()
+}
 
 /// On a broken-off piece with its roof laid: what it was laid for, and on what.
 #[derive(Component)]
@@ -2319,7 +2333,7 @@ pub fn update_section_roofs(
             }
         });
         let Some(paint) = kept.map(|p| &p.0).or(fresh.as_ref()) else { continue };
-        let frame = commands.spawn((Transform::from_translation(offset.extend(0.0)), Visibility::default(), RoofFrame, ChildOf(section))).id();
+        let frame = roof_frame(&mut commands, section, gt, offset);
         let hull_only: Vec<&HullSegment> = mine_hull.iter().map(|(h, _)| *h).collect();
         let turn = gt.to_scale_rotation_translation().1;
         lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), &hull_only, &mine_modules, &none, paint, true);
@@ -2400,6 +2414,7 @@ pub fn fit_roofs(
     inside: Res<SeeInside>,
     view: PlayerRoofView,
     owners: Query<(&GlobalTransform, Has<Ship>, Has<PressureOverlayVisible>)>,
+    frames: Query<&ChildOf, With<RoofFrame>>,
     mut tiles: Query<(&mut Sprite, Ref<RoofTile>, Option<Ref<Edge>>, &mut Transform, &ChildOf)>,
     mut seen: Local<HashMap<Entity, Option<(f32, Quat, bool)>>>,
     mut fitted: Local<(f32, HashMap<Entity, (f32, Quat)>)>,
@@ -2419,7 +2434,10 @@ pub fn fit_roofs(
             Some((e, found)) if e == owner => found,
             _ => {
                 let found = *seen.entry(owner).or_insert_with(|| {
-                    owners.get(owner).ok().map(|(gt, mine, air)| {
+                    // Lit by the frame's turn, shown as its ship's roof is.
+                    let ship = frames.get(owner).map_or(owner, |p| p.parent());
+                    let (mine, air) = owners.get(ship).map_or((false, false), |(_, mine, air)| (mine, air));
+                    owners.get(owner).ok().map(|(gt, _, _)| {
                         let alpha = if mine { view.alpha(own_roof_alpha(camera.zoom, &inside, air)) } else { roof_alpha(camera.zoom) };
                         let turn = shading_heading(gt.to_scale_rotation_translation().1, camera.zoom);
                         let moved = fitted.1.insert(owner, (alpha, turn)) != Some((alpha, turn));
@@ -2682,12 +2700,17 @@ pub fn plate_tone(plate: IVec2) -> f32 {
 
 /// Off the flight screen (docked, building, paused) the roof comes off;
 /// update_ship_roof lays it again on return.
-pub fn clear_ship_roof(mut commands: Commands, tiles: Query<Entity, With<RoofTile>>, laid: Query<Entity, With<RoofLaid>>) {
+#[allow(clippy::type_complexity)]
+pub fn clear_ship_roof(
+    mut commands: Commands,
+    tiles: Query<Entity, Or<(With<RoofTile>, With<RoofFrame>)>>,
+    laid: Query<Entity, Or<(With<RoofLaid>, With<SectionRoof>)>>,
+) {
     for tile in tiles.iter() {
         commands.entity(tile).try_despawn();
     }
     for root in laid.iter() {
-        commands.entity(root).try_remove::<RoofLaid>();
+        commands.entity(root).try_remove::<(RoofLaid, SectionRoof)>();
     }
 }
 
@@ -2799,6 +2822,30 @@ mod tests {
         world.resource_mut::<CameraState>().zoom = 14.0;
         schedule.run(&mut world);
         assert_eq!(alpha(&world), roof_alpha(14.0), "the zoom moved: fitted");
+    }
+
+    /// A roof hangs off its ship's frame: lit by the ship's turn and shown
+    /// as that ship's roof is -- your own roof comes off in the air view, an
+    /// AI ship's doesn't.
+    #[test]
+    fn a_roof_on_its_frame_is_its_ships_roof() {
+        let mut world = World::new();
+        world.insert_resource(CameraState { zoom: 12.0, ..default() });
+        world.insert_resource(SeeInside::default());
+        let mut schedule = Schedule::default();
+        schedule.add_systems(fit_roofs);
+        let tile_on = |world: &mut World, ship: Entity| {
+            let gt = *world.get::<GlobalTransform>(ship).unwrap();
+            let frame = world.spawn((Transform::default(), gt, RoofFrame, ChildOf(ship))).id();
+            world.spawn((Sprite { color: Color::srgba(1.0, 1.0, 1.0, 0.5), ..default() }, RoofTile(1.0), Transform::default(), ChildOf(frame))).id()
+        };
+        let mine = world.spawn((Ship, PressureOverlayVisible, Transform::default(), GlobalTransform::default())).id();
+        let theirs = world.spawn((Transform::default(), GlobalTransform::default())).id();
+        let (my_tile, their_tile) = (tile_on(&mut world, mine), tile_on(&mut world, theirs));
+        schedule.run(&mut world);
+        let alpha = |world: &World, tile: Entity| world.get::<Sprite>(tile).unwrap().color.alpha();
+        assert_eq!(alpha(&world, my_tile), 0.0, "your roof stays on in the air view");
+        assert_eq!(alpha(&world, their_tile), roof_alpha(12.0));
     }
 
     #[test]
