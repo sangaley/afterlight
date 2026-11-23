@@ -34,6 +34,44 @@ use super::components::*;
 /// across different ships. Unscoped, a player's MuzzleBrake could buff an
 /// AI ship's cannon that happens to sit at a matching local (x, y) — same
 /// cross-ship contamination pattern fixed everywhere else this session.
+/// How far an NPC's energy weapon reaches, for the kinds that have one.
+///
+/// Enemy plasma casters, ion disruptors and EMP projectors are fitted as bare
+/// cores, and a bare core loses 40% of its range: the Synthesis Collective's
+/// longest gun reached 7.5 km against the player's 25, so it only fired
+/// once you were nearly touching (the user's report, 2026-11-23). Every
+/// built gun out there reaches 20-25 km. Twice the listed range puts plasma
+/// level with them, keeps ion and EMP the short-reach weapons they are
+/// (11 and 7 km), and leaves the player's own weapons alone.
+pub const NPC_ENERGY_REACH: f32 = 2.0;
+
+pub fn npc_energy_reach(module_type: ModuleType, listed: Option<f32>) -> Option<f32> {
+    // The registry's listed ranges, for a weapon carrying no base stats.
+    let fallback = match module_type {
+        ModuleType::PlasmaCaster => 12_600.0,
+        ModuleType::IonDisruptor => 5_400.0,
+        ModuleType::EMPPulse => 3_600.0,
+        _ => return None,
+    };
+    Some(listed.filter(|r| *r > 0.0).unwrap_or(fallback) * NPC_ENERGY_REACH)
+}
+
+/// Is `at` an NPC ship, or part of one (a turret, a deck on a turret)?
+pub fn on_npc_ship(
+    mut at: Entity,
+    ai_ships: &Query<(), With<crate::ai_ship::components::AiShip>>,
+    parents: &Query<&ChildOf>,
+) -> bool {
+    for _ in 0..5 {
+        if ai_ships.contains(at) {
+            return true;
+        }
+        let Ok(up) = parents.get(at) else { return false };
+        at = up.parent();
+    }
+    false
+}
+
 pub fn apply_weapon_enhancers(
     module_query: Query<(&Module, &ChildOf), Without<DestroyedModule>>,
     mut weapon_query: Query<(
@@ -42,8 +80,10 @@ pub fn apply_weapon_enhancers(
         Option<&crate::building::customization::tuning::SelectedAmmo>,
     ), Without<DestroyedModule>>,
     mut cascade_query: Query<(&Module, &mut CascadeRisk, &ChildOf)>,
+    // An NPC's weapon hangs off its hull, or off a turret on its hull.
+    ai_ships: (Query<(), With<crate::ai_ship::components::AiShip>>, Query<&ChildOf>),
 ) {
-    for (_, mut weapon, base, machine, _, tuning, ammo) in weapon_query.iter_mut() {
+    for (module, mut weapon, base, machine, owner, tuning, ammo) in weapon_query.iter_mut() {
         if let Some(machine) = machine {
             weapon.damage = machine.effective_damage;
             weapon.range = machine.effective_range;
@@ -63,6 +103,11 @@ pub fn apply_weapon_enhancers(
             weapon.damage *= tuning.damage;
             let weight = ammo.map(|a| a.0.weight_mult()).unwrap_or(1.0);
             weapon.fire_rate = (weapon.fire_rate * tuning.fire_rate / weight).max(0.05);
+        }
+        if on_npc_ship(owner.parent(), &ai_ships.0, &ai_ships.1) {
+            if let Some(reach) = npc_energy_reach(module.module_type, base.map(|b| b.range)) {
+                weapon.range = weapon.range.max(reach);
+            }
         }
     }
     for (_, mut cascade, _) in cascade_query.iter_mut() {
@@ -388,5 +433,26 @@ mod hull_enhancer_tests {
         let mut changed = world.query_filtered::<Entity, Changed<HullSegment>>();
         assert_eq!(changed.iter(&world).count(), 0);
         assert!((world.get::<HullSegment>(beside).unwrap().max_health - 130.0).abs() < 1e-3);
+    }
+}
+
+#[cfg(test)]
+mod npc_reach_tests {
+    use super::*;
+
+    #[test]
+    fn an_npcs_plasma_reaches_as_far_as_a_built_gun() {
+        // Listed 12.6 km; a bare core used to cut that to 7.5.
+        let plasma = npc_energy_reach(ModuleType::PlasmaCaster, Some(12_600.0)).unwrap();
+        assert!(plasma >= 20_000.0, "{plasma}");
+        // Ion and EMP stay the short-reach weapons.
+        let ion = npc_energy_reach(ModuleType::IonDisruptor, Some(5_400.0)).unwrap();
+        let emp = npc_energy_reach(ModuleType::EMPPulse, Some(3_600.0)).unwrap();
+        assert!(emp < ion && ion < plasma);
+        // Built guns and everything else keep what they have.
+        assert_eq!(npc_energy_reach(ModuleType::Cannon, Some(16_200.0)), None);
+        assert_eq!(npc_energy_reach(ModuleType::TractorBeam, Some(300.0)), None);
+        // No base stats on the weapon: the listed range still applies.
+        assert_eq!(npc_energy_reach(ModuleType::IonDisruptor, None), Some(10_800.0));
     }
 }

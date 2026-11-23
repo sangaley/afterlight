@@ -50,10 +50,12 @@ pub fn calculate_machine_stats(
     base_stats_query: Query<&BaseWeaponStats>,
     customization_query: Query<&ModuleCustomization>,
     _block_query: Query<(&MachineBlock, Option<&ModuleCustomization>)>,
+    // An NPC's energy weapons reach further (enhancers::npc_energy_reach).
+    npc: (Query<(), With<crate::ai_ship::components::AiShip>>, Query<&ChildOf>),
 ) {
     let contrib = weapon_block_contributions();
 
-    for (entity, _module, block, mut stats) in core_query.iter_mut() {
+    for (entity, module, block, mut stats) in core_query.iter_mut() {
         if block.role != BlockRole::Core {
             continue;
         }
@@ -157,6 +159,14 @@ pub fn calculate_machine_stats(
             stats.effective_range *= 0.6;
             stats.effective_damage *= 0.7;
             stats.effective_accuracy *= 0.6;
+        }
+        // Set here, at the source: apply_machine_stats_to_weapons copies this
+        // onto the weapon every frame, and the enemy's guns read it in
+        // between, so a reach added only downstream was lost.
+        if let Some(reach) = super::enhancers::npc_energy_reach(module.module_type, Some(base.range)) {
+            if super::enhancers::on_npc_ship(entity, &npc.0, &npc.1) {
+                stats.effective_range = stats.effective_range.max(reach);
+            }
         }
     }
 }

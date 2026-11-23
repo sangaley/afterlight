@@ -124,7 +124,9 @@ pub fn ai_weapon_fire_system(
         // A ship pulling out of a fight it has lost goes on shooting at whoever
         // it's running from.
         let covering_retreat = *behavior == AiShipBehavior::Fleeing && ai_target.entity.is_some() && !state.is_destroyed;
+        let tell = crate::combat::gun_assembly::trace() && (time.elapsed_secs() % 2.0) < time.delta_secs();
         if !ship_may_fire(behavior, state) && !covering_retreat {
+            if tell { info!("AI HOLDS {:?} ({:?}): behaviour {:?}", ai_entity, ship_type, behavior); }
             continue;
         }
 
@@ -134,6 +136,7 @@ pub fn ai_weapon_fire_system(
         // the ship just spawned) defaults to permissive so a fresh ship
         // isn't blocked before its first power tick ever runs.
         if ai_power.is_some_and(|p| p.power_balance < 0.0) {
+            if tell { info!("AI HOLDS {:?} ({:?}): power {:.0}", ai_entity, ship_type, ai_power.map_or(0.0, |p| p.power_balance)); }
             continue;
         }
 
@@ -257,6 +260,9 @@ pub fn ai_weapon_fire_system(
                     .flat_map(|(t, deck)| deck.iter().map(move |g| (g, Some(t)))),
             )
             .collect();
+        // Why each gun didn't fire this frame: down, unstaffed, out of range,
+        // can't bear, reloading, waiting for the salvo.
+        let mut why = [0u32; 6];
         for (child, turret) in guns {
             let gun = assemblies.get(child).ok();
             let Ok((mut weapon, mut cooldown, module, ammo_storage, _owned, eff, weapon_gt, mount, loaded, missile, point_defence)) =
@@ -281,6 +287,7 @@ pub fn ai_weapon_fire_system(
             // by crew_fill_fraction per faction (ai_ship::components).
             let efficiency = effective_efficiency(module, eff);
             if efficiency <= 0.0 {
+                why[1] += 1;
                 continue;
             }
             // A built gun with its barrels shot away has no muzzle speed.
@@ -321,6 +328,8 @@ pub fn ai_weapon_fire_system(
             // station is kilometres across, and its outer batteries sat
             // silent with the enemy well inside their reach.
             if dist_to_target.min(muzzle.distance(centroid)) - target_radius * 0.8 > weapon.range {
+                why[2] += 1;
+                if tell && why[2] <= 3 { info!("AI HOLDS out of range: {:?} reaches {:.0}", module.module_type, weapon.range); }
                 continue;
             }
 
@@ -349,18 +358,21 @@ pub fn ai_weapon_fire_system(
                 ),
             };
             if !bears {
+                why[3] += 1;
                 continue;
             }
 
             // Tick cooldown
             cooldown.timer.tick(time.delta().mul_f32(fury));
             if !cooldown.timer.is_finished() {
+                why[4] += 1;
                 continue;
             }
             // Launchers wait for the salvo, loaded.
             let launcher = silo || crate::building::is_launcher(module.module_type)
                 || crate::combat::missile_design::is_built_launcher(module.module_type);
             if launcher && !salvo {
+                why[5] += 1;
                 continue;
             }
 
@@ -492,6 +504,9 @@ pub fn ai_weapon_fire_system(
             } else if gun.is_none() && crate::combat::gun_assembly::trace() {
                 info!("AI WEAPON fired {:?} {:?} on {:?}, range {:.0}, loaded {:?}", module.module_type, child, ai_entity, weapon.range, loaded.map(|a| a.0));
             }
+        }
+        if tell {
+            info!("AI HOLDS {:?} ({:?}) at {:.0}: unstaffed {}, out of range {}, can't bear {}, reloading {}, salvo {}", ai_entity, ship_type, dist_to_target, why[1], why[2], why[3], why[4], why[5]);
         }
     }
 }
