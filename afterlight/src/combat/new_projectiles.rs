@@ -942,6 +942,10 @@ pub const AI_BUILT_ROUND_SCALE: f32 = 5.0 / 6.0;
 /// disruptors, EMP pulses and plasma casters used to fire plain shells, so the
 /// factions built round them (the Collective, the Corpse Stars, the Shepherd)
 /// fought like everyone else.
+/// How far from a frag shell's hit its fragments reach the player's crew:
+/// about two blocks.
+pub const FRAG_REACH: f32 = 140.0;
+
 pub fn signature_round(module_type: ModuleType) -> Option<crate::combat::ammo_types::KineticAmmoType> {
     use crate::combat::ammo_types::KineticAmmoType;
     match module_type {
@@ -1059,6 +1063,7 @@ pub struct PlayerHitEffects<'w, 's> {
     breaches: MessageWriter<'w, crate::events::HullBreached>,
     depressurized: MessageWriter<'w, crate::events::RoomDepressurized>,
     notifications: MessageWriter<'w, ShowNotification>,
+    crew_wounds: MessageWriter<'w, crate::events::CrewDamaged>,
     room_map: Res<'w, crate::building::rooms::RoomMap>,
     debug: Res<'w, crate::debug::DebugTuning>,
     gunnery: Query<'w, 's, &'static mut crate::ai_ship::components::AiGunneryLog>,
@@ -1094,7 +1099,9 @@ impl PlayerHitEffects<'_, '_> {
             direction: Some(-travel),
             applied: true,
         });
-        if announce {
+        // Rounds the armour stopped dead (bite 0) still land here: thousands
+        // of "Hull hit! -0 damage" a fight, seen in autoplay 2026-11-23.
+        if announce && amount >= 1.0 {
             self.notifications.write(ShowNotification {
                 message: format!("Hull hit! -{:.0} damage", amount),
                 notification_type: NotificationType::Danger,
@@ -1187,7 +1194,7 @@ pub fn check_projectile_hits(
     mut ai_module_query: Query<(&mut Module, &GlobalTransform), Without<DestroyedModule>>,
     mut ai_hull_query: Query<(&mut HullSegment, &GlobalTransform), Without<crate::components::HullDestroyed>>,
     // Neutron shells hurt the people, not the plate — see AmmoHitBehavior::Irradiate.
-    mut crew_query: Query<&mut crate::components::CrewMember>,
+    mut crew_query: Query<(Entity, &mut crate::components::CrewMember, Option<&GlobalTransform>)>,
     owner_parent_query: Query<&ChildOf>,
     turret_bodies: Query<(), With<crate::combat::turret_deck::TurretBody>>,
     turret_layers: Query<(&GlobalTransform, &Children), With<crate::combat::turret_deck::TurretBody>>,
@@ -1693,6 +1700,37 @@ pub fn check_projectile_hits(
                             );
                             spawn_explosion(&mut commands, &fx, hit_pos, radius * IMPACT_BLAST_SCALE, Color::srgb(0.4, 0.2, 0.6));
                         }
+                        // Plate the round couldn't bite (bite 0) keeps the
+                        // fragments out: a frag-bodied CIWS or flak shell
+                        // used to dose the crew straight through intact
+                        // armour, and at CIWS rates emptied the player's
+                        // ship of 237 hands in 20 seconds with the hull at
+                        // 100% (autoplay, 2026-11-23).
+                        Irradiate { .. } if incoming <= 0.0 => {}
+                        Irradiate { dose, crew_affected } if is_player => {
+                            // Your crew stand somewhere: the fragments find
+                            // the hands nearest the hit, inside FRAG_REACH,
+                            // and the death names what did it.
+                            let mut near: Vec<(f32, Entity)> = children.iter()
+                                .filter_map(|c| crew_query.get(c).ok())
+                                .filter(|(_, m, _)| m.health > 0.0)
+                                .filter_map(|(e, _, gt)| gt.map(|gt| (gt.translation().truncate().distance(hit_pos), e)))
+                                .filter(|(d, _)| *d <= FRAG_REACH)
+                                .collect();
+                            near.sort_by(|a, b| a.0.total_cmp(&b.0));
+                            for (_, e) in near.into_iter().take(crew_affected as usize) {
+                                if let Ok((_, mut crew, _)) = crew_query.get_mut(e) {
+                                    let hurt = dose.min(crew.health);
+                                    crew.health -= hurt;
+                                    player_hits.crew_wounds.write(crate::events::CrewDamaged {
+                                        crew: e,
+                                        amount: hurt,
+                                        source: crate::events::CrewDamageSource::Explosion,
+                                    });
+                                }
+                            }
+                            spawn_hit_effect(&mut commands, hit_pos, Color::srgb(0.8, 1.0, 0.6), 90.0);
+                        }
                         Irradiate { dose, crew_affected } => {
                             // The hull is left alone on purpose. AI crew carry
                             // no Transform (see ai_ship::crew), so there is no
@@ -1702,7 +1740,7 @@ pub fn check_projectile_hits(
                             let mut left = crew_affected;
                             for child in children.iter() {
                                 if left == 0 { break; }
-                                if let Ok(mut crew) = crew_query.get_mut(child) {
+                                if let Ok((_, mut crew, _)) = crew_query.get_mut(child) {
                                     if crew.health <= 0.0 { continue; }
                                     crew.health = (crew.health - dose).max(0.0);
                                     left -= 1;
@@ -2109,6 +2147,7 @@ mod shared_hit_tests {
         app.add_message::<crate::events::ShipDamaged>();
         app.add_message::<crate::events::HullBreached>();
         app.add_message::<crate::events::RoomDepressurized>();
+        app.add_message::<crate::events::CrewDamaged>();
         app.add_message::<ShowNotification>();
         app.init_resource::<crate::diplomacy::FactionStanding>();
         app.add_systems(Update, check_projectile_hits);

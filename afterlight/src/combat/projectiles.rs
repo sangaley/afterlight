@@ -382,11 +382,11 @@ pub(super) fn projectile_collision(
                         applied: false,
                     });
 
-                    notifications.write(ShowNotification {
+                    if projectile.damage >= 1.0 { notifications.write(ShowNotification {
                         message: format!("Hull hit! -{:.0} damage", projectile.damage),
                         notification_type: NotificationType::Danger,
                         duration: 2.0,
-                    });
+                    }); }
 
                     commands.entity(proj_entity).try_despawn();
                     hit_player = true;
