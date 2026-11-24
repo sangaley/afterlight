@@ -155,7 +155,7 @@ fn shrunk(path: &'static str, px_a_block: usize) -> Option<&'static Shrunk> {
     made
 }
 
-fn image(w: usize, h: usize, rgba: Vec<u8>) -> Image {
+pub(crate) fn image(w: usize, h: usize, rgba: Vec<u8>) -> Image {
     Image::new(
         Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
         TextureDimension::D2,
@@ -415,6 +415,12 @@ pub fn painted_as(key: BakeKey) -> BakeKey {
 }
 
 impl RaftBakes {
+    /// Every hull picture painted so far, plain and sharp, with its world
+    /// size: what world::raft_look paints over.
+    pub(crate) fn pictures(&self) -> impl Iterator<Item = (BakeKey, &Handle<Image>, Vec2)> {
+        self.done.iter().chain(self.fine.iter()).map(|(k, (body, _, size))| (*k, body, *size))
+    }
+
     /// The sharp picture of `key`, if it's painted.
     pub fn fine_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
         self.fine.get(&painted_as(*key))

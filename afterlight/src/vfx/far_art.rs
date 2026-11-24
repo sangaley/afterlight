@@ -179,6 +179,11 @@ impl Mip {
         Self { w, h, step: step as f32, px }
     }
 
+    /// The size of the art it was shrunk from, in its pixels.
+    pub fn source_size(&self) -> Vec2 {
+        Vec2::new(self.w as f32 * self.step, self.h as f32 * self.step)
+    }
+
     /// A plain white square: a sprite with no art is its colour.
     pub fn white() -> Self {
         Self { w: 1, h: 1, step: 1.0, px: vec![LinearRgba::WHITE] }
