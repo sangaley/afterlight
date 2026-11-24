@@ -104,7 +104,13 @@ impl RaftLive {
                 let saved = roster.iter().find(|(s, _)| Some(*s) == m.slot);
                 match saved.and_then(|(_, d)| lib.get_key_value(d.as_str())) {
                     Some((key, _)) => {
-                        m.design = key;
+                        // Only if it still fits the berth: ships change size
+                        // between versions (the fleet rework doubled them),
+                        // and one too big sits across the arm. Otherwise the
+                        // berth keeps the ship it was laid out with.
+                        if let Some(fitted) = super::raft::refit(&m, key) {
+                            m = fitted;
+                        }
                         plan.moorings.push(m);
                     }
                     None => plan.spares.push(m),
@@ -754,6 +760,27 @@ mod tests {
         }
         // The empty berths are the rest.
         assert_eq!(again.berths(), first.berths());
+    }
+
+    /// A save from before ships grew names a ship too big for its berth
+    /// now: it isn't put there across the arm; the berth keeps its own.
+    #[test]
+    fn a_saved_ship_too_big_for_its_berth_stays_out() {
+        let plan = plan_raft(12, 30);
+        let lib = library();
+        let area = |k: &str| lib.get(k).map_or(0, |d| d.span().x * d.span().y);
+        let small = plan.moorings.iter().filter(|m| m.slot.is_some()).min_by_key(|m| area(m.design)).unwrap().clone();
+        let biggest = lib.keys().copied().max_by_key(|k| area(k)).unwrap();
+        assert!(refit(&small, biggest).is_none(), "the test needs a ship that doesn't fit");
+        let roster: Vec<(usize, String)> = plan.moorings.iter().filter_map(|m| m.slot.map(|s| (s, if s == small.slot.unwrap() { biggest.to_string() } else { m.design.to_string() }))).collect();
+        let again = RaftLive::new(plan_raft(12, 30), 12, Some(&roster));
+        let all: Vec<Rect> = again.plan.moorings.iter().filter_map(|m| outline(m, -CELL * 0.25)).collect();
+        for m in again.plan.moorings.iter().filter(|m| m.slot.is_some()) {
+            let r = outline(m, -CELL * 0.25).unwrap();
+            assert_eq!(all.iter().filter(|o| !o.intersect(r).is_empty()).count(), 1, "{} overlaps something", m.design);
+        }
+        let there = again.plan.moorings.iter().find(|m| m.slot == small.slot).unwrap();
+        assert_eq!(there.design, small.design);
     }
 
     #[test]

@@ -136,22 +136,127 @@ pub fn hub_octagon(r: i32, _layout: &mut StdRng) -> &'static str {
         let (cx, cy) = ((a.cos() * r as f32 * 0.78) as i32, (a.sin() * r as f32 * 0.78) as i32);
         for x in cx - 6..=cx + 6 {
             for y in cy - 6..=cy + 6 {
-                b.put(x, y, if (x + y).rem_euclid(4) == 0 { CARGO } else { QUARTERS }, true, rng.gen_bool(0.6), false);
+                // A tower: plate round its foot, one kind of room inside.
+                if (x - cx).abs() == 6 || (y - cy).abs() == 6 {
+                    b.part(x, y, ModuleType::ArmorPlate, false);
+                } else {
+                    b.part(x, y, if k % 2 == 0 { ModuleType::BasicQuarters } else { ModuleType::SupplyCrates }, rng.gen_bool(0.6));
+                }
                 b.lift(x, y, 0.75);
             }
         }
     }
+    dress_hull(&mut b, rng);
     for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1)] {
         for t in r - 4..r + 8 {
             for w in -12..=12 {
                 let (x, y) = if dx != 0 { (dx * t, w) } else { (w, dy * t) };
-                b.put(x, y, if w.abs() < 9 { DOCK } else { STEEL }, w.abs() < 9, rng.gen_bool(0.2), w.abs() == 12);
-                b.lift(x, y, 0.15);
+                collar_block(&mut b, x, y, w, rng);
             }
         }
     }
     let d = b.done();
     register(key, || d)
+}
+
+/// A docking collar's block, `w` from its middle line: plate on its sides,
+/// a hallway down the middle, berths either side of it.
+fn collar_block(b: &mut Builder, x: i32, y: i32, w: i32, rng: &mut StdRng) {
+    if w.abs() == 12 {
+        b.part(x, y, ModuleType::ArmorPlate, false);
+        if let Some(c) = b.cells.get_mut(&IVec2::new(x, y)) {
+            c.outer = true;
+        }
+    } else if w.abs() <= 1 {
+        b.put(x, y, HALL, false, false, false);
+    } else if w.abs() < 9 {
+        b.put(x, y, DOCK, true, rng.gen_bool(0.2), false);
+    } else {
+        b.put(x, y, TITANIUM, false, false, true);
+    }
+    b.lift(x, y, 0.15);
+}
+
+/// Build what's laid out so far like a ship's hull (the playtester asked
+/// for the hub to read as blocks with an outer shell, 2026-11-24): plate
+/// round the whole rim with floodlights and docking ports set in it, a
+/// titanium skin two blocks deep behind it, and the open deck inside split
+/// into bays by bulkhead frames, most bays a room the roof raises over as it
+/// does a ship's. What's already a room, a hallway or lifted stays.
+fn dress_hull(b: &mut Builder, rng: &mut StdRng) {
+    use std::collections::VecDeque;
+    use ModuleType::*;
+    const BAY: i32 = 10;
+    const ROOMS: [(ModuleType, bool); 9] = [
+        (BasicQuarters, true),
+        (SupplyCrates, true),
+        (OxygenScrubber, true),
+        (BatteryBank, false),
+        (MedBay, true),
+        (RepairBay, true),
+        (FuelTank, false),
+        (BasicQuarters, true),
+        (SupplyCrates, false),
+    ];
+    let n4 = [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y];
+    // How deep in from the rim each block is.
+    let mut depth: HashMap<IVec2, i32> = HashMap::new();
+    let mut queue = VecDeque::new();
+    let mut cells: Vec<IVec2> = b.cells.keys().copied().collect();
+    cells.sort_by_key(|c| (c.y, c.x));
+    for at in &cells {
+        if n4.iter().any(|d| !b.cells.contains_key(&(*at + *d))) {
+            depth.insert(*at, 0);
+            queue.push_back(*at);
+        }
+    }
+    while let Some(at) = queue.pop_front() {
+        let d = depth[&at];
+        for n in n4 {
+            let next = at + n;
+            if b.cells.contains_key(&next) && !depth.contains_key(&next) {
+                depth.insert(next, d + 1);
+                queue.push_back(next);
+            }
+        }
+    }
+    // A room (or bare deck) for each bay, the same whichever block asks.
+    let mut bays: HashMap<IVec2, Option<(ModuleType, bool)>> = HashMap::new();
+    let mut rim = 0u32;
+    for at in cells {
+        let c = &b.cells[&at];
+        if c.module || c.lift > 0.0 {
+            continue;
+        }
+        let is_hall = c.sprite == HALL;
+        let d = depth[&at];
+        let (x, y) = (at.x, at.y);
+        if d == 0 {
+            rim += 1;
+            match rim % 29 {
+                0 => b.part(x, y, Floodlight, true),
+                14 => b.part(x, y, DockingPort, false),
+                _ => b.part(x, y, ArmorPlate, false),
+            }
+            if let Some(c) = b.cells.get_mut(&at) {
+                c.outer = true;
+            }
+        } else if is_hall {
+            continue;
+        } else if d <= 2 {
+            b.put(x, y, TITANIUM, false, false, true);
+        } else if x.rem_euclid(BAY) == 0 || y.rem_euclid(BAY) == 0 {
+            // A bulkhead frame between bays.
+            b.put(x, y, TITANIUM, false, false, false);
+        } else {
+            let bay = IVec2::new(x.div_euclid(BAY), y.div_euclid(BAY));
+            let room = *bays.entry(bay).or_insert_with(|| (!rng.gen_bool(0.2)).then(|| ROOMS[rng.gen_range(0..ROOMS.len())]));
+            match room {
+                Some((kind, lit)) => b.part(x, y, kind, lit),
+                None => b.put(x, y, STEEL, false, false, false),
+            }
+        }
+    }
 }
 
 /// The shapes a hub can take.
@@ -245,6 +350,7 @@ pub fn hub(kind: HubKind, r: i32, layout: &mut StdRng) -> &'static str {
             }
         }
     }
+    dress_hull(&mut b, rng);
     // Docking collars where the arms go out (east and west at the flats;
     // the spindle's north and south ones at its ends).
     for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1)] {
@@ -252,8 +358,7 @@ pub fn hub(kind: HubKind, r: i32, layout: &mut StdRng) -> &'static str {
         for t in at - 4..at + 8 {
             for w in -12..=12 {
                 let (x, y) = if dx != 0 { (dx * t, w) } else { (w, dy * t) };
-                b.put(x, y, if w.abs() < 9 { DOCK } else { STEEL }, w.abs() < 9, rng.gen_bool(0.2), w.abs() == 12);
-                b.lift(x, y, 0.15);
+                collar_block(&mut b, x, y, w, rng);
             }
         }
         // Make sure the collar reaches the hub's body (a wheel's rim is round).
@@ -261,7 +366,15 @@ pub fn hub(kind: HubKind, r: i32, layout: &mut StdRng) -> &'static str {
             for w in -3..=3 {
                 let (x, y) = if dx != 0 { (dx * t, w) } else { (w, dy * t) };
                 if !b.cells.contains_key(&IVec2::new(x, y)) {
-                    b.put(x, y, HALL, false, false, false);
+                    // A walkway out to it, plated along its sides.
+                    if w.abs() == 3 {
+                        b.part(x, y, ModuleType::ArmorPlate, false);
+                        if let Some(c) = b.cells.get_mut(&IVec2::new(x, y)) {
+                            c.outer = true;
+                        }
+                    } else {
+                        b.put(x, y, HALL, false, false, false);
+                    }
                 }
             }
         }
@@ -693,6 +806,22 @@ mod tests {
                 }
             }
             assert_eq!(seen.len(), cells.len(), "{kind:?} hub comes apart");
+        }
+    }
+
+    /// A hub is built like a ship's hull: an armoured shell round its rim
+    /// and rooms inside, not a bare deck.
+    #[test]
+    fn every_hub_has_a_shell_and_rooms() {
+        let mut rng = StdRng::seed_from_u64(3);
+        for kind in [HubKind::Octagon, HubKind::Wheel, HubKind::Hex, HubKind::Spindle] {
+            let d = get(hub(kind, 70, &mut rng)).unwrap();
+            let at: std::collections::HashSet<IVec2> = d.cells.iter().map(|c| c.at).collect();
+            let rim: Vec<&DesignCell> = d.cells.iter().filter(|c| [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y].iter().any(|n| !at.contains(&(c.at + *n)))).collect();
+            let shell = rim.iter().filter(|c| c.outer || c.kind.is_some()).count();
+            assert!(shell as f32 > rim.len() as f32 * 0.8, "{kind:?}: {shell} of {} rim blocks are shell", rim.len());
+            let rooms = d.cells.iter().filter(|c| c.module && c.kind != Some(ModuleType::ArmorPlate)).count();
+            assert!(rooms as f32 > d.cells.len() as f32 * 0.2, "{kind:?}: {rooms} room blocks of {}", d.cells.len());
         }
     }
 
