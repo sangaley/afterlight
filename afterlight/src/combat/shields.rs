@@ -184,29 +184,6 @@ pub fn refresh_shield_extents(
     built.retain(|e| shields.contains(e));
 }
 
-/// The grid cells the ship occupies (module footprints + hull segments). Cell
-/// (gx,gy) maps to ship-local (gx*66, gy*66-33), the same layout spawner.rs and
-/// decompression.rs use. Drives the shield-skin perimeter trace.
-fn ship_cells(
-    ship: Entity,
-    modules: &Query<(&Module, &ChildOf)>,
-    hulls: &Query<(&HullSegment, &ChildOf)>,
-) -> HashSet<IVec2> {
-    let mut cells = HashSet::new();
-    for (m, p) in modules.iter() {
-        if p.parent() != ship { continue; }
-        for dx in 0..m.size.x.max(1) {
-            for dy in 0..m.size.y.max(1) {
-                cells.insert(m.grid_position + IVec2::new(dx, dy));
-            }
-        }
-    }
-    for (h, p) in hulls.iter() {
-        if p.parent() == ship { cells.insert(h.grid_position); }
-    }
-    cells
-}
-
 /// Separable box blur (clamped edges). Three passes approximate a Gaussian —
 /// enough to erase the block-grid bumps so the shield contour reads as a single
 /// smooth curve rather than a stepped outline.
@@ -302,20 +279,6 @@ fn build_shield_skin(cells: &HashSet<IVec2>) -> Option<BuiltSkin> {
     );
     let lit = base_a.iter().enumerate().filter(|(_, a)| **a > 0).map(|(i, _)| i as u32).collect();
     Some((img, (tmin + tmax) * 0.5, world, base_a, w, h, lit))
-}
-
-/// Spawn the shield skin as a single child sprite carrying the generated
-/// distance-field texture. Marked ShieldBubble so `update_shields` drives its
-/// alpha/flash exactly like the old bubble.
-fn spawn_shield_skin(
-    commands: &mut Commands,
-    images: &mut Assets<Image>,
-    owner: Entity,
-    cells: &HashSet<IVec2>,
-    is_player: bool,
-) {
-    let Some(built) = build_shield_skin(cells) else { return };
-    spawn_built_skin(commands, images, owner, built, is_player);
 }
 
 /// What build_shield_skin makes: (texture, local centre, local size, base
@@ -505,8 +468,8 @@ pub fn refresh_ai_shield_skins(
     }
     let mut next = None;
     for (ship, children) in ships.iter() {
-        // A ship just met keeps the skin attach_ai_shields gave it.
-        let d = drawn.entry(ship).or_insert((false, now, 0));
+        // A ship just met has no outline yet: due at once.
+        let d = drawn.entry(ship).or_insert((true, now - 1.0, 0));
         if children.is_changed() && !children.is_added() {
             d.0 = true;
         }
@@ -547,11 +510,8 @@ pub fn refresh_ai_shield_skins(
 /// Attach shields to AI ships as they spawn, sized by faction.
 pub fn attach_ai_shields(
     mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
     ai_query: Query<(Entity, &AiShipType, &Children), (With<AiShip>, Without<ShipShield>)>,
     transform_query: Query<(&Transform, &ChildOf), LiveBlockFilter>,
-    module_query: Query<(&Module, &ChildOf)>,
-    hull_query: Query<(&HullSegment, &ChildOf)>,
 ) {
     // AFTERLIGHT_MOVETEST_ENEMY: zero-HP shield on the test dummy. The shield
     // component is still what defines the ship's hittable radius/center in
@@ -585,7 +545,11 @@ pub fn attach_ai_shields(
             };
             base * AI_SHIELD_HP_MULT
         };
-        let (center, radius) = ship_extent(entity, &transform_query);
+        // From the ship's own blocks: scanning every block in the world for
+        // each new ship cost a capital arrival tens of milliseconds.
+        let (center, radius) = extent_of(
+            children.iter().filter_map(|c| transform_query.get(c).ok()).map(|(t, _)| t.translation.truncate()),
+        );
         // try_: the ship can be filed away or destroyed the frame this is queued.
         commands.entity(entity).try_insert(ShipShield {
             current: max,
@@ -604,10 +568,9 @@ pub fn attach_ai_shields(
             arc_traverse: AI_ARC_TRAVERSE,
             arc_active: false,
         });
-        // Same silhouette skin as the player (built once — AI ships don't get
-        // rebuilt in a hangar; a destroyed one just leaves its skin slightly wide).
-        let cells = ship_cells(entity, &module_query, &hull_query);
-        spawn_shield_skin(&mut commands, &mut images, entity, &cells, false);
+        // Its glowing outline is drawn in the background by
+        // refresh_ai_shield_skins. Drawn here, on the frame, it took 60-70 ms
+        // when a capital's ships and stations all arrived at once.
     }
 }
 
@@ -1012,5 +975,47 @@ mod blur_tests {
                 assert!((a - b).abs() < 1e-4, "{w}x{h} r={r}: {a} vs {b}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod ai_skin_tests {
+    use super::*;
+    use crate::ai_ship::components::{AiShip, AiShipType};
+
+    /// A ship met gets its shield at once, its outline from the background
+    /// (not built on the frame it arrives), and the outline hugs only its
+    /// own blocks: another ship's blocks don't stretch its hit circle.
+    #[test]
+    fn a_new_ai_ship_gets_its_shield_now_and_its_outline_from_the_background() {
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>();
+        app.init_resource::<Time<Real>>();
+        app.add_systems(Update, (attach_ai_shields, refresh_ai_shield_skins).chain());
+        let ship = app.world_mut().spawn((AiShip, AiShipType::GildedThrone, Transform::default(), Visibility::default())).id();
+        for x in 0..3 {
+            app.world_mut().spawn((HullSegment { grid_position: IVec2::new(x, 0), ..default() }, Transform::from_xyz(x as f32 * 66.0, 0.0, 0.0), ChildOf(ship)));
+        }
+        // Someone else's block, far away.
+        let other = app.world_mut().spawn((Transform::default(), Visibility::default())).id();
+        app.world_mut().spawn((HullSegment::default(), Transform::from_xyz(9000.0, 0.0, 0.0), ChildOf(other)));
+
+        app.update();
+        let shield = app.world().get::<ShipShield>(ship).expect("shield on the first frame");
+        assert!(shield.radius < 500.0, "radius {} took in another ship's block", shield.radius);
+        let skins = |app: &mut App| {
+            let mut q = app.world_mut().query_filtered::<&ChildOf, With<ShieldBubble>>();
+            q.iter(app.world()).filter(|p| p.parent() == ship).count()
+        };
+        assert_eq!(skins(&mut app), 0, "the outline was drawn on the frame the ship arrived");
+        for _ in 0..200 {
+            app.update();
+            if skins(&mut app) > 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(skins(&mut app), 1, "no outline came back from the background");
     }
 }
