@@ -116,12 +116,31 @@ pub fn palette(seed: u64) -> Palette {
 }
 
 /// A faction ship's palette: the faction's own colour on the hull and its
-/// accent first, so a ship still says whose it is, with two accents more
-/// from the seed's palette.
+/// accent first, so a ship still says whose it is, with two accents more.
+///
+/// The two more are tones of the faction's own two colours, never a hue of
+/// their own: the playtester found the old picks (lime, coral, magenta from
+/// the ready-made palettes) fought the faction's colours. Ships still differ
+/// by which tones the seed picks and by the decals' shapes.
 pub fn faction_palette(seed: u64, base: [u8; 3], accent: [u8; 3]) -> Palette {
-    let p = palette(seed);
     let darker = [(base[0] as f32 * 0.5) as u8, (base[1] as f32 * 0.5) as u8, (base[2] as f32 * 0.52) as u8];
-    Palette { main: base, second: darker, accents: [accent, p.accents[1], p.accents[2]] }
+    let tones = faction_tones(base, accent);
+    let mut rng = Rng::new(seed.wrapping_mul(31));
+    let n = tones.len() as i32;
+    let first = rng.below(n) as usize;
+    let second = (first + 1 + rng.below(n - 1) as usize) % tones.len();
+    Palette { main: base, second: darker, accents: [accent, tones[first], tones[second]] }
+}
+
+/// The colours a faction's decals may use besides its accent: its accent
+/// deepened and paled, its hull colour lifted, and the two mixed.
+pub fn faction_tones(base: [u8; 3], accent: [u8; 3]) -> [[u8; 3]; 4] {
+    let mix = |a: [u8; 3], b: [u8; 3], t: f32| {
+        [0, 1, 2].map(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t).round().clamp(0.0, 255.0) as u8)
+    };
+    const WHITE: [u8; 3] = [236, 234, 228];
+    const BLACK: [u8; 3] = [18, 18, 20];
+    [mix(accent, BLACK, 0.35), mix(accent, WHITE, 0.4), mix(base, WHITE, 0.45), mix(base, accent, 0.5)]
 }
 
 /// The decals of a seed's livery in `palette`, laid over the ship's `cells`
