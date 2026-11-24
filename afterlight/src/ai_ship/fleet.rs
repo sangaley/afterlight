@@ -251,11 +251,12 @@ fn pick_any(
 pub type Hull = (AiShipType, Option<&'static str>);
 
 /// Most blocks a battle group may total. The live budget
-/// (simulation::MAX_LIVE_AI_BLOCKS, 14,000) brings a fleet on screen whole or
+/// (simulation::MAX_LIVE_AI_BLOCKS, 20,000) brings a fleet on screen whole or
 /// not at all, and the reworked fleet's capitals run 5-10k blocks: with two to
 /// four line escorts most battle groups came to 12-20k, more than the whole
-/// budget, so they could only appear with nothing else about and capitals
-/// were rarely seen. This keeps a group to what the old fleet fielded.
+/// 14,000 budget of the time, so they could only appear with nothing else
+/// about and capitals were rarely seen. This keeps a group to what the old
+/// fleet fielded, with room beside it for the ships already about.
 pub const BATTLE_GROUP_BLOCKS: usize = 12_000;
 
 /// Room a scout needs: the reworked fleet's run 450-800 blocks.

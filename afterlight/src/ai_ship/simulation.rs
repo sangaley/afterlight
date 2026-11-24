@@ -28,7 +28,13 @@ pub const RENDER_DISTANCE: f32 = 48_000.0;
 /// small ones. 14,000 fits one with room to spare (measured 2026-11-16 on an
 /// M2: about 1.1 ms of simulation a frame per 1,000 live AI blocks), and a
 /// nearer fleet now makes room by sending far ships back (EVICT_CLEAR).
-const MAX_LIVE_AI_BLOCKS: usize = 14_000;
+///
+/// 20,000 since 2026-11-23: the reworked fleet's civilians and line ships run
+/// 2-4k blocks, and six of them round Haven filled 14,000, so no battle group
+/// (fleet::BATTLE_GROUP_BLOCKS, 12,000) came on screen in four 40-minute
+/// autoplay runs. The perf work cut the cost to about 0.3 ms a frame per
+/// 1,000 live AI blocks (16.7k in a fleet fight: 8.1 ms of game work in all).
+const MAX_LIVE_AI_BLOCKS: usize = 20_000;
 
 /// A ship at least this far from you, and farther than a fleet waiting to
 /// come on screen, goes back into the simulation to make room for it: past
