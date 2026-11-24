@@ -385,7 +385,7 @@ mod tests {
     fn an_escort_sits_behind_you() {
         let mut sim = WorldSimulation::default();
         let mut rng = rand::thread_rng();
-        let hulls = fleet::hulls_of(AiShipType::TerranHegemony, &[crate::ai_ship::roster::intern("warden")]);
+        let hulls = fleet::hulls_of(AiShipType::TerranHegemony, &[crate::ai_ship::roster::intern("halberd")]);
         let id = send_fleet(&mut sim, AiShipType::TerranHegemony, FleetKind::Patrol, &hulls, 1, Vec2::ZERO, 12_000.0, Mission::Escort, &mut rng);
         let ship = sim.ships.iter().find(|s| s.fleet == id).unwrap();
         assert!(ship.slot.x <= -ESCORT_BEHIND);

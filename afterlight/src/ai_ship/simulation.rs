@@ -417,6 +417,9 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
                     break;
                 }
             }
+            // Out of tries: carried on outward until it's clear, never set
+            // down through a formation.
+            let anchor = clear_spot(anchor, Vec2::from_angle(angle), reach, &placed_fleets);
             placed_fleets.push((anchor, reach));
             let (mut fleet, members) = super::fleet::new_fleet(
                 faction, kind, &classes, system.id, anchor, home, template.radius, &mut rng,
@@ -460,7 +463,12 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
         let flier = faction.ally().filter(|_| faction.is_trading()).unwrap_or(faction);
         let mut home_held = super::fleet::Held::new();
         if let Some(hulls) = super::fleet::compose(flier, super::fleet::FleetKind::BattleGroup, &mut rng, &mut home_held) {
-            let at = holdings[0] + Vec2::new(0.0, 6_000.0);
+            // Clear of the fleets already about, like any other: the reworked
+            // capitals are big enough that 6 km out often sat in one.
+            let reach = hulls.iter().map(|&(f, c)| super::spawner::design_extent(f, c)).fold(0.0_f32, f32::max)
+                * (hulls.len() as f32 + 1.0)
+                + 1_000.0;
+            let at = clear_spot(holdings[0] + Vec2::new(0.0, 6_000.0), Vec2::Y, reach, &placed_fleets);
             let (mut fleet, members) = super::fleet::new_fleet(
                 faction, super::fleet::FleetKind::StationGuard, &hulls, system.id, at, holdings[0], HOME_FLEET_RADIUS, &mut rng,
             );
@@ -583,6 +591,19 @@ fn faction_holdings(system: &crate::celestial::resources::StarSystemDef, rng: &m
 
 /// `pos`, pushed straight out from any station it's within
 /// `STATION_PICKET.start` of.
+/// `at`, or the first spot past it along `dir` where a fleet of `reach` sits
+/// clear of every fleet already placed.
+fn clear_spot(mut at: Vec2, dir: Vec2, reach: f32, placed: &[(Vec2, f32)]) -> Vec2 {
+    let dir = dir.normalize_or(Vec2::Y);
+    for _ in 0..400 {
+        if placed.iter().all(|&(c, r)| c.distance(at) > r + reach) {
+            break;
+        }
+        at += dir * 1_000.0;
+    }
+    at
+}
+
 fn clear_of_stations(mut pos: Vec2, stations: &[Vec2]) -> Vec2 {
     // A few passes: a push off one station can, rarely, land near the other.
     for _ in 0..4 {
