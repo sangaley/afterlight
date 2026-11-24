@@ -73,6 +73,39 @@ pub struct ShipLooks {
     since_stage: u32,
 }
 
+/// A job for one of the two background workers.
+type Job = Box<dyn FnOnce() + Send>;
+
+/// One long-lived thread working through its jobs in turn. Painting and
+/// reading used to get a thread each per picture; a cold capital started
+/// hundreds at once, and they took the cores from the game (arrival ran
+/// 1.6x rougher, perf session 2026-11-24). Two threads leave the rest free.
+fn worker(name: &str) -> std::sync::mpsc::Sender<Job> {
+    let (tx, rx) = std::sync::mpsc::channel::<Job>();
+    let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
+        for job in rx {
+            job();
+        }
+    });
+    tx
+}
+
+fn painter() -> &'static Mutex<std::sync::mpsc::Sender<Job>> {
+    static P: OnceLock<Mutex<std::sync::mpsc::Sender<Job>>> = OnceLock::new();
+    P.get_or_init(|| Mutex::new(worker("station-look-paint")))
+}
+
+fn reader() -> &'static Mutex<std::sync::mpsc::Sender<Job>> {
+    static R: OnceLock<Mutex<std::sync::mpsc::Sender<Job>>> = OnceLock::new();
+    R.get_or_init(|| Mutex::new(worker("station-look-read")))
+}
+
+fn send(to: &Mutex<std::sync::mpsc::Sender<Job>>, job: Job) {
+    if let Ok(tx) = to.lock() {
+        let _ = tx.send(job);
+    }
+}
+
 /// Pictures painted once are kept here and read back on later visits, so a
 /// city only lays out its stand-ins the first time it's ever seen: even
 /// spaced out, laying a capital's worth ran at ~20 fps for 9 s on arrival
@@ -313,7 +346,7 @@ pub fn paint_ship_looks(
         if let Some(path) = path.clone().filter(|p| p.exists()) {
             looks.painted.insert(body.id());
             let (out, missed) = (looks.done.clone(), looks.missed.clone());
-            std::thread::spawn(move || match read_cached(&path, w, h) {
+            send(reader(), Box::new(move || match read_cached(&path, w, h) {
                 Some(bytes) => {
                     if let Ok(mut d) = out.lock() {
                         d.push((body, super::raft_art::image(w as usize, h as usize, bytes)));
@@ -325,7 +358,7 @@ pub fn paint_ship_looks(
                         m.push(body.id());
                     }
                 }
-            });
+            }));
             continue;
         }
         let Some(stamps) = looks.ready.get(&look).cloned() else {
@@ -336,7 +369,10 @@ pub fn paint_ship_looks(
         };
         looks.painted.insert(body.id());
         let out = looks.done.clone();
-        std::thread::spawn(move || {
+        // Only a moored ship is seen in other turns (traffic, another
+        // berth); a station's own arms and sections stay as built.
+        let all_turns = library().contains_key(key.0);
+        send(painter(), Box::new(move || {
             let bytes = paint(&stamps, key.1, w, h, size);
             let keep = path.is_some();
             if let Some(path) = path {
@@ -348,7 +384,7 @@ pub fn paint_ship_looks(
             // Its other three turns too, while the stamps are here: a ship
             // seen once in one turn is often moored in another next visit,
             // and a turn missing from the cache costs a whole stand-in.
-            if keep {
+            if keep && all_turns {
                 for q in (0..4u8).filter(|q| *q != key.1) {
                     let odd = (q + 4 - key.1) % 2 == 1;
                     let (w2, h2, size2) = if odd { (h, w, Vec2::new(size.y, size.x)) } else { (w, h, size) };
@@ -358,7 +394,7 @@ pub fn paint_ship_looks(
                     }
                 }
             }
-        });
+        }));
     }
     // Pictures let go (sharp ones the camera left) are forgotten.
     let live: HashSet<AssetId<Image>> = bakes.pictures().map(|(_, h, _)| h.id()).collect();
