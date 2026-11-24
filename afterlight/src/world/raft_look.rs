@@ -66,8 +66,12 @@ pub struct ShipLooks {
     /// Pictures already painted over (or being), by image.
     painted: HashSet<AssetId<Image>>,
     done: Arc<Mutex<Vec<(Handle<Image>, Image)>>>,
-    /// Pictures whose cached copy wouldn't read: painted again.
+    /// Pictures the reader found no cached copy of.
     missed: Arc<Mutex<Vec<AssetId<Image>>>>,
+    /// ...which are painted from their look when it's ready.
+    uncached: HashSet<AssetId<Image>>,
+    /// Frames counted, for the occasional tidy.
+    frame: u32,
     mips: HashMap<AssetId<Image>, Arc<Mip>>,
     /// Frames since the last stand-in was laid out.
     since_stage: u32,
@@ -83,12 +87,32 @@ type Job = Box<dyn FnOnce() + Send>;
 fn worker(name: &str) -> std::sync::mpsc::Sender<Job> {
     let (tx, rx) = std::sync::mpsc::channel::<Job>();
     let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
+        lower_priority();
         for job in rx {
             job();
         }
     });
     tx
 }
+
+/// Run this thread below the game's own: on macOS, utility QoS puts it on
+/// the efficiency cores and makes it yield to Bevy's task pool, which the
+/// main thread waits on (perf session: a cold arrival's slow frames were
+/// the main thread in pthread_cond_wait while the painter held a P-core).
+#[cfg(target_os = "macos")]
+fn lower_priority() {
+    extern "C" {
+        fn pthread_set_qos_class_self_np(qos_class: u32, relative_priority: i32) -> i32;
+    }
+    const QOS_CLASS_UTILITY: u32 = 0x11;
+    // SAFETY: sets this thread's own QoS class; no pointers, no state.
+    unsafe {
+        pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lower_priority() {}
 
 fn painter() -> &'static Mutex<std::sync::mpsc::Sender<Job>> {
     static P: OnceLock<Mutex<std::sync::mpsc::Sender<Job>>> = OnceLock::new();
@@ -113,7 +137,7 @@ fn send(to: &Mutex<std::sync::mpsc::Sender<Job>>, job: Job) {
 const CACHE_DIR: &str = "cache/station_looks";
 /// Bump when what a look paints changes (roof, paint, stamps), so pictures
 /// painted the old way aren't reused.
-const LOOK_VERSION: u32 = 1;
+const LOOK_VERSION: u32 = 2;
 /// Pictures bigger than this (the sharp close-ups) aren't kept.
 const CACHE_MAX_PX: u32 = 4_000_000;
 
@@ -124,13 +148,27 @@ fn cache_path(key: BakeKey, w: u32, h: u32) -> Option<std::path::PathBuf> {
     if w * h > CACHE_MAX_PX {
         return None;
     }
-    let d = design(key.0)?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    (LOOK_VERSION, key.0, key.1, key.2, w, h, crate::vfx::ship_roof::cosmo()).hash(&mut hasher);
-    for c in &d.cells {
-        (c.at.x, c.at.y, c.sprite, c.part, c.outer, c.module, format!("{:?}", c.kind)).hash(&mut hasher);
-    }
+    (LOOK_VERSION, key.0, key.1, key.2, w, h, crate::vfx::ship_roof::cosmo(), design_hash(key.0)?).hash(&mut hasher);
     Some(std::path::PathBuf::from(format!("{CACHE_DIR}/{:016x}.png", hasher.finish())))
+}
+
+/// A hash of everything in a design's cells, worked out once a design.
+fn design_hash(key: &'static str) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    static MEMO: OnceLock<Mutex<HashMap<&'static str, u64>>> = OnceLock::new();
+    let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(h) = memo.lock().ok()?.get(key) {
+        return Some(*h);
+    }
+    let d = design(key)?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for c in &d.cells {
+        (c.at.x, c.at.y, c.sprite, c.part, c.outer, c.module, c.kind).hash(&mut hasher);
+    }
+    let h = hasher.finish();
+    memo.lock().ok()?.insert(key, h);
+    Some(h)
 }
 
 /// Most the cache may hold; past it, the pictures least recently written go.
@@ -200,6 +238,8 @@ const MAX_WAIT: u32 = 240;
 /// worth at one a frame made arriving at the Gilded capital run at 5-10 fps
 /// for seconds (perf session, 2026-11-24). The old pictures show meanwhile.
 const STAGE_EVERY: u32 = 4;
+/// Finished pictures put in a frame.
+const UPLOADS_PER_FRAME: usize = 3;
 const MAX_STAGED: usize = 2;
 
 /// The paint a look is laid out in: a ship in its own faction's, the
@@ -319,8 +359,16 @@ pub fn paint_ship_looks(
     prune_cache_once();
     let looks = &mut *looks;
 
-    // Pictures painted on the threads go in.
-    let finished: Vec<(Handle<Image>, Image)> = looks.done.lock().map(|mut d| d.drain(..).collect()).unwrap_or_default();
+    // Pictures painted on the threads go in, a few a frame: each is a GPU
+    // upload, and a burst of them made slow frames of their own.
+    let finished: Vec<(Handle<Image>, Image)> = looks
+        .done
+        .lock()
+        .map(|mut d| {
+            let n = d.len().min(UPLOADS_PER_FRAME);
+            d.drain(..n).collect()
+        })
+        .unwrap_or_default();
     for (handle, image) in finished {
         let _ = images.insert(&handle, image);
     }
@@ -337,30 +385,34 @@ pub fn paint_ship_looks(
     let missed: Vec<AssetId<Image>> = looks.missed.lock().map(|mut m| m.drain(..).collect()).unwrap_or_default();
     for id in missed {
         looks.painted.remove(&id);
+        looks.uncached.insert(id);
     }
     for (key, body, size, look) in want {
         let Some(old) = images.get(&body) else { continue };
         let (w, h) = (old.width(), old.height());
-        let path = cache_path(key, w, h);
-        // Painted on an earlier visit: read back, no stand-in.
-        if let Some(path) = path.clone().filter(|p| p.exists()) {
+        // Not looked for on disk yet: the reader looks (off the frame), and
+        // reads it back if it's there.
+        if !looks.uncached.contains(&body.id()) {
             looks.painted.insert(body.id());
             let (out, missed) = (looks.done.clone(), looks.missed.clone());
-            send(reader(), Box::new(move || match read_cached(&path, w, h) {
-                Some(bytes) => {
-                    if let Ok(mut d) = out.lock() {
-                        d.push((body, super::raft_art::image(w as usize, h as usize, bytes)));
+            send(reader(), Box::new(move || {
+                let path = cache_path(key, w, h);
+                match path.as_ref().filter(|p| p.exists()).and_then(|p| read_cached(p, w, h)) {
+                    Some(bytes) => {
+                        if let Ok(mut d) = out.lock() {
+                            d.push((body, super::raft_art::image(w as usize, h as usize, bytes)));
+                        }
                     }
-                }
-                None => {
-                    let _ = std::fs::remove_file(&path);
-                    if let Ok(mut m) = missed.lock() {
-                        m.push(body.id());
+                    None => {
+                        if let Ok(mut m) = missed.lock() {
+                            m.push(body.id());
+                        }
                     }
                 }
             }));
             continue;
         }
+        // Not on disk: painted from its look, once that's laid out.
         let Some(stamps) = looks.ready.get(&look).cloned() else {
             if looks.queued.insert(look) {
                 looks.queue.push_back(look);
@@ -368,11 +420,13 @@ pub fn paint_ship_looks(
             continue;
         };
         looks.painted.insert(body.id());
+        looks.uncached.remove(&body.id());
         let out = looks.done.clone();
         // Only a moored ship is seen in other turns (traffic, another
         // berth); a station's own arms and sections stay as built.
         let all_turns = library().contains_key(key.0);
         send(painter(), Box::new(move || {
+            let path = cache_path(key, w, h);
             let bytes = paint(&stamps, key.1, w, h, size);
             let keep = path.is_some();
             if let Some(path) = path {
@@ -396,9 +450,13 @@ pub fn paint_ship_looks(
             }
         }));
     }
-    // Pictures let go (sharp ones the camera left) are forgotten.
-    let live: HashSet<AssetId<Image>> = bakes.pictures().map(|(_, h, _)| h.id()).collect();
-    looks.painted.retain(|id| live.contains(id));
+    // Pictures let go (sharp ones the camera left) are forgotten, now and then.
+    looks.frame = looks.frame.wrapping_add(1);
+    if looks.frame % 60 == 0 {
+        let live: HashSet<AssetId<Image>> = bakes.pictures().map(|(_, h, _)| h.id()).collect();
+        looks.painted.retain(|id| live.contains(id));
+        looks.uncached.retain(|id| live.contains(id));
+    }
 
     // A new stand-in every few frames, a couple at a time.
     looks.since_stage += 1;
