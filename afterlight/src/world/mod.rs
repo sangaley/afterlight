@@ -16,6 +16,7 @@ pub mod sections;
 pub mod station_style;
 pub mod starport_raft;
 pub mod raft_detail;
+pub mod raft_look;
 pub mod station_types;
 
 #[allow(unused_imports)]
@@ -38,6 +39,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<MarketEvents>()
             .init_resource::<home_base::SystemStations>()
             .init_resource::<raft_art::RaftBakes>()
+            .init_resource::<raft_look::ShipLooks>()
             .init_resource::<raft_life::HavenRoster>()
             .add_systems(Update, raft_life::forget_roster_on_new_run)
             .add_plugins(docking::DockingPlugin)
@@ -52,6 +54,7 @@ impl Plugin for WorldPlugin {
                     home_base::sync_station_entities,
                     home_base::pulse_station_beacons,
                     raft_art::apply_raft_bakes,
+                    raft_look::paint_ship_looks,
                     raft_detail::update_station_detail,
                     raft_life::raft_roster,
                     raft_life::raft_motion,
