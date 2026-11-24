@@ -665,18 +665,23 @@ impl WorldSimulation {
     /// system the player has never been near would be an unreachable
     /// bounty with no way to even see it on the current map.
     pub fn tag_bounty_target(&mut self, faction: AiShipType, active_systems: &[u32], rng: &mut impl rand::Rng) -> Option<(u32, f32)> {
-        let unspawned: Vec<usize> = self.ships.iter().enumerate()
-            .filter(|(_, s)| s.faction == faction && s.behavior != SimBehavior::Dead && s.bounty_id.is_none() && !s.spawned && active_systems.contains(&s.system_id))
+        self.tag_bounty_target_upto(faction, active_systems, usize::MAX, rng)
+    }
+
+    /// `tag_bounty_target`, among the faction's hulls of at most `max_blocks`
+    /// (its smallest, when it has none that small): a one-star bounty is a
+    /// scout, not the faction's capital. Ships out of view first.
+    pub fn tag_bounty_target_upto(&mut self, faction: AiShipType, active_systems: &[u32], max_blocks: usize, rng: &mut impl rand::Rng) -> Option<(u32, f32)> {
+        let size = |s: &SimulatedShip| super::spawner::design_blocks(s.faction, s.class);
+        let pool: Vec<usize> = self.ships.iter().enumerate()
+            .filter(|(_, s)| s.faction == faction && s.behavior != SimBehavior::Dead && s.bounty_id.is_none() && active_systems.contains(&s.system_id))
             .map(|(i, _)| i)
             .collect();
-        let candidates = if !unspawned.is_empty() {
-            unspawned
-        } else {
-            self.ships.iter().enumerate()
-                .filter(|(_, s)| s.faction == faction && s.behavior != SimBehavior::Dead && s.bounty_id.is_none() && active_systems.contains(&s.system_id))
-                .map(|(i, _)| i)
-                .collect()
-        };
+        let smallest = pool.iter().map(|&i| size(&self.ships[i])).min()?;
+        let cap = max_blocks.max(smallest);
+        let sized: Vec<usize> = pool.into_iter().filter(|&i| size(&self.ships[i]) <= cap).collect();
+        let unspawned: Vec<usize> = sized.iter().copied().filter(|&i| !self.ships[i].spawned).collect();
+        let candidates = if !unspawned.is_empty() { unspawned } else { sized };
         let &idx = candidates.get(rng.gen_range(0..candidates.len().max(1)))?;
         let id = self.next_bounty_id;
         self.next_bounty_id += 1;

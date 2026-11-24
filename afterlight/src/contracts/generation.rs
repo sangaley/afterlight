@@ -190,6 +190,19 @@ fn destroy_ship_reward(star: u8, ship_type: AiShipType, distance: f32, rng: &mut
     (base * distance_mult * power_mult).round() as u32
 }
 
+/// Biggest hull a bounty of `star` stars may name, in blocks. The starter is
+/// about 1,400. The reworked fleet runs from 450-block scouts to 10,000-block
+/// capitals, and a bounty used to tag any ship of the faction: the first,
+/// one-star Kingdom bounty could be The Original.
+pub fn bounty_max_blocks(star: u8) -> usize {
+    match star {
+        0 | 1 => 1_600,
+        2 => 3_500,
+        3 => 6_000,
+        _ => usize::MAX,
+    }
+}
+
 /// Tries each candidate faction for this star tier (in random order) until
 /// one still has an untagged living ship to mark as the bounty target.
 /// Returns None if every candidate faction is fully claimed/dead right now.
@@ -199,7 +212,7 @@ fn tag_destroy_ship_target(star: u8, sim: &mut WorldSimulation, active_systems: 
     let mut factions: Vec<AiShipType> = ship_factions_for_star(star).iter().copied().filter(|f| !spare.contains(f)).collect();
     factions.shuffle(rng);
     for faction in factions {
-        if let Some((bounty_id, distance)) = sim.tag_bounty_target(faction, active_systems, rng) {
+        if let Some((bounty_id, distance)) = sim.tag_bounty_target_upto(faction, active_systems, bounty_max_blocks(star), rng) {
             return Some((faction, bounty_id, distance));
         }
     }

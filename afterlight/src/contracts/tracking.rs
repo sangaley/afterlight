@@ -427,7 +427,8 @@ pub fn reattach_restored_bounties(
         if *destroyed || kept.contains(target_id) {
             return true;
         }
-        match sim.tag_bounty_target(*ship_type, active_systems, rng) {
+        let most = super::generation::bounty_max_blocks(contract.star_rating);
+        match sim.tag_bounty_target_upto(*ship_type, active_systems, most, rng) {
             Some((id, _distance)) => {
                 *target_id = id;
                 true
@@ -658,6 +659,25 @@ mod bounty_restore_tests {
             posted > 2 && !held.contains(&posted),
             "the next bounty got id {posted}, already used by the save (1, 2) or a restored contract {held:?}"
         );
+    }
+
+    /// A one-star bounty names one of the faction's small hulls, never its
+    /// capital; a top-star one may name anything.
+    #[test]
+    fn a_small_bounty_names_a_small_ship() {
+        let mut sim = fresh_sim(&[(HERE, AiShipType::RecursiveKingdom); 2]);
+        sim.ships[0].class = Some("the_original");
+        sim.ships[1].class = Some("skiff");
+        for _ in 0..8 {
+            let most = super::super::generation::bounty_max_blocks(1);
+            let (id, _) = sim.tag_bounty_target_upto(AiShipType::RecursiveKingdom, &[HERE], most, &mut rng()).unwrap();
+            let tagged = sim.ships.iter().find(|s| s.bounty_id == Some(id)).unwrap();
+            assert_eq!(tagged.class, Some("skiff"));
+            sim.ships[1].bounty_id = None;
+        }
+        // Only the capital left: it's the smallest there is, so it's named.
+        sim.ships[1].behavior = crate::ai_ship::components::SimBehavior::Dead;
+        assert!(sim.tag_bounty_target_upto(AiShipType::RecursiveKingdom, &[HERE], 1_600, &mut rng()).is_some());
     }
 
     /// Saved after leaving the only system the target's faction holds: there
