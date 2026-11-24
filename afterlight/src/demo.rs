@@ -53,7 +53,7 @@ use crate::combat::targeting::fire_groups::FireGroupState;
 //   AFTERLIGHT_NO_SHIELD_FX=1 — no shield outline glow or facing arcs (shields still work).
 //   AFTERLIGHT_STANDOFF=<u> — fighting AI ships hold this far off (before hull sizes).
 //   AFTERLIGHT_HOLD_LINES=1 — fighting AI ships hold where they are (placed battle lines).
-//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] | ai | ship — point the camera there instead of at
+//   AFTERLIGHT_CAM_AT=<x>,<y> | station[>d] | haven | ai | ship — point the camera there instead of at
 //                          the ship ("station": the nearest station core; ">d"
 //                          slides d units toward its world).
 //   AFTERLIGHT_SHOTS_AFTER=<secs> — with AFTERLIGHT_SHOTS, don't start capturing
@@ -560,6 +560,12 @@ impl Plugin for DemoPlugin {
                                 _ => station,
                             }
                         });
+                });
+            } else if spec.trim() == "haven" {
+                // "haven": the middle of Haven, the Raft.
+                app.add_systems(Update, |haven: Query<&GlobalTransform, With<crate::world::home_base::HomeStation>>,
+                                         mut pin: ResMut<crate::camera::CameraPin>| {
+                    pin.0 = haven.iter().next().map(|t| t.translation().truncate());
                 });
             } else if spec.trim() == "ship" {
                 // "ship": exactly on your ship, with none of the camera's lead
