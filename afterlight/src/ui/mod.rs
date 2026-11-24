@@ -3796,6 +3796,13 @@ fn distance_price_multiplier_for(
         .unwrap_or(1.0)
 }
 
+/// Credits per unit of fuel, before the station's discount and distance.
+/// Was 0.5: the starter burns about 2.8 a second under way, 85c a minute,
+/// and a full tank (1,500) cost all but 130c of the 750c you start with. A
+/// one-star bounty (80-300c) barely paid for the flying to it; in autoplay
+/// (2026-11-23) a run was broke after six kills.
+pub const FUEL_PRICE: f32 = 0.2;
+
 /// One of the player's guns, as the rearm service sees it.
 #[derive(Clone, Copy)]
 struct RackAmmo {
@@ -3828,7 +3835,12 @@ impl RackAmmo {
         if self.kind == ModuleType::FiringPiece {
             let type_mult = crate::combat::ammo_types::rearm_price(ModuleType::Cannon, self.loaded, 1)
                 / crate::combat::ammo_types::rearm_price(ModuleType::Cannon, None, 1);
-            return built_shell_price(self.damage) * type_mult * discount;
+            // Priced on the gun's own damage, before BUILT_DAMAGE_SCALE: that
+            // scale is a balance dial on what the round does, and raising it
+            // 4 -> 6 had quietly made every shell dearer (a 170 mm round
+            // 26c, not 8c) until the starter's first rearm took its money.
+            let own = self.damage / crate::combat::gun_assembly::built_damage_scale();
+            return built_shell_price(own) * type_mult * discount;
         }
         crate::combat::ammo_types::rearm_price(self.kind, self.loaded, 1) * discount
     }
@@ -3959,7 +3971,7 @@ fn get_docking_services(
     }
 
     let fuel_missing = fuel_state.max_fuel - fuel_state.current_fuel;
-    let fuel_cost = (fuel_missing * 0.5 * discounts.fuel * far) as u32;
+    let fuel_cost = (fuel_missing * FUEL_PRICE * discounts.fuel * far) as u32;
 
     vec![
         DockingService {
@@ -4670,7 +4682,7 @@ fn docking_menu_input(
                     if remaining_missing > 1.0 {
                         // `far` too: the services list posts the price with
                         // it, and the bill has to match the price posted.
-                        let per_unit = 0.5 * discounts.fuel * far;
+                        let per_unit = FUEL_PRICE * discounts.fuel * far;
                         let cost = (remaining_missing * per_unit) as u32;
                         // Whatever the credits stretch to, not all or nothing.
                         // A captain 100c short of a full tank used to get no
@@ -5010,7 +5022,7 @@ fn docking_menu_input(
     };
 
     let fuel_missing = fuel_state.max_fuel - fuel_state.current_fuel;
-    let fuel_cost = (fuel_missing * 0.5 * discounts.fuel * far) as u32;
+    let fuel_cost = (fuel_missing * FUEL_PRICE * discounts.fuel * far) as u32;
 
     let new_idx = selection.0;
     let service_info: Vec<(&str, String, u32, bool)> = vec![
@@ -5161,7 +5173,8 @@ mod rearm_tests {
     fn a_built_guns_shells_cost_more_with_size_but_stay_affordable() {
         let cost = |damage: f32| {
             let mut g = gun(1, ModuleType::FiringPiece, 0, 10);
-            g.damage = damage;
+            // A gun's damage in game carries BUILT_DAMAGE_SCALE; its price doesn't.
+            g.damage = damage * crate::combat::gun_assembly::built_damage_scale();
             g.round_cost(1.0)
         };
         // 170 mm, then 500 mm: 20 times the damage, far less than 20 times the price.
