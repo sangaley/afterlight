@@ -58,6 +58,9 @@ pub struct DesignCell {
     pub tint: Option<[f32; 3]>,
     /// How much higher it stands than the deck (0..1): tiers.
     pub lift: f32,
+    /// The part it is, where it is one: what the roof (world::raft_look)
+    /// raises a room over.
+    pub kind: Option<ModuleType>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,7 +109,7 @@ pub fn load_design(key: &str) -> Option<Design> {
         let sprite = crate::sprite_map::hull_layer_sprite_path(hc.material, hc.layer);
         cells.insert(
             hc.grid_pos,
-            DesignCell { at: hc.grid_pos, sprite, part: (0, 0, 1, 1), module: false, lit: false, outer: hc.layer == HullLayer::Outer, tint: None, lift: 0.0 },
+            DesignCell { at: hc.grid_pos, sprite, part: (0, 0, 1, 1), module: false, lit: false, outer: hc.layer == HullLayer::Outer, tint: None, lift: 0.0, kind: None },
         );
     }
     for m in &bp.modules {
@@ -120,7 +123,7 @@ pub fn load_design(key: &str) -> Option<Design> {
                 let at = m.grid_pos + m.rotation.rotate_offset(IVec2::new(x, y));
                 cells.insert(
                     at,
-                    DesignCell { at, sprite, part: (x as u8, (h as i32 - 1 - y) as u8, w, h), module: true, lit: lit_room(m.module_type), outer: false, tint: None, lift: 0.0 },
+                    DesignCell { at, sprite, part: (x as u8, (h as i32 - 1 - y) as u8, w, h), module: true, lit: lit_room(m.module_type), outer: false, tint: None, lift: 0.0, kind: Some(m.module_type) },
                 );
             }
         }

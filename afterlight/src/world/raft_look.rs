@@ -67,12 +67,20 @@ pub struct ShipLooks {
     painted: HashSet<AssetId<Image>>,
     done: Arc<Mutex<Vec<(Handle<Image>, Image)>>>,
     mips: HashMap<AssetId<Image>, Arc<Mip>>,
+    /// Frames since the last stand-in was laid out.
+    since_stage: u32,
 }
 
 /// Where the stand-in is laid out: far off anywhere a camera goes.
 const STAGE_AT: Vec3 = Vec3::new(9.0e7, 9.0e7, -50.0);
 /// Frames a stand-in waits for its art before it's read as it is.
 const MAX_WAIT: u32 = 240;
+/// Frames between stand-ins, and how many may wait at once: laying a big
+/// design's roof is thousands of sprites spawned and let go, and a city's
+/// worth at one a frame made arriving at the Gilded capital run at 5-10 fps
+/// for seconds (perf session, 2026-11-24). The old pictures show meanwhile.
+const STAGE_EVERY: u32 = 4;
+const MAX_STAGED: usize = 2;
 
 /// The paint a look is laid out in: a ship in its own faction's, the
 /// station's own metal in its owner's, Haven's in a plain gunmetal.
@@ -151,9 +159,16 @@ fn blocks_of(key: &'static str, d: &Design, registry: &ModuleRegistry) -> (Vec<H
     let mut hull = Vec::new();
     let mut mods = Vec::new();
     for c in &d.cells {
-        hull.push(hull_seg(c.at, if c.outer { HullLayer::Outer } else { HullLayer::Inner }, HullMaterial::Titanium));
+        // The hull's own art says what it is: a walkway, or plate of a metal.
+        let (layer, material) = match c.sprite {
+            "sprites/hull/hull_hallway.png" => (HullLayer::Hallway, HullMaterial::Titanium),
+            "sprites/hull/hull_steel.png" => (HullLayer::Inner, HullMaterial::Steel),
+            "sprites/hull/hull_composite.png" => (HullLayer::Inner, HullMaterial::Composite),
+            _ => (HullLayer::Inner, HullMaterial::Titanium),
+        };
+        hull.push(hull_seg(c.at, if c.outer { HullLayer::Outer } else { layer }, material));
         if c.module && c.part.0 == 0 && c.part.1 + 1 == c.part.3 {
-            if let Some(t) = by_sprite.get(c.sprite) {
+            if let Some(t) = c.kind.as_ref().or_else(|| by_sprite.get(c.sprite)) {
                 if registry.get(*t).size == IVec2::new(c.part.2 as i32, c.part.3 as i32) {
                     mods.push(module(*t, c.at, Rotation::North));
                 }
@@ -220,8 +235,11 @@ pub fn paint_ship_looks(
     let live: HashSet<AssetId<Image>> = bakes.pictures().map(|(_, h, _)| h.id()).collect();
     looks.painted.retain(|id| live.contains(id));
 
-    // One new stand-in a frame.
-    if let Some(look) = looks.queue.pop_front() {
+    // A new stand-in every few frames, a couple at a time.
+    looks.since_stage += 1;
+    let free = looks.since_stage >= STAGE_EVERY && looks.staged.len() < MAX_STAGED;
+    if let Some(look) = if free { looks.queue.pop_front() } else { None } {
+        looks.since_stage = 0;
         if let Some(d) = design(look.0) {
             let (hull, mods) = blocks_of(look.0, d, &registry);
             let stand_in = commands.spawn((Transform::from_translation(STAGE_AT), Visibility::Hidden)).id();

@@ -16,6 +16,7 @@ use rand::rngs::StdRng;
 use rand::Rng;
 
 use super::raft::{Design, DesignCell};
+use crate::components::ModuleType;
 
 const STEEL: &str = "sprites/hull/hull_steel.png";
 const TITANIUM: &str = "sprites/hull/hull_titanium.png";
@@ -72,11 +73,17 @@ impl Builder {
     }
     fn put(&mut self, x: i32, y: i32, sprite: &'static str, module: bool, lit: bool, outer: bool) {
         let at = IVec2::new(x, y);
-        self.cells.insert(at, DesignCell { at, sprite, part: (0, 0, 1, 1), module, lit, outer, tint: None, lift: 0.0 });
+        self.cells.insert(at, DesignCell { at, sprite, part: (0, 0, 1, 1), module, lit, outer, tint: None, lift: 0.0, kind: None });
     }
     fn tinted(&mut self, x: i32, y: i32, sprite: &'static str, tint: [f32; 3], lit: bool) {
         let at = IVec2::new(x, y);
-        self.cells.insert(at, DesignCell { at, sprite, part: (0, 0, 1, 1), module: true, lit, outer: false, tint: Some(tint), lift: 0.0 });
+        self.cells.insert(at, DesignCell { at, sprite, part: (0, 0, 1, 1), module: true, lit, outer: false, tint: Some(tint), lift: 0.0, kind: None });
+    }
+    /// A one-block part, as a ship has it.
+    fn part(&mut self, x: i32, y: i32, kind: ModuleType, lit: bool) {
+        let at = IVec2::new(x, y);
+        let sprite = crate::sprite_map::module_sprite_path(kind).unwrap_or(FRAME);
+        self.cells.insert(at, DesignCell { at, sprite, part: (0, 0, 1, 1), module: true, lit, outer: false, tint: None, lift: 0.0, kind: Some(kind) });
     }
     fn lift(&mut self, x: i32, y: i32, by: f32) {
         if let Some(c) = self.cells.get_mut(&IVec2::new(x, y)) {
@@ -275,9 +282,26 @@ pub fn hub_reach(kind: HubKind, r: i32) -> (i32, i32) {
 /// (0 kept up .. 3 falling apart) patches the plating with odd plate and
 /// leaves windows dark.
 pub fn arm_segment(len: i32, half: i32, worn: u8) -> &'static str {
+    // Built like a ship's own section (the playtester asked for the paths to
+    // read as blocks, 2026-11-24): a corridor down the middle, a frame across
+    // every 12 blocks with plate on its ends, and between the frames a bay of
+    // rooms each side -- quarters, stores, air, power, a sick bay, a workshop,
+    // fuel -- that the roof raises over as it does a ship's rooms; floodlights
+    // and docking ports along the edge. A worn arm has bays standing empty.
     let key = format!("arm/{len}/{half}/{worn}");
     let mut rng = seeded(&key);
     register(key, || {
+        use ModuleType::*;
+        const ROOMS: [(ModuleType, bool); 8] = [
+            (BasicQuarters, true),
+            (SupplyCrates, true),
+            (OxygenScrubber, true),
+            (BatteryBank, false),
+            (MedBay, true),
+            (RepairBay, true),
+            (FuelTank, false),
+            (BasicQuarters, true),
+        ];
         let mut b = Builder::new();
         let patches: Vec<(IVec2, IVec2, &'static str)> = (0..(len * worn as i32) / 30)
             .map(|_| {
@@ -287,21 +311,47 @@ pub fn arm_segment(len: i32, half: i32, worn: u8) -> &'static str {
             })
             .collect();
         let patch = |x: i32, y: i32| patches.iter().find(|(a, s, _)| x >= a.x && y >= a.y && x < a.x + s.x && y < a.y + s.y).map(|p| p.2);
+        // Each bay's room, a side at a time: (bay, side) -> room or empty.
+        let bays = len / 12 + 1;
+        let rooms: Vec<[Option<(ModuleType, bool)>; 2]> = (0..bays)
+            .map(|_| {
+                [0, 1].map(|_| {
+                    let empty = worn > 0 && rng.gen_range(0..8) < worn as i32;
+                    (!empty).then(|| ROOMS[rng.gen_range(0..ROOMS.len())])
+                })
+            })
+            .collect();
         for x in 0..len {
+            let in_bay = x % 12;
+            let bay = (x / 12) as usize;
             for y in -half..=half {
                 let edge = y.abs() == half;
-                if y.abs() <= 1 {
-                    b.put(x, y, if x % 6 == 0 { FRAME } else { HALL }, x % 6 == 0, x % 6 == 0, false);
-                } else if x % 12 == 0 {
-                    // A frame across, standing a little proud.
-                    b.put(x, y, TITANIUM, false, false, edge);
-                    b.lift(x, y, 0.4);
-                } else if half >= 5 && y.abs() == half - 2 && x % 12 != 11 && x % 12 != 1 {
-                    let dark = worn > 0 && rng.gen_range(0..6) < worn;
-                    b.put(x, y, HALL, true, !dark && x % 2 == 0, false);
+                let side = (y > 0) as usize;
+                if in_bay == 0 {
+                    // The frame: skin across, plate on its ends.
+                    if edge {
+                        b.part(x, y, ArmorPlate, false);
+                    } else {
+                        b.put(x, y, TITANIUM, false, false, true);
+                    }
+                } else if y.abs() <= 1 {
+                    b.put(x, y, HALL, false, false, false);
+                } else if edge {
+                    match x % 24 {
+                        18 => b.part(x, y, DockingPort, false),
+                        6 => b.part(x, y, Floodlight, true),
+                        _ => b.put(x, y, patch(x, y).unwrap_or(STEEL), false, false, true),
+                    }
+                } else if (2..=10).contains(&in_bay) && half >= 3 {
+                    match rooms.get(bay).and_then(|r| r[side]) {
+                        Some((kind, lit)) => {
+                            let dark = worn > 0 && rng.gen_range(0..6) < worn;
+                            b.part(x, y, kind, lit && !dark);
+                        }
+                        None => b.put(x, y, patch(x, y).unwrap_or(STEEL), false, false, false),
+                    }
                 } else {
-                    let sprite = patch(x, y).unwrap_or(if edge { STEEL } else if x % 9 == 4 { BATTERY } else { STEEL });
-                    b.put(x, y, sprite, false, false, edge);
+                    b.put(x, y, patch(x, y).unwrap_or(STEEL), false, false, false);
                 }
             }
         }

@@ -298,6 +298,9 @@ pub fn bake_at(design: &Design, quarter: u8, seed: u64, theme: super::station_st
     let warm_win = Vec3::from(theme.windows[0]);
     let white = Vec3::from(theme.windows[1]);
     let cyan = Vec3::from(theme.windows[2]);
+    // Under a ship's roof (world::raft_look) windows scattered over the
+    // rooms read as glitter: only the rim's portholes and running lights.
+    let lit_cells = if super::raft_look::ship_look() { Vec::new() } else { lit_cells };
     for (x0, y0) in lit_cells {
         for _ in 0..rng.gen_range(0..3) {
             let (x, y) = (x0 + rng.gen_range(1..px - 2), y0 + rng.gen_range(1..px - 1));
