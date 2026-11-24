@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn labels_name_the_faction_and_class() {
-        assert_eq!(label_text(AiShipType::TerranHegemony, Some(&AiShipClass("warden")), false), "Terran Hegemony - Warden");
+        assert_eq!(label_text(AiShipType::TerranHegemony, Some(&AiShipClass("halberd")), false), "Terran Hegemony - Halberd");
         assert_eq!(label_text(AiShipType::TerranHegemony, None, true), "Terran Hegemony - station");
     }
 }

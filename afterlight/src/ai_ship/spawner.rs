@@ -659,10 +659,10 @@ mod wound_tests {
     /// of them. (Every turret gun used to come back from a load missing.)
     #[test]
     fn turret_parts_are_wounded_by_ring_and_cell() {
-        let built = built_design(AiShipType::EternalHegemony, crate::ai_ship::roster::intern("vigil"));
+        let built = built_design(AiShipType::EternalHegemony, crate::ai_ship::roster::intern("sceptre"));
         let ring = |m: &blueprint::BlueprintModule| m.extras.as_ref().and_then(|e| e.turret);
         let parts = built.modules.iter().filter(|m| ring(m).is_some()).count();
-        assert!(parts > 40, "the Vigil's turret guns are in its design ({parts} parts)");
+        assert!(parts > 40, "the Sceptre's turret guns are in its design ({parts} parts)");
         let barrel = built.modules.iter().find(|m| m.module_type == ModuleType::GunBarrel && ring(m).is_some()).unwrap();
         let wounds = Wounds {
             hull: vec![],

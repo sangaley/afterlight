@@ -19,6 +19,7 @@ pub mod air;
 pub mod livery;
 mod power;
 pub mod roster;
+mod roster_classes;
 pub mod fleet;
 pub mod standing_spawns;
 pub mod preview;

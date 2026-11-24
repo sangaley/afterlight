@@ -38,12 +38,14 @@ const fn plan(key: &'static str, name: &'static str, platform: Option<&'static s
     StationPlan { key, name, platform, platforms }
 }
 
-// Approved on the fleet concepts page. The Recursive Kingdom's Hive is back
-// for review; until it is approved the Kingdom has no station.
+// The reworked stations (2026-11-23): the same hulls, refit with the new
+// armour, guns and missiles. The Recursive Kingdom gets its Hive, and the
+// Gilded Throne's Exchange its Velvet Rope platforms.
 const PLANS: &[(AiShipType, StationPlan)] = &[
+    (AiShipType::RecursiveKingdom, plan("hive", "The Hive", None, 0)),
     (AiShipType::TerranHegemony, plan("bastion", "Bastion", Some("gun_platform"), 4)),
     (AiShipType::EternalHegemony, plan("citadel", "Citadel", None, 0)),
-    (AiShipType::GildedThrone, plan("exchange", "The Exchange", None, 0)),
+    (AiShipType::GildedThrone, plan("exchange", "The Exchange", Some("velvet_rope"), 2)),
     (AiShipType::BrokenChoir, plan("broken_spire", "Broken Spire", None, 0)),
     (AiShipType::SynthesisCollective, plan("growth_node", "Growth Node", None, 0)),
     (AiShipType::CorpseStars, plan("reliquary", "Reliquary", None, 0)),

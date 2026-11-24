@@ -596,7 +596,8 @@ mod tests {
             let mut held = Held::new();
             let members = compose(AiShipType::TerranHegemony, FleetKind::BattleGroup, &mut rng, &mut held)
                 .expect("the Hegemony can always crew a battle group in an empty system");
-            assert_eq!(members[0], (AiShipType::TerranHegemony, Some("sovereign")));
+            // Led by one of its capitals (the Sovereign or the Unifier).
+            assert_eq!(role_of(members[0].0, members[0].1), ClassRole::Capital, "{members:?}");
             assert!(members.len() >= 3, "a capital never travels alone: {members:?}");
         }
     }
@@ -623,8 +624,10 @@ mod tests {
             assert_eq!(role_of(m[0].0, m[0].1), ClassRole::Civilian);
             assert!(m.iter().any(|&(f, c)| role_of(f, c) != ClassRole::Civilian), "{m:?}");
         }
+        // Every faction has traders since the rework, the Corpse Stars too.
         let mut held = Held::new();
-        assert!(compose(AiShipType::CorpseStars, FleetKind::Convoy, &mut rng, &mut held).is_none());
+        let m = compose(AiShipType::CorpseStars, FleetKind::Convoy, &mut rng, &mut held).expect("the Corpse Stars run convoys");
+        assert_eq!(role_of(m[0].0, m[0].1), ClassRole::Civilian);
     }
 
     #[test]
@@ -683,7 +686,7 @@ mod tests {
     #[test]
     fn a_long_fight_stays_sane() {
         let mut ships = Vec::new();
-        for (i, class) in ["sovereign", "bulwark", "warden", "lancer", "lancer"].iter().enumerate() {
+        for (i, class) in ["sovereign", "bulwark", "halberd", "lancer", "lancer"].iter().enumerate() {
             ships.push(ship_at(AiShipType::TerranHegemony, roster::intern(class), 1, i as f32 * 300.0));
         }
         for i in 0..6 {
