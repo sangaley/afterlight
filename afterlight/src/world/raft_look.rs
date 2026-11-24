@@ -66,9 +66,96 @@ pub struct ShipLooks {
     /// Pictures already painted over (or being), by image.
     painted: HashSet<AssetId<Image>>,
     done: Arc<Mutex<Vec<(Handle<Image>, Image)>>>,
+    /// Pictures whose cached copy wouldn't read: painted again.
+    missed: Arc<Mutex<Vec<AssetId<Image>>>>,
     mips: HashMap<AssetId<Image>, Arc<Mip>>,
     /// Frames since the last stand-in was laid out.
     since_stage: u32,
+}
+
+/// Pictures painted once are kept here and read back on later visits, so a
+/// city only lays out its stand-ins the first time it's ever seen: even
+/// spaced out, laying a capital's worth ran at ~20 fps for 9 s on arrival
+/// (perf session, 2026-11-24).
+const CACHE_DIR: &str = "cache/station_looks";
+/// Bump when what a look paints changes (roof, paint, stamps), so pictures
+/// painted the old way aren't reused.
+const LOOK_VERSION: u32 = 1;
+/// Pictures bigger than this (the sharp close-ups) aren't kept.
+const CACHE_MAX_PX: u32 = 4_000_000;
+
+/// The file a picture of `key`, `w` x `h`, is kept in: named by everything
+/// it was painted from.
+fn cache_path(key: BakeKey, w: u32, h: u32) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    if w * h > CACHE_MAX_PX {
+        return None;
+    }
+    let d = design(key.0)?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (LOOK_VERSION, key.0, key.1, key.2, w, h, crate::vfx::ship_roof::cosmo()).hash(&mut hasher);
+    for c in &d.cells {
+        (c.at.x, c.at.y, c.sprite, c.part, c.outer, c.module, format!("{:?}", c.kind)).hash(&mut hasher);
+    }
+    Some(std::path::PathBuf::from(format!("{CACHE_DIR}/{:016x}.png", hasher.finish())))
+}
+
+/// Most the cache may hold; past it, the pictures least recently written go.
+const CACHE_CAP_BYTES: u64 = 300 * 1024 * 1024;
+
+/// Trim the cache under its cap, oldest first. Once a session, off the frame.
+fn prune_cache_once() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    if ONCE.set(()).is_err() {
+        return;
+    }
+    std::thread::spawn(|| {
+        let Ok(dir) = std::fs::read_dir(CACHE_DIR) else { return };
+        let mut files: Vec<(std::time::SystemTime, u64, std::path::PathBuf)> = dir
+            .flatten()
+            .filter_map(|e| {
+                let m = e.metadata().ok()?;
+                Some((m.modified().ok()?, m.len(), e.path()))
+            })
+            .collect();
+        let mut total: u64 = files.iter().map(|f| f.1).sum();
+        files.sort_by_key(|f| f.0);
+        for (_, len, path) in files {
+            if total <= CACHE_CAP_BYTES {
+                break;
+            }
+            if std::fs::remove_file(&path).is_ok() {
+                total -= len;
+            }
+        }
+    });
+}
+
+fn read_cached(path: &std::path::Path, w: u32, h: u32) -> Option<Vec<u8>> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = png::Decoder::new(std::io::BufReader::new(file)).read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    if info.width != w || info.height != h || info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
+        return None;
+    }
+    buf.truncate(info.buffer_size());
+    Some(buf)
+}
+
+fn write_cached(path: &std::path::Path, w: u32, h: u32, bytes: &[u8]) {
+    let _ = std::fs::create_dir_all(CACHE_DIR);
+    let tmp = path.with_extension("tmp");
+    let Ok(file) = std::fs::File::create(&tmp) else { return };
+    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let ok = enc.write_header().and_then(|mut wr| wr.write_image_data(bytes)).is_ok();
+    if ok {
+        let _ = std::fs::rename(&tmp, path);
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
 }
 
 /// Where the stand-in is laid out: far off anywhere a camera goes.
@@ -196,6 +283,7 @@ pub fn paint_ship_looks(
         return;
     }
     let (Some(bakes), Some(registry)) = (bakes, registry) else { return };
+    prune_cache_once();
     let looks = &mut *looks;
 
     // Pictures painted on the threads go in.
@@ -213,21 +301,62 @@ pub fn paint_ship_looks(
         }
         want.push((key, body.clone(), size, (key.0, key.2)));
     }
+    let missed: Vec<AssetId<Image>> = looks.missed.lock().map(|mut m| m.drain(..).collect()).unwrap_or_default();
+    for id in missed {
+        looks.painted.remove(&id);
+    }
     for (key, body, size, look) in want {
+        let Some(old) = images.get(&body) else { continue };
+        let (w, h) = (old.width(), old.height());
+        let path = cache_path(key, w, h);
+        // Painted on an earlier visit: read back, no stand-in.
+        if let Some(path) = path.clone().filter(|p| p.exists()) {
+            looks.painted.insert(body.id());
+            let (out, missed) = (looks.done.clone(), looks.missed.clone());
+            std::thread::spawn(move || match read_cached(&path, w, h) {
+                Some(bytes) => {
+                    if let Ok(mut d) = out.lock() {
+                        d.push((body, super::raft_art::image(w as usize, h as usize, bytes)));
+                    }
+                }
+                None => {
+                    let _ = std::fs::remove_file(&path);
+                    if let Ok(mut m) = missed.lock() {
+                        m.push(body.id());
+                    }
+                }
+            });
+            continue;
+        }
         let Some(stamps) = looks.ready.get(&look).cloned() else {
             if looks.queued.insert(look) {
                 looks.queue.push_back(look);
             }
             continue;
         };
-        let Some(old) = images.get(&body) else { continue };
-        let (w, h) = (old.width(), old.height());
         looks.painted.insert(body.id());
         let out = looks.done.clone();
         std::thread::spawn(move || {
-            let image = paint(&stamps, key.1, w, h, size);
+            let bytes = paint(&stamps, key.1, w, h, size);
+            let keep = path.is_some();
+            if let Some(path) = path {
+                write_cached(&path, w, h, &bytes);
+            }
             if let Ok(mut d) = out.lock() {
-                d.push((body, image));
+                d.push((body, super::raft_art::image(w as usize, h as usize, bytes)));
+            }
+            // Its other three turns too, while the stamps are here: a ship
+            // seen once in one turn is often moored in another next visit,
+            // and a turn missing from the cache costs a whole stand-in.
+            if keep {
+                for q in (0..4u8).filter(|q| *q != key.1) {
+                    let odd = (q + 4 - key.1) % 2 == 1;
+                    let (w2, h2, size2) = if odd { (h, w, Vec2::new(size.y, size.x)) } else { (w, h, size) };
+                    let Some(p2) = cache_path((key.0, q, key.2), w2, h2) else { continue };
+                    if !p2.exists() {
+                        write_cached(&p2, w2, h2, &paint(&stamps, q, w2, h2, size2));
+                    }
+                }
             }
         });
     }
@@ -348,7 +477,7 @@ pub fn paint_ship_looks(
 
 /// A design's picture turned `quarter` quarter-turns, `w` x `h` pixels over
 /// `size` world units centred on the design, from its laid-out stamps.
-fn paint(stamps: &[LookStamp], quarter: u8, w: u32, h: u32, size: Vec2) -> Image {
+fn paint(stamps: &[LookStamp], quarter: u8, w: u32, h: u32, size: Vec2) -> Vec<u8> {
     let upp = size.x / w as f32;
     let mut canvas = Canvas { origin: -size * 0.5, w, h, px: vec![LinearRgba::NONE; (w * h) as usize], upp };
     let turn = quarter as f32 * std::f32::consts::FRAC_PI_2;
@@ -381,5 +510,5 @@ fn paint(stamps: &[LookStamp], quarter: u8, w: u32, h: u32, size: Vec2) -> Image
             bytes.extend_from_slice(&Color::LinearRgba(straight).to_srgba().to_u8_array());
         }
     }
-    super::raft_art::image(w as usize, h as usize, bytes)
+    bytes
 }
