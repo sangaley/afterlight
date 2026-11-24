@@ -250,6 +250,41 @@ fn pick_any(
 /// original design). A trading faction's convoy carries its ally's hulls.
 pub type Hull = (AiShipType, Option<&'static str>);
 
+/// Most blocks a battle group may total. The live budget
+/// (simulation::MAX_LIVE_AI_BLOCKS, 14,000) brings a fleet on screen whole or
+/// not at all, and the reworked fleet's capitals run 5-10k blocks: with two to
+/// four line escorts most battle groups came to 12-20k, more than the whole
+/// budget, so they could only appear with nothing else about and capitals
+/// were rarely seen. This keeps a group to what the old fleet fielded.
+pub const BATTLE_GROUP_BLOCKS: usize = 12_000;
+
+/// Room a scout needs: the reworked fleet's run 450-800 blocks.
+const SCOUT_ROOM: usize = 800;
+
+/// One escort of `choices` for a battle group of `size` blocks so far, if it
+/// keeps the group inside BATTLE_GROUP_BLOCKS with `keep` to spare. A refused pick takes nothing
+/// from the system's caps.
+fn escort(
+    faction: AiShipType,
+    choices: &[&[ClassRole]],
+    keep: usize,
+    rng: &mut impl Rng,
+    held: &mut Held,
+    size: &mut usize,
+    members: &mut Vec<Hull>,
+) -> bool {
+    let mut scratch = held.clone();
+    let Some(m) = pick_any(faction, choices, rng, &mut scratch) else { return false };
+    let blocks = super::spawner::design_blocks(faction, m);
+    if *size + blocks + keep > BATTLE_GROUP_BLOCKS {
+        return false;
+    }
+    *held = scratch;
+    *size += blocks;
+    members.push((faction, m));
+    true
+}
+
 /// The hulls of one fleet of `kind`, leader first. None when the faction
 /// can't crew it (no haulers for a convoy, no capital left for a battle
 /// group under the system's caps).
@@ -290,16 +325,21 @@ pub fn compose(
         }
         FleetKind::BattleGroup if faction.is_trading() => return None,
         FleetKind::BattleGroup => {
-            members.push(own(pick(faction, &[Boss, Capital], rng, &mut trial)?));
-            for _ in 0..rng.gen_range(2..=4) {
-                if let Some(m) = pick_any(faction, &[&[Line, Experimental], &[Line], &[Scout]], rng, &mut trial) {
-                    members.push(own(m));
+            let lead = pick(faction, &[Boss, Capital], rng, &mut trial)?;
+            let mut size = super::spawner::design_blocks(faction, lead);
+            members.push(own(lead));
+            // Escorts while the group stays inside BATTLE_GROUP_BLOCKS; a line
+            // hull that won't fit gives way to a scout.
+            // The first escort leaves room for a second: a capital never
+            // travels with only one.
+            for slot in 0..rng.gen_range(2..=4) {
+                let keep = if slot == 0 { SCOUT_ROOM } else { 0 };
+                if !escort(faction, &[&[Line, Experimental], &[Line], &[Scout]], keep, rng, &mut trial, &mut size, &mut members) {
+                    escort(faction, &[&[Scout]], 0, rng, &mut trial, &mut size, &mut members);
                 }
             }
             if rng.gen_bool(0.5) {
-                if let Some(m) = pick(faction, &[Scout], rng, &mut trial) {
-                    members.push(own(m));
-                }
+                escort(faction, &[&[Scout]], 0, rng, &mut trial, &mut size, &mut members);
             }
         }
         FleetKind::Convoy => {
@@ -585,6 +625,25 @@ mod tests {
             for j in (i + 1)..slots.len() {
                 let gap = slots[i].distance(slots[j]) - extents[i] - extents[j];
                 assert!(gap > 0.0, "slots {i} and {j} overlap by {}", -gap);
+            }
+        }
+    }
+
+    #[test]
+    fn a_battle_group_fits_the_live_budget() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(5);
+        for faction in [
+            AiShipType::StellarPreserve, AiShipType::SynthesisCollective, AiShipType::BrokenChoir,
+            AiShipType::CorpseStars, AiShipType::TheSilence, AiShipType::TerranHegemony,
+            AiShipType::GildedThrone, AiShipType::RecursiveKingdom, AiShipType::EternalHegemony,
+            AiShipType::Shepherd,
+        ] {
+            for _ in 0..40 {
+                let Some(members) = compose(faction, FleetKind::BattleGroup, &mut rng, &mut Held::new()) else { continue };
+                let total: usize = members.iter().map(|&(f, c)| crate::ai_ship::spawner::design_blocks(f, c)).sum();
+                let lead = crate::ai_ship::spawner::design_blocks(members[0].0, members[0].1);
+                assert!(total <= BATTLE_GROUP_BLOCKS.max(lead), "{faction:?} battle group of {total} blocks");
             }
         }
     }
