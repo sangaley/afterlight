@@ -92,6 +92,7 @@ impl Plugin for AiShipPlugin {
                 standing_spawns::tick_missions,
                 standing_spawns::allies_defend_player,
                 traffic::run_traffic,
+                simulation::hold_guard_posts,
             )
                 .run_if(in_state(crate::states::GameState::Exploring)),
         );

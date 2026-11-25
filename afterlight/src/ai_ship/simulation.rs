@@ -662,17 +662,55 @@ fn next_waypoint(rng: &mut impl Rng, home_zone: Vec2, patrol_radius: f32, anchor
 }
 
 /// Where a fleet goes next: a convoy's next stop, a guard's next leg round
-/// its post, anyone else's next patrol leg.
-fn next_fleet_waypoint(rng: &mut impl Rng, fleet: &mut super::fleet::SimFleet, anchors: &[(Vec2, f32)]) -> Vec2 {
+/// its post, anyone else's next patrol leg. `harbour` is the station a guard
+/// keeps (its centre and how far all of it reaches), where there is one.
+fn next_fleet_waypoint(
+    rng: &mut impl Rng,
+    fleet: &mut super::fleet::SimFleet,
+    anchors: &[(Vec2, f32)],
+    harbour: Option<(Vec2, f32)>,
+) -> Vec2 {
     use super::fleet::FleetKind;
     match fleet.kind {
         FleetKind::Convoy if !fleet.route.is_empty() => {
             fleet.leg = (fleet.leg + 1) % fleet.route.len();
             fleet.route[fleet.leg]
         }
-        FleetKind::StationGuard => patrol_waypoint(rng, fleet.home_zone, fleet.patrol_radius),
+        FleetKind::StationGuard => guard_waypoint(rng, fleet, harbour),
         _ => next_waypoint(rng, fleet.home_zone, fleet.patrol_radius, anchors),
     }
+}
+
+/// A guard's next leg: round the outside of the station it keeps, or
+/// anywhere about its post where there is no station to go round.
+fn guard_waypoint(rng: &mut impl Rng, fleet: &super::fleet::SimFleet, harbour: Option<(Vec2, f32)>) -> Vec2 {
+    match harbour {
+        Some((at, ring)) => {
+            let (inner, outer) = guard_ring(ring, fleet.patrol_radius);
+            ring_waypoint(rng, at, inner, outer)
+        }
+        None => patrol_waypoint(rng, fleet.home_zone, fleet.patrol_radius),
+    }
+}
+
+/// Room a guard keeps between itself and the outermost part of its station.
+const GUARD_CLEAR: f32 = 1_500.0;
+
+/// The band a guard patrols round a station that reaches `ring` from its
+/// centre: from just outside all of it, out to the guard's own range.
+pub fn guard_ring(ring: f32, patrol_radius: f32) -> (f32, f32) {
+    let inner = ring + GUARD_CLEAR;
+    (inner, patrol_radius.max(inner + 0.5 * GUARD_RADIUS))
+}
+
+/// A point between `inner` and `outer` of `centre`.
+///
+/// A guard's legs were drawn from the whole disc round its station, hull
+/// included: most of them were inside it.
+fn ring_waypoint(rng: &mut impl Rng, centre: Vec2, inner: f32, outer: f32) -> Vec2 {
+    let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+    let dist = if outer > inner { rng.gen_range(inner..outer) } else { inner };
+    centre + Vec2::from_angle(angle) * dist
 }
 
 /// A point worth flying to inside a territory, for a ship with no better idea.
@@ -716,7 +754,10 @@ pub fn tick_world_simulation(
     // Brownian motion over an empty map.
     // (centre, structure radius): waypoints are taken from the edge, so
     // traffic loiters around a station rather than inside its hull.
-    let anchors: Vec<(Vec2, f32)> = stations.sites.iter().map(|s| (s.pos, s.radius())).collect();
+    // A Raft's `radius` is only its east arm; the rest of it reaches up to
+    // twice as far, and a point taken off `radius` landed among its arms.
+    let anchors: Vec<(Vec2, f32)> =
+        stations.sites.iter().map(|s| (s.pos, crate::world::home_base::station_extent(s.index))).collect();
 
     let is_active_system = |system_id: u32| {
         streaming.loaded_system == Some(system_id) || streaming.warm_systems.contains(&system_id)
@@ -778,31 +819,37 @@ pub fn tick_world_simulation(
     // Phase 1b: Move fleets, as one point; the members ride their slots.
     // The loaded system's station rides a planet, so its guard and its
     // convoys are pointed at wherever it is now.
-    let post = faction_stations.post;
     for fleet in sim.fleets.iter_mut() {
         if !is_active_system(fleet.system_id) || live_fleets.contains(&fleet.id) || !manned_fleets.contains(&fleet.id) {
             continue;
         }
         use super::fleet::FleetKind;
-        if let Some((_, at, extent)) = post.filter(|p| p.0 == fleet.system_id) {
+        // The station here, out to the last of its gun platforms.
+        let harbour = faction_stations.harbour(fleet.system_id);
+        if let Some((at, ring)) = harbour {
             match fleet.kind {
                 FleetKind::StationGuard => {
                     fleet.home_zone = at;
                     // The larger of the two: a capital's home fleet ranges wider.
-                    fleet.patrol_radius = fleet.patrol_radius.max(extent + GUARD_RADIUS);
+                    fleet.patrol_radius = fleet.patrol_radius.max(ring + GUARD_RADIUS);
                     // Posted before anyone knew where the station would be:
                     // take station there, out of sight, rather than crossing
                     // half a system to get to it.
                     let unseen = |p: Vec2| player_pos.map_or(true, |pp| pp.distance(p) > render_distance() * 1.5);
-                    let post_at = at + Vec2::from_angle(fleet.heading) * (extent + 3_000.0);
+                    let post_at = at + Vec2::from_angle(fleet.heading) * (ring + 3_000.0);
                     if fleet.position.distance(at) > 30_000.0 && unseen(fleet.position) && unseen(post_at) {
                         fleet.position = post_at;
-                        fleet.destination = patrol_waypoint(&mut rng, at, fleet.patrol_radius);
+                        fleet.destination = guard_waypoint(&mut rng, fleet, harbour);
+                    }
+                    // The station rides its planet: a leg drawn round where
+                    // it was is, a while later, a leg through its hull.
+                    if fleet.destination.distance(at) < ring + GUARD_CLEAR * 0.5 {
+                        fleet.destination = guard_waypoint(&mut rng, fleet, harbour);
                     }
                 }
                 FleetKind::Convoy if fleet.route.len() >= 2 => {
                     // The near end of the run is the station's berth, off its hull.
-                    let berth = at + (fleet.route[1] - at).normalize_or(Vec2::X) * (extent + 4_000.0);
+                    let berth = at + (fleet.route[1] - at).normalize_or(Vec2::X) * (ring + 4_000.0);
                     if fleet.leg == 0 {
                         fleet.destination = berth;
                     }
@@ -819,7 +866,7 @@ pub fn tick_world_simulation(
             // ai_ship::traffic decides where a trader goes from here.
             fleet.velocity = Vec2::ZERO;
         } else if remaining <= ARRIVE_RADIUS {
-            fleet.destination = next_fleet_waypoint(&mut rng, fleet, &anchors);
+            fleet.destination = next_fleet_waypoint(&mut rng, fleet, &anchors, harbour);
         } else {
             let want = to_dest / remaining * fleet.cruise;
             fleet.velocity = (fleet.velocity * 0.75 + want * 0.25).clamp_length_max(fleet.cruise);
@@ -832,6 +879,7 @@ pub fn tick_world_simulation(
             fleet.destination = match fleet.kind {
                 // A convoy strayed off its run heads for its next stop.
                 FleetKind::Convoy if !fleet.route.is_empty() => fleet.route[fleet.leg],
+                FleetKind::StationGuard if harbour.is_some() => guard_waypoint(&mut rng, fleet, harbour),
                 _ => patrol_waypoint(&mut rng, fleet.home_zone, fleet.patrol_radius * 0.6),
             };
         }
@@ -1316,6 +1364,66 @@ fn leader_waypoints(fleet: &super::fleet::SimFleet, rng: &mut impl Rng) -> Vec<V
     }
 }
 
+/// How many legs a guard's circuit round its station has. Enough that the
+/// straight line between two of them stays outside the station: with four,
+/// each leg cut in to 0.7 of the circuit's radius, through the hull.
+const GUARD_LEGS: usize = 8;
+/// A station that has moved this far has left its guard's circuit behind.
+const GUARD_DRIFT: f32 = 400.0;
+
+/// A guard's circuit on screen: `GUARD_LEGS` points round a station at `at`
+/// that reaches `ring` from its centre, every leg between them clear of it.
+/// Turned by the fleet's id, so two guards don't fly the same corners.
+pub fn guard_circuit(at: Vec2, ring: f32, patrol_radius: f32, id: u32) -> Vec<Vec2> {
+    use std::f32::consts::{PI, TAU};
+    let (inner, outer) = guard_ring(ring, patrol_radius);
+    // The middle of a leg is this much nearer the centre than its ends.
+    let sag = (PI / GUARD_LEGS as f32).cos();
+    let radius = (inner / sag).max(inner + 0.4 * (outer - inner));
+    let turn = (id as f32 * 0.618_034).fract() * TAU;
+    (0..GUARD_LEGS).map(|i| at + Vec2::from_angle(turn + TAU * i as f32 / GUARD_LEGS as f32) * radius).collect()
+}
+
+/// Keep a guard that is on screen flying round its station where the
+/// station is now.
+///
+/// Its circuit was laid out once, when it came on screen, round the point
+/// the station was at -- and the station rides its planet at 150 u/s. A few
+/// minutes later the guard was patrolling a patch of empty space, or the
+/// station had moved onto its circuit.
+pub fn hold_guard_posts(
+    time: Res<Time>,
+    mut next: Local<f32>,
+    sim: Res<WorldSimulation>,
+    stations: Res<crate::diplomacy::stations::FactionStations>,
+    mut leaders: Query<(&mut AiShipNav, &super::fleet::FleetMember)>,
+) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 1.0;
+    for (mut nav, member) in leaders.iter_mut().filter(|(_, m)| m.leader) {
+        let Some(fleet) = sim.fleet(member.fleet) else { continue };
+        if fleet.kind != super::fleet::FleetKind::StationGuard || fleet.trade.is_some() {
+            continue;
+        }
+        let Some((at, ring)) = stations.harbour(fleet.system_id) else { continue };
+        let want = guard_circuit(at, ring, fleet.patrol_radius, fleet.id);
+        let stale = nav.waypoints.len() != want.len() || nav.waypoints.iter().zip(&want).any(|(a, b)| a.distance(*b) > GUARD_DRIFT);
+        if !stale {
+            continue;
+        }
+        // On its way to a corner of the circuit: to where that corner is now.
+        let on_a_leg = nav.waypoints.get(nav.current_waypoint).zip(nav.destination).is_some_and(|(w, d)| d.distance(*w) < 1.0);
+        nav.current_waypoint %= want.len();
+        if on_a_leg || nav.destination.is_none() {
+            nav.destination = Some(want[nav.current_waypoint]);
+        }
+        nav.waypoints = want;
+    }
+}
+
 /// A system changed hands. The loser's fleets there that are off-screen
 /// fall back to its nearest remaining system; the winner sends a garrison (a
 /// patrol, and a guard for the station it will put up). Fleets on screen
@@ -1625,6 +1733,34 @@ mod population_tests {
                 assert!(clear > 0.0, "ships of two fleets overlap by {:.0}", -clear);
             }
         }
+    }
+
+    /// A guard's legs, off screen and on, keep outside its station: every
+    /// point drawn, and every straight run between two corners on screen.
+    #[test]
+    fn a_guard_goes_round_its_station_not_through_it() {
+        let mut rng = rand::thread_rng();
+        let at = Vec2::new(40_000.0, -12_000.0);
+        // A small post, a capital's city, and a home fleet's wider range.
+        for (ring, patrol) in [(4_000.0, 12_000.0), (26_000.0, 34_000.0), (9_000.0, 14_000.0), (30_000.0, 14_000.0)] {
+            let (inner, outer) = guard_ring(ring, patrol);
+            assert!(inner > ring && outer > inner);
+            for _ in 0..200 {
+                let d = ring_waypoint(&mut rng, at, inner, outer).distance(at);
+                assert!(d >= inner - 1.0 && d <= outer + 1.0, "{d} outside {inner}..{outer}");
+            }
+            for id in [1, 2, 77] {
+                let circuit = guard_circuit(at, ring, patrol, id);
+                assert_eq!(circuit.len(), GUARD_LEGS);
+                for (i, a) in circuit.iter().enumerate() {
+                    let b = circuit[(i + 1) % circuit.len()];
+                    let nearest = ((*a + b) * 0.5).distance(at);
+                    assert!(nearest >= ring + GUARD_CLEAR - 1.0, "ring {ring}: a leg passes {nearest:.0} from the middle");
+                }
+            }
+        }
+        // Two guards on one station don't fly the same corners.
+        assert!(guard_circuit(at, 4_000.0, 12_000.0, 1)[0].distance(guard_circuit(at, 4_000.0, 12_000.0, 2)[0]) > 1_000.0);
     }
 
     /// A capital keeps a home fleet: a battle group (a capital ship and its

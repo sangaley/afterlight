@@ -433,12 +433,17 @@ fn send_refugees(
         // From one of the stations if you're here (never on top of you), or
         // somewhere round the star.
         let at = if streaming.loaded_system == Some(id) {
-            let site = stations.sites.iter().map(|s| s.pos + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * (s.radius() + 3_000.0))
+            let site = stations.sites.iter().map(|s| s.pos + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * (crate::world::home_base::station_extent(s.index) + 3_000.0))
                 .find(|p| you.is_none_or(|y| y.distance(*p) > crate::ai_ship::simulation::RENDER_DISTANCE * 1.1));
             let Some(site) = site else { continue };
             site
         } else {
-            from.local_center + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * 40_000.0
+            // Clear of the star: 40 km from its centre is inside most of them.
+            crate::ai_ship::traffic::clear_point(
+                from,
+                from.local_center + Vec2::from_angle(rand::Rng::gen_range(&mut rng, 0.0..std::f32::consts::TAU)) * 40_000.0,
+                6_000.0,
+            )
         };
         let (mut convoy, members) = fleet::new_fleet(faction, FleetKind::Convoy, &hulls, id, at, at, 1.0e9, &mut rng);
         convoy.cruise = 650.0;

@@ -88,19 +88,77 @@ pub fn next_stop<'a>(stops: &'a [Stop], left: &str, rng: &mut impl Rng) -> Optio
 pub struct Stop {
     pub name: String,
     pub pos: Vec2,
+    /// How far it reaches from `pos` at its furthest.
     pub radius: f32,
+    /// Its solid parts, as circles measured from `pos`. Empty when all that
+    /// is known of it is `radius`.
+    pub shape: Vec<(Vec2, f32)>,
+    /// Whether you dock along a lane running east from it (a Raft station).
+    pub lane: bool,
 }
 
+/// Half the width of the strip a trader's berth keeps clear of hull.
+const BERTH_CORRIDOR: f32 = 1_500.0;
+/// Room a trader's berth keeps from the lane you dock along.
+const LANE_CLEAR: f32 = 2_500.0;
+
 impl Stop {
-    /// Where to stop, coming from `from`: on the near side, off its hull.
+    /// How far its hull reaches from its middle toward `dir`.
+    fn reach(&self, dir: Vec2) -> f32 {
+        if self.shape.is_empty() {
+            self.radius
+        } else {
+            crate::ship::collision::hull_reach(&self.shape, dir, BERTH_CORRIDOR).unwrap_or(self.radius)
+        }
+    }
+
+    /// Where to stop, coming from `from`: on the near side, off its hull,
+    /// and out of the lane you dock along.
+    ///
+    /// It was `radius + 3 km` on the bearing the trader came in on, and a
+    /// Raft's `radius` is only its east arm: its other arms reach up to twice
+    /// as far. From the west, north or south the berth lay among them, where
+    /// steering round the station pushed the ship sideways for good.
     pub fn berth(&self, from: Vec2) -> Vec2 {
-        self.pos + (from - self.pos).normalize_or(Vec2::X) * (self.radius + BERTH_MARGIN)
+        let dir = (from - self.pos).normalize_or(Vec2::NEG_X);
+        let off = dir * (self.reach(dir) + BERTH_MARGIN);
+        let keep = crate::world::raft::LANE_HALF_WIDTH + LANE_CLEAR;
+        if !self.lane || off.x <= 0.0 || off.y.abs() >= keep {
+            return self.pos + off;
+        }
+        // In the lane: step out of it to the side it came from, and stand
+        // off the hull on that bearing instead.
+        let side = if off.y < 0.0 { -1.0 } else { 1.0 };
+        let aside = Vec2::new(off.x, side * keep);
+        let dir = aside.normalize();
+        self.pos + dir * (self.reach(dir) + BERTH_MARGIN).max(aside.length())
     }
 }
 
-/// Where a ship leaves this system for `to`: out on the bearing to it.
+/// `at`, moved off this system's star and out of every planet's path, with
+/// `margin` to spare: somewhere a ship can be told to go.
+pub fn clear_point(def: &StarSystemDef, at: Vec2, margin: f32) -> Vec2 {
+    let roll = crate::celestial::galaxy::system_roll(def);
+    let planets = roll.planet_paths();
+    crate::celestial::poi::KeepClear { center: def.local_center, star_radius: roll.star_radius(), planets: &planets }
+        .nudge(at, margin)
+}
+
+/// Room a jump point keeps from anything solid: a convoy's width and more.
+const JUMP_MARGIN: f32 = 6_000.0;
+
+/// Where a ship leaves this system for `to`: out on the bearing to it, clear
+/// of the star and the planets. It was a flat 90 km from the star's centre,
+/// and stars are 40 to 150 km in radius: most jump points were inside one.
 pub fn jump_point(from: &StarSystemDef, to: &StarSystemDef, sign: f32) -> Vec2 {
-    from.local_center + (to.galaxy_pos - from.galaxy_pos).normalize_or(Vec2::X) * JUMP_RADIUS * sign
+    let at = from.local_center + (to.galaxy_pos - from.galaxy_pos).normalize_or(Vec2::X) * JUMP_RADIUS * sign;
+    clear_point(from, at, JUMP_MARGIN)
+}
+
+/// A point round the star for a trader with no station to make for.
+fn open_point(def: &StarSystemDef, rng: &mut impl Rng) -> Vec2 {
+    let at = def.local_center + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(30_000.0..120_000.0);
+    clear_point(def, at, JUMP_MARGIN)
 }
 
 /// What a trader is called: the same every time you meet it, and nothing to
@@ -152,6 +210,7 @@ pub fn run_traffic(
     player: Query<&Transform, With<Ship>>,
     mut trading: ResMut<TradingFleets>,
     mut leaders: Query<(&Transform, &crate::components::Velocity, &mut AiShipNav, &super::fleet::FleetMember)>,
+    hulls: Query<(&crate::world::home_base::Station, &Transform, &crate::ship::collision::Collider)>,
 ) {
     if crate::demo::skip_ai_ship_spawn() && std::env::var("AFTERLIGHT_TRAFFIC").is_err() {
         return;
@@ -170,12 +229,20 @@ pub fn run_traffic(
     let mut stops: Vec<Stop> = stations
         .sites
         .iter()
-        .map(|s| Stop { name: s.name.clone(), pos: s.pos, radius: s.radius() })
+        .map(|s| {
+            // Its hull as it stands, where it has been built.
+            let shape = hulls
+                .iter()
+                .find(|(station, ..)| station.index == s.index)
+                .map(|(_, tf, c)| c.circles.iter().map(|(at, r)| ((tf.rotation * at.extend(0.0)).truncate(), *r)).collect())
+                .unwrap_or_default();
+            Stop { name: s.name.clone(), pos: s.pos, radius: crate::world::home_base::station_extent(s.index), shape, lane: true }
+        })
         .collect();
-    if let Some((system, at, extent)) = ports.post.filter(|(s, ..)| *s == loaded) {
-        let owner = galaxy.systems.iter().find(|s| s.id == system).and_then(|s| s.faction);
+    if let Some((at, ring)) = ports.harbour(loaded) {
+        let owner = galaxy.systems.iter().find(|s| s.id == loaded).and_then(|s| s.faction);
         let name = owner.map_or("the starport".to_string(), |f| format!("{} starport", faction_display_name(f)));
-        stops.push(Stop { name, pos: at, radius: extent });
+        stops.push(Stop { name, pos: at, radius: ring, shape: Vec::new(), lane: false });
     }
 
     let sim: &mut WorldSimulation = &mut sim;
@@ -241,7 +308,7 @@ pub fn run_traffic(
                 fleet.destination = jump_point(from, to, 1.0);
             } else if here {
                 let Some(stop) = next_stop(&stops, &run.last_stop, &mut rng) else {
-                    fleet.destination = from.local_center + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(30_000.0..120_000.0);
+                    fleet.destination = open_point(from, &mut rng);
                     continue;
                 };
                 run.bound_for = stop.name.clone();
@@ -249,7 +316,7 @@ pub fn run_traffic(
             } else {
                 // A neighbouring system's stations aren't there to fly to.
                 run.bound_for = from.name.clone();
-                fleet.destination = from.local_center + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(30_000.0..120_000.0);
+                fleet.destination = open_point(from, &mut rng);
             }
         }
     }
@@ -328,6 +395,7 @@ pub fn run_traffic(
             let stop = (id == loaded && !stops.is_empty()).then(|| stops[rng.gen_range(0..stops.len())].clone());
             let centre = stop.as_ref().map_or(system.local_center, |s| s.pos);
             let at = centre + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(ARRIVING_FROM.0..ARRIVING_FROM.1);
+            let at = clear_point(system, at, JUMP_MARGIN);
             if id == loaded && player_pos.is_some_and(|p| p.distance(at) < super::simulation::RENDER_DISTANCE * 1.1) {
                 continue;
             }
@@ -354,7 +422,7 @@ mod tests {
     use super::*;
 
     fn stop(name: &str, x: f32) -> Stop {
-        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0 }
+        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0, shape: Vec::new(), lane: false }
     }
 
     #[test]
@@ -373,6 +441,79 @@ mod tests {
     fn it_stops_on_the_near_side_off_the_hull() {
         let berth = stop("Haven", 0.0).berth(Vec2::new(40_000.0, 0.0));
         assert_eq!(berth, Vec2::new(1_000.0 + BERTH_MARGIN, 0.0));
+    }
+
+    /// A hub with four arms of different lengths, the east one shortest
+    /// (as a Raft's is: its `radius`), and a lane to dock along.
+    fn raft() -> Stop {
+        let mut shape = vec![(Vec2::ZERO, 2_000.0)];
+        for (dir, tip) in [(Vec2::X, 10_000.0), (Vec2::Y, 15_000.0), (Vec2::NEG_X, 17_000.0), (Vec2::NEG_Y, 19_000.0)] {
+            let mut d = 2_000.0;
+            while d <= tip - 700.0 {
+                shape.push((dir * d, 700.0));
+                d += 1_000.0;
+            }
+        }
+        Stop { name: "Raft".into(), pos: Vec2::new(5_000.0, -3_000.0), radius: 19_000.0, shape, lane: true }
+    }
+
+    #[test]
+    fn a_berth_is_outside_every_part_of_the_station() {
+        let s = raft();
+        for i in 0..64 {
+            let from = s.pos + Vec2::from_angle(std::f32::consts::TAU * i as f32 / 64.0) * 80_000.0;
+            let berth = s.berth(from);
+            for (c, r) in &s.shape {
+                let gap = berth.distance(s.pos + *c) - r;
+                assert!(gap >= BERTH_CORRIDOR - 1.0, "bearing {i}: {gap:.0} u off a part of the hull");
+            }
+        }
+    }
+
+    #[test]
+    fn a_berth_between_two_arms_is_nearer_than_the_longest_arm() {
+        let s = raft();
+        // Coming in between the east and north arms: nothing but the hub
+        // lies that way.
+        let from = s.pos + Vec2::new(1.0, 1.0).normalize() * 80_000.0;
+        let off = s.berth(from).distance(s.pos);
+        assert!(off < 9_000.0, "stood {off:.0} off the middle, as far as its longest arm");
+    }
+
+    #[test]
+    fn no_berth_is_in_the_lane_you_dock_along() {
+        let s = raft();
+        let keep = crate::world::raft::LANE_HALF_WIDTH + LANE_CLEAR;
+        for i in 0..64 {
+            let from = s.pos + Vec2::from_angle(std::f32::consts::TAU * i as f32 / 64.0) * 80_000.0;
+            let off = s.berth(from) - s.pos;
+            assert!(off.x <= 0.0 || off.y.abs() >= keep - 1.0, "bearing {i}: berth at {off} is in the lane");
+        }
+        // A starport has no lane: its berth stays on the bearing.
+        let port = Stop { lane: false, ..raft() };
+        let off = port.berth(port.pos + Vec2::X * 80_000.0) - port.pos;
+        assert!(off.y.abs() < 1.0);
+    }
+
+    /// Every way out of every system: clear of its star and of the path of
+    /// every planet, with a convoy's width to spare.
+    #[test]
+    fn a_jump_point_is_outside_the_star_and_every_planets_path() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut checked = 0;
+        for from in &galaxy.systems {
+            let roll = crate::celestial::galaxy::system_roll(from);
+            let planets = roll.planet_paths();
+            let keep = crate::celestial::poi::KeepClear { center: from.local_center, star_radius: roll.star_radius(), planets: &planets };
+            for id in crate::celestial::galaxy::nearest_neighbors(&galaxy, from.id, 3) {
+                let to = galaxy.systems.iter().find(|s| s.id == id).unwrap();
+                let at = jump_point(from, to, 1.0);
+                assert!(at.distance(from.local_center) > roll.star_radius(), "{} to {}: inside the star", from.name, to.name);
+                assert!(keep.is_clear_by(at, JUMP_MARGIN - 1.0), "{} to {}: something solid comes by", from.name, to.name);
+                checked += 1;
+            }
+        }
+        assert!(checked > 60, "{checked}");
     }
 
     #[test]

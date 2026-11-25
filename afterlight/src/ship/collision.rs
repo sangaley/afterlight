@@ -188,6 +188,24 @@ fn segment_meets_circle(from: Vec2, dir: Vec2, len: f32, center: Vec2, radius: f
     (t <= len).then_some(t)
 }
 
+/// How far a shape made of circles (centres measured from its middle)
+/// reaches along `dir` from that middle, counting only what lies within
+/// `half_width` of the line. None when nothing of it lies that way.
+///
+/// A station's bounding circle says how far its longest arm reaches; this
+/// says how far it reaches the way you are coming from, which between two
+/// arms is a great deal less.
+pub fn hull_reach(circles: &[(Vec2, f32)], dir: Vec2, half_width: f32) -> Option<f32> {
+    circles
+        .iter()
+        .filter_map(|&(c, r)| {
+            let along = c.dot(dir);
+            let lateral = (c - dir * along).length();
+            (lateral < r + half_width && along + r > 0.0).then_some(along + r)
+        })
+        .reduce(f32::max)
+}
+
 /// Bends a desired travel direction to slide around blocking terrain — the
 /// same "swing around, don't clip through" trick the EVA crew use, scaled up.
 /// Returns the (unit) direction to actually fly.
@@ -729,6 +747,28 @@ pub fn resolve_collisions(
                 camera.shake_intensity = (camera.shake_intensity + kick).min(10.0);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod steering_tests {
+    use super::*;
+
+    #[test]
+    fn a_shape_reaches_as_far_as_the_part_that_lies_your_way() {
+        // A hub and one arm out to the east.
+        let mut shape = vec![(Vec2::ZERO, 500.0)];
+        shape.extend((1..=10).map(|i| (Vec2::X * (i as f32 * 400.0), 200.0)));
+        let east = hull_reach(&shape, Vec2::X, 100.0).unwrap();
+        assert!((east - 4_200.0).abs() < 1.0, "{east}");
+        // Any other way, only the hub.
+        for dir in [Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y] {
+            assert!((hull_reach(&shape, dir, 100.0).unwrap() - 500.0).abs() < 1.0);
+        }
+        // A wide enough strip catches the arm's first parts from the north-east.
+        let ne = Vec2::new(1.0, 1.0).normalize();
+        assert!(hull_reach(&shape, ne, 100.0).unwrap() < hull_reach(&shape, ne, 1_500.0).unwrap());
+        assert!(hull_reach(&[], Vec2::X, 100.0).is_none());
     }
 }
 

@@ -123,6 +123,18 @@ pub struct FactionStations {
     /// whether or not it has materialised: its guard fleet holds there and
     /// its convoys run to it. None with no station, or a destroyed one.
     pub post: Option<(u32, Vec2, f32)>,
+    /// How far out the last of it reaches from `post`'s centre: its hull,
+    /// its city, and the gun platforms that ring them. Anything told to wait
+    /// by the station waits outside this.
+    pub ring: f32,
+}
+
+impl FactionStations {
+    /// The loaded system's station as somewhere to keep clear of: its centre
+    /// and how far the whole of it reaches, platforms included.
+    pub fn harbour(&self, system: u32) -> Option<(Vec2, f32)> {
+        self.post.filter(|p| p.0 == system).map(|(_, at, extent)| (at, self.ring.max(extent)))
+    }
 }
 
 pub struct LiveStation {
@@ -249,6 +261,8 @@ fn sync_faction_stations(
     let at = anchor_point(planet_pos, &core_anchor);
     let dist = player_pos.distance(at);
     stations.post = Some((system.id, at, extent));
+    // Platforms sit `extent + their own reach + 2,500` out (below).
+    stations.ring = plan.platform.filter(|_| plan.platforms > 0).map_or(extent, |p| extent + 2.0 * design_extent(faction, p) + 2_500.0);
 
     if let Some(live) = &stations.live {
         if dist > DESPAWN_RANGE {
