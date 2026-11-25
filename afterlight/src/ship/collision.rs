@@ -311,7 +311,11 @@ pub fn bend_around(pos: Vec2, desired: Vec2, look: f32, own_radius: f32, blocker
         return (desired, 0.0);
     };
     // ...and everything in the way that it couldn't get between and that.
-    let gap = 2.0 * (own_radius + STEER_SKIN);
+    // A hull goes through a gap nose first: `own_radius` is how far it
+    // reaches end to end, and it is about half as wide as that. Measured by
+    // its full reach, the rocks of an asteroid pack (1,300 u apart) were one
+    // solid wall to a freighter, which then had nowhere to go.
+    let gap = own_radius + 2.0 * STEER_SKIN;
     let mut group = vec![first];
     let mut rest: Vec<Blocker> = threats.into_iter().filter(|b| *b != first).collect();
     loop {
@@ -328,6 +332,10 @@ pub fn bend_around(pos: Vec2, desired: Vec2, look: f32, own_radius: f32, blocker
         }
     }
     let whole = enclosing(&group);
+    // In among them already: the circle round the lot is all round it, and
+    // steering out of that from the middle of a pack goes nowhere. By the
+    // nearest one, then, as a ship picking its way through.
+    let whole = if group.len() > 1 && whole.center.distance(pos) < whole.radius { first } else { whole };
 
     let (along, lateral, clearance) = sight(pos, desired, own_radius, &whole);
     let left = desired.perp();
@@ -382,32 +390,6 @@ pub fn steer_around(
     let mut blockers = Vec::new();
     terrain_blockers(grid, terrain, pos, desired, look, own_radius, &mut blockers);
     bend_around(pos, desired, look, own_radius, &blockers, 0.0).0
-}
-
-/// `desired`, bent around one round obstacle (a ship) the same way
-/// `steer_around` bends it around terrain.
-pub fn steer_clear_of(pos: Vec2, desired: Vec2, travel: f32, own_radius: f32, center: Vec2, radius: f32) -> Vec2 {
-    let look = travel.min(2200.0);
-    let clearance = radius + own_radius + 60.0;
-    let rel = center - pos;
-    let t_along = rel.dot(desired);
-    let lateral = rel - desired * t_along;
-    // Behind us, past where we're going, or clear to the side: nothing to do.
-    // Inside the clearance already counts whatever the bearing, so a ship
-    // caught in a hull's notch is pushed out of it.
-    let inside = rel.length() < clearance;
-    if !inside && (t_along < 0.0 || t_along > look + clearance || lateral.length() >= clearance) {
-        return desired;
-    }
-    let away = lateral.try_normalize().map(|l| -l).unwrap_or(desired.perp());
-    let need = ((clearance - lateral.length()) / clearance).clamp(0.0, 1.0);
-    let urgency = if look > 1.0 { (1.0 - t_along / look).clamp(0.2, 1.0) } else { 1.0 };
-    let mut out = desired + away * (need * (0.6 + 1.4 * urgency));
-    if inside {
-        // Straight out, away from the hull's middle.
-        out += (-rel).normalize_or(away);
-    }
-    out.try_normalize().unwrap_or(desired)
 }
 
 /// Weapons fire smashes into terrain: bullets, missiles, ion pulses and EMP
@@ -954,12 +936,18 @@ mod steering_tests {
 
     #[test]
     fn two_rocks_too_close_to_thread_are_rounded_as_one() {
-        // 500 u of gap between them, dead ahead; the hull is 600 across.
-        let rocks = [rock(1_500.0, 450.0, 200.0), rock(1_500.0, -450.0, 200.0)];
+        // 300 u of gap between them, dead ahead; the hull is 600 long and
+        // some 300 wide, and wants its 60 either side.
+        let rocks = [rock(1_500.0, 350.0, 200.0), rock(1_500.0, -350.0, 200.0)];
         let (dir, side) = bend_around(Vec2::ZERO, Vec2::X, 2_500.0, 300.0, &rocks, 0.0);
         assert!(side != 0.0);
         // Round the outside of whichever it chose, not at the gap.
         assert!(dir.y.abs() > 0.3, "{dir}: making for the gap");
+        // In among a pack already, it steers by the one in front of it, not
+        // out of the whole pack: here the nearest is to its right, so left.
+        let pack = [rock(400.0, -300.0, 200.0), rock(-100.0, -500.0, 200.0), rock(-100.0, 500.0, 200.0)];
+        let (dir, _) = bend_around(Vec2::ZERO, Vec2::X, 2_500.0, 300.0, &pack, 0.0);
+        assert!(dir.y > 0.0 && dir.x > 0.0, "{dir}: turned back out of the pack");
         // Far enough apart, it goes between: each is off the line.
         let wide = [rock(1_500.0, 1_200.0, 200.0), rock(1_500.0, -1_200.0, 200.0)];
         assert_eq!(bend_around(Vec2::ZERO, Vec2::X, 2_500.0, 300.0, &wide, 0.0).0, Vec2::X);

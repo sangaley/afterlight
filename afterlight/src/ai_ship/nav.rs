@@ -107,7 +107,7 @@ pub fn nav_census(
                 s if s < 0.0 => ", going round to the right",
                 _ => "",
             };
-            going.push(format!("{entity:?} {faction:?} at {:.0},{:.0}, {:.1} km to go{round}", at.x, at.y, to_go / 1000.0));
+            going.push(format!("{entity:?} {faction:?} at {:.0},{:.0}, {:.1} km to go to {:.0},{:.0}{round}", at.x, at.y, to_go / 1000.0, point.x, point.y));
         }
         if let Some((was_point, was_to_go)) = census.last.get(&entity) {
             if stalled(*was_to_go, to_go, was_point.distance(point)) {
@@ -137,10 +137,14 @@ pub struct NavBody {
     pub radius: f32,
     /// How it is moving: a planet goes round its star, and a starport with it.
     pub vel: Vec2,
-    /// A star or a planet: nothing is ever inside it. A station is not --
-    /// ships have business in the space between its arms -- so a ship that
-    /// starts or ends inside a station's reach is left to steer by what is
-    /// in front of it, and only one passing by goes round the whole of it.
+    /// A star or a planet: nothing is ever inside it, and a route goes
+    /// round it. A station is not. Ships have business in the space between
+    /// its arms, and the circle round the whole of one is no use to plan by:
+    /// Haven's reaches most of the way to its own star, so a way round both
+    /// had no gap to go through and sent traders off round the far side of
+    /// the sun. A ship meets a station's parts as it comes to them
+    /// (ship::collision::terrain_blockers). Stations are kept here for where
+    /// they are and how they are moving.
     pub solid: bool,
 }
 
@@ -274,7 +278,7 @@ fn route_leg(from: Vec2, to: Vec2, pad: f32, bodies: &[NavBody], side_hint: f32,
             let out = (from - body.center).normalize_or(-dir);
             return (body.center + out * (room * ROUTE_WIDE + AIM_MIN), 0.0);
         }
-        if !body.solid && (from_in || to.distance_squared(body.center) < room * room) {
+        if !body.solid {
             continue;
         }
         let Some(t) = crate::ship::collision::segment_meets_circle(from, dir, len, body.center, room) else { continue };
@@ -314,9 +318,10 @@ fn route_leg(from: Vec2, to: Vec2, pad: f32, bodies: &[NavBody], side_hint: f32,
     // Something else between here and there: round that first.
     if depth > 0 {
         let others: Vec<NavBody> = bodies.iter().copied().filter(|b| *b != body).collect();
+        // The side stays this body's: it is what the hint is kept for.
         let (sooner, sooner_side) = route_leg(from, aim, pad, &others, side_hint, depth - 1);
         if sooner_side != 0.0 {
-            return (sooner, sooner_side);
+            return (sooner, side);
         }
     }
     (aim, side)
@@ -426,6 +431,9 @@ pub struct NavProgress {
     pub struck_at: f32,
     /// Seconds left of backing straight out of whatever it is against.
     pub backing: f32,
+    /// Seconds left of working along whatever it is against instead of
+    /// making straight for its point; the sign is the side, + for left.
+    pub sidestep: f32,
 }
 
 /// Seconds without headway before a ship counts as stuck.
@@ -441,6 +449,18 @@ const RECOVERED: f32 = 1_500.0;
 /// Seconds a stuck ship backs away from what it is against.
 pub const BACK_OUT_S: f32 = 3.0;
 
+/// How long, and to which side, a ship that has stalled `strikes` times
+/// running works along whatever is in its way: longer each time, and the
+/// other side each time, so a pocket it backed out of is tried round one
+/// end and then the other. Seconds, signed: + for left.
+pub fn sidestep_for(strikes: u8) -> f32 {
+    if strikes < 2 {
+        return 0.0;
+    }
+    let side = if strikes % 2 == 0 { 1.0 } else { -1.0 };
+    side * (strikes as f32 * 5.0).min(20.0)
+}
+
 /// Keep track of a ship's headway; true on the frame it has gone `STUCK_S`
 /// without any. `to_go` is how far it is from `goal`, `on_detour` whether
 /// it is on a planned way round something, `trying` whether it is meant to
@@ -453,7 +473,7 @@ pub fn stuck_update(p: &mut NavProgress, at: Vec2, goal: Vec2, to_go: f32, on_de
     if !trying || goal.distance(p.goal) > SAME_POINT {
         // Somewhere new to go, or nowhere: start again.
         let strikes = if trying && goal.distance(p.goal) <= SAME_POINT { p.strikes } else { 0 };
-        *p = NavProgress { goal, best: to_go, anchor: at, since: 0.0, strikes, struck_at: to_go, backing: p.backing };
+        *p = NavProgress { goal, best: to_go, anchor: at, since: 0.0, strikes, struck_at: to_go, backing: p.backing, sidestep: p.sidestep };
         return false;
     }
     p.goal = goal;
@@ -601,17 +621,35 @@ mod nav_tests {
         assert!(track.iter().all(|p| p.length() >= 31_000.0 - 501.0));
     }
 
-    /// Bound for a berth inside a station's reach, or leaving one: the
-    /// station's circle is not in the way. Passing by, it is.
+    /// A station's circle is never something to plan round: bound for a
+    /// berth inside it, leaving one, or passing by.
     #[test]
-    fn a_trader_bound_for_a_station_is_not_sent_round_it() {
+    fn nobody_is_sent_round_the_whole_of_a_station() {
         let station = NavBody { center: Vec2::ZERO, radius: 30_000.0, vel: Vec2::ZERO, solid: false };
         let berth = Vec2::new(-12_000.0, 3_000.0);
         let outside = Vec2::new(-90_000.0, 0.0);
+        let far = Vec2::new(90_000.0, 0.0);
         assert_eq!(route_aim(outside, berth, 1_000.0, &[station], 0.0), (berth, 0.0));
         assert_eq!(route_aim(berth, outside, 1_000.0, &[station], 0.0), (outside, 0.0));
-        let (aim, side) = route_aim(outside, Vec2::new(90_000.0, 0.0), 1_000.0, &[station], 0.0);
-        assert!(side != 0.0 && aim.y.abs() > 10_000.0, "straight through a station it had no business in");
+        assert_eq!(route_aim(outside, far, 1_000.0, &[station], 0.0), (far, 0.0));
+    }
+
+    /// Haven is 75 km from a star 40 km across, and reaches tens of km
+    /// itself. From beside it, round the star to a point on the far side is
+    /// the short way round the star, whatever the station is doing there.
+    #[test]
+    fn a_station_by_a_star_does_not_send_ships_the_long_way_round() {
+        let sun = star(31_000.0, -68_400.0, 40_000.0);
+        let haven = NavBody { center: Vec2::new(-20_450.0, -50.0), radius: 45_000.0, vel: Vec2::ZERO, solid: false };
+        // From north of the star to somewhere south-west of it: the west
+        // side is the short one.
+        let (from, to) = (Vec2::new(33_000.0, -13_000.0), Vec2::new(-20_000.0, -150_000.0));
+        let track = fly(from, to, 6_000.0, &[sun, haven]);
+        assert!(track.last().unwrap().distance(to) < 600.0);
+        let furthest_east = track.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+        assert!(furthest_east < 40_000.0, "went east to x = {furthest_east:.0}, the long way round");
+        let flown: f32 = track.windows(2).map(|w| w[0].distance(w[1])).sum();
+        assert!(flown < from.distance(to) * 1.3, "{flown:.0} for a {:.0} crossing", from.distance(to));
     }
 
     #[test]
@@ -743,6 +781,15 @@ mod nav_tests {
         // The same track with no plan behind it would be a ship going round
         // in circles.
         assert!(!stalls((0..3_000).map(|f| (arc(f), false)), goal, true).0.is_empty());
+    }
+
+    #[test]
+    fn a_ship_that_keeps_stalling_tries_one_end_then_the_other_for_longer() {
+        assert_eq!(sidestep_for(0), 0.0);
+        assert_eq!(sidestep_for(1), 0.0, "the first time it only backs out");
+        assert!(sidestep_for(2) > 0.0 && sidestep_for(3) < 0.0 && sidestep_for(4) > 0.0);
+        assert!(sidestep_for(3).abs() > sidestep_for(2).abs());
+        assert_eq!(sidestep_for(200).abs(), 20.0);
     }
 
     #[test]

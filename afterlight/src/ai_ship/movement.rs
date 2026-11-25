@@ -663,12 +663,30 @@ pub fn ai_ship_movement_system(
                 let picks_its_way = dist > ROUTE_MIN && member.is_none_or(|m| m.leader || to_slot > 6_000.0);
                 let (want, route_side) = if picks_its_way {
                     let formation = member.filter(|m| m.leader).and_then(|m| fleet_reach.get(&m.fleet)).copied().unwrap_or(0.0);
-                    let (aim, side) = super::nav::route_aim(pos, destination, own_radius.max(formation) + ROUTE_PAD, big_things, nav.route_side);
+                    let pad = own_radius.max(formation) + ROUTE_PAD;
+                    let (aim, side) = super::nav::route_aim(pos, destination, pad, big_things, nav.route_side);
+                    if side != 0.0 && super::nav::trace() && (time.elapsed_secs() % 10.0) < dt {
+                        info!(
+                            "NAV via {:?} {:?} at {:.0},{:.0}: making for {:.0},{:.0} on the way to {:.0},{:.0}, keeping {:.0} clear",
+                            _entity, ship_type, pos.x, pos.y, aim.x, aim.y, destination.x, destination.y, pad
+                        );
+                    }
                     (Vec2::from_angle(wobble_angle).rotate(aim - pos).normalize_or(to_dest / dist), side)
                 } else {
                     (to_dest / dist, 0.0)
                 };
                 nav.route_side = route_side;
+                // Stalled more than once: along whatever is in the way for a
+                // while, to find the end of it, instead of straight at it.
+                let mut progress = nav.progress;
+                let want = if progress.sidestep != 0.0 {
+                    let side = progress.sidestep.signum();
+                    let left = progress.sidestep.abs() - dt;
+                    progress.sidestep = if left > 0.0 { side * left } else { 0.0 };
+                    Vec2::from_angle(side * 1.4).rotate(want)
+                } else {
+                    want
+                };
                 let speed = velocity.0.length().max(max_speed * 0.5);
                 let look = crate::ship::collision::look_ahead(speed, own_radius, dist);
                 in_the_way.clear();
@@ -698,6 +716,17 @@ pub fn ai_ship_movement_system(
                 // Whatever it is making for is not in its way: a scavenger's
                 // point is the wreck itself, and a berth is beside a hull.
                 in_the_way.retain(|b| b.center.distance(destination) > b.radius + own_radius);
+                // Your hull, the same way. It had a push of its own with no
+                // memory of the side it took: with you dead ahead the push
+                // out and the pull on cancelled, and an escort making for a
+                // slot beyond you stopped where it was and stayed there.
+                // Not while fighting you: a ship engaging holds its own
+                // standoff, and a rammer means to hit.
+                if let Some((center, radius)) = player_obstacle.filter(|_| *behavior != AiShipBehavior::Engaging) {
+                    if center.distance(pos) < near + radius {
+                        in_the_way.push(crate::ship::collision::Blocker { center, radius });
+                    }
+                }
                 let (direction, side) = crate::ship::collision::bend_around(pos, want, look, own_radius, &in_the_way, nav.pass_side);
                 nav.pass_side = side;
 
@@ -705,17 +734,28 @@ pub fn ai_ship_movement_system(
                 // a hull, circling a point it can't reach. The first time it
                 // backs out and comes at it again; after that whoever sent it
                 // is told (`blocked`), and backs it out again meanwhile.
-                let trying = !settle && *behavior != AiShipBehavior::Engaging && dist > STUCK_NEAR;
-                let mut progress = nav.progress;
-                if super::nav::stuck_update(&mut progress, pos, destination, dist, route_side != 0.0, trying, dt) {
+                // An escort easing onto its slot isn't; one a long way off it is.
+                let trying = *behavior != AiShipBehavior::Engaging && dist > if settle { 3_000.0 } else { STUCK_NEAR };
+                // A slot moves with its leader: an escort keeping pace with a
+                // leader that is under way gets no nearer and is not stuck.
+                // For one following, as for one on a planned way round
+                // something, moving is headway; only standing still isn't.
+                let moving_counts = route_side != 0.0 || settle;
+                if super::nav::stuck_update(&mut progress, pos, destination, dist, moving_counts, trying, dt) {
                     progress.backing = super::nav::BACK_OUT_S;
+                    progress.sidestep = super::nav::sidestep_for(progress.strikes);
                     if progress.strikes >= 2 {
                         nav.blocked = true;
                     }
                     if super::nav::trace() {
+                        let nearest = in_the_way
+                            .iter()
+                            .map(|b| (b.center.distance(pos) - b.radius, b.radius))
+                            .min_by(|a, b| a.0.total_cmp(&b.0));
                         info!(
-                            "NAV stuck {:?} {:?} at {:.0},{:.0} for {:.0},{:.0}, {:.1} km off, strike {}",
-                            _entity, ship_type, pos.x, pos.y, destination.x, destination.y, dist / 1000.0, progress.strikes
+                            "NAV stuck {:?} {:?} (reach {:.0}) at {:.0},{:.0} for {:.0},{:.0}, {:.1} km off, strike {}; {} things in the way, nearest {:?} (gap, size); passing {}, routing {}",
+                            _entity, ship_type, own_radius, pos.x, pos.y, destination.x, destination.y, dist / 1000.0, progress.strikes,
+                            in_the_way.len(), nearest.map(|(g, r)| (g.round(), r.round())), side, route_side
                         );
                     }
                 }
@@ -731,14 +771,6 @@ pub fn ai_ship_movement_system(
                     direction
                 };
                 nav.progress = progress;
-                // Not while fighting you: a ship engaging holds its own
-                // standoff, and a rammer means to hit.
-                let direction = match player_obstacle {
-                    Some((center, radius)) if *behavior != AiShipBehavior::Engaging => {
-                        crate::ship::collision::steer_clear_of(pos, direction, dist, own_radius, center, radius)
-                    }
-                    _ => direction,
-                };
 
                 // Gradually accelerate toward desired velocity
                 let arrive = arrive_factor(dist, max_speed, settle, *behavior == AiShipBehavior::Engaging);
