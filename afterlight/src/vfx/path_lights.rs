@@ -133,14 +133,13 @@ pub fn lay_path_lights(
             let dv = d.as_vec2();
             let corner = grid_to_local(cell) + dv * (GRID_SIZE * 0.5);
             let at = corner - dv * POST_IN;
-            spawned.push(commands.spawn((Mesh2d(quad.clone()), MeshMaterial2d(glow.clone()), Transform::from_translation(at.extend(Z)), PathLight, ChildOf(ship))).id());
+            spawned.push(commands.spawn((Mesh2d(quad.clone()), MeshMaterial2d(glow.clone()), Transform::from_translation(at.extend(Z)), PathLight)).id());
             spawned.push(
                 commands
                     .spawn((
                         Sprite { image: assets.load("sprites/path_light/post.png"), color: lamp, custom_size: Some(Vec2::splat(POST_SIZE)), ..default() },
                         Transform::from_translation(at.extend(Z + 0.002)),
                         PathLight,
-                        ChildOf(ship),
                     ))
                     .id(),
             );
@@ -159,13 +158,13 @@ pub fn lay_path_lights(
                             },
                             Transform::from_translation(mid.extend(Z + 0.001)).with_rotation(Quat::from_rotation_z(run.y.atan2(run.x))),
                             PathLight,
-                            ChildOf(ship),
                         ))
                         .id(),
                 );
             }
         }
         if !spawned.is_empty() {
+            super::adopt_or_drop(&mut commands, ship, spawned.clone());
             lit.insert(ship, spawned);
         }
     }

@@ -22,6 +22,31 @@ pub mod effect_textures;
 use bevy::prelude::*;
 use crate::states::GameState;
 
+/// Hang `kids` under `parent` as the commands are applied -- or, if `parent`
+/// was despawned earlier in the same batch of commands, despawn them.
+///
+/// A system that finds a ship and queues sprites onto it with `ChildOf(ship)`
+/// races whatever despawns ships (streaming, wrecks, jumps): when the despawn
+/// is applied first, every sprite arrives with a parent that's gone. Bevy warns
+/// once per sprite -- hundreds in one burst on arrival -- and leaves them
+/// loose in the world, drawn at their ship-local spots round the origin.
+pub fn adopt_or_drop(commands: &mut Commands, parent: Entity, kids: Vec<Entity>) {
+    if kids.is_empty() {
+        return;
+    }
+    commands.queue(move |world: &mut World| {
+        if let Ok(mut p) = world.get_entity_mut(parent) {
+            p.add_children(&kids);
+        } else {
+            for kid in kids {
+                if let Ok(e) = world.get_entity_mut(kid) {
+                    e.despawn();
+                }
+            }
+        }
+    });
+}
+
 pub struct VfxPlugin;
 
 impl Plugin for VfxPlugin {
