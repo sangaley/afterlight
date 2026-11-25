@@ -69,6 +69,8 @@ pub struct AiShipPlugin;
 impl Plugin for AiShipPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Last, clear_ships_left_by_load);
+        // AFTERLIGHT_CENSUS: what the simulation holds, system by system.
+        app.add_systems(Update, simulation::sim_census.run_if(in_state(crate::states::GameState::Exploring)));
         // AFTERLIGHT_NAV_TRACE: who is stuck, and who is inside something.
         app.add_systems(
             Update,

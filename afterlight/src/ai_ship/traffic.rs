@@ -45,7 +45,8 @@ const ARRIVING_FROM: (f32, f32) = (55_000.0, 110_000.0);
 /// Fleets of traders a system keeps going. An empty lane where it's at war
 /// with both trading houses.
 pub fn trade_quota(system: &StarSystemDef) -> usize {
-    if trade_factions(system.faction).is_empty() {
+    // Nobody trades in the dark.
+    if crate::narrative::front::is_taken(system) || trade_factions(system.faction).is_empty() {
         0
     } else if system.haunt.is_some() {
         3
@@ -67,6 +68,22 @@ pub fn trade_factions(owner: Option<AiShipType>) -> Vec<AiShipType> {
         who.push(o);
     }
     who
+}
+
+/// How many trader fleets each system has, the lost ones too.
+///
+/// Only crewed fleets were counted, so a convoy lost to raiders was replaced
+/// at once -- and then came back from the dead a few minutes later as well.
+/// A lane the pirates work was the busiest in the galaxy, and no system's
+/// traders ever stopped growing. A lost convoy keeps its place in the count
+/// until it is struck off (`simulation::prune_dead_traders`), and then one
+/// new one sets out for it.
+pub fn trader_counts(fleets: &[fleet::SimFleet]) -> std::collections::HashMap<u32, usize> {
+    let mut counts: std::collections::HashMap<u32, usize> = Default::default();
+    for fleet in fleets.iter().filter(|f| f.trade.is_some()) {
+        *counts.entry(fleet.system_id).or_insert(0) += 1;
+    }
+    counts
 }
 
 /// The fleets on trade runs, for the helm.
@@ -383,7 +400,7 @@ pub fn run_traffic(
                 .filter(|o| !o.is_empty())
                 .map(|o| o[rng.gen_range(0..o.len())])
                 .and_then(|to| galaxy.systems.iter().find(|s| s.id == to))
-                .filter(|to| !trade_factions(to.faction).is_empty() && trade_factions(to.faction).contains(&fleet.faction));
+                .filter(|to| trade_quota(to) > 0 && trade_factions(to.faction).contains(&fleet.faction));
             if let Some(to) = leave {
                 run.leaving = Some(to.id);
                 run.bound_for = to.name.clone();
@@ -457,10 +474,7 @@ pub fn run_traffic(
     }
 
     // Keep them coming, a couple at a time.
-    let mut counts: std::collections::HashMap<u32, usize> = Default::default();
-    for fleet in sim.fleets.iter().filter(|f| f.trade.is_some() && manned.contains(&f.id)) {
-        *counts.entry(fleet.system_id).or_insert(0) += 1;
-    }
+    let counts = trader_counts(&sim.fleets);
     let systems: Vec<u32> = streaming.warm_systems.iter().copied().chain([loaded]).collect();
     for id in systems {
         let Some(system) = galaxy.systems.iter().find(|s| s.id == id) else { continue };
@@ -650,6 +664,33 @@ mod tests {
         }
         // From the far side it stays on the bearing it came in on.
         assert!(port.berth(Vec2::new(200_000.0, 0.0)).y.abs() < 1.0);
+    }
+
+    /// A convoy with all hands lost still holds its place: it isn't replaced
+    /// while it is waiting to be struck off.
+    #[test]
+    fn a_lost_convoy_keeps_its_place_in_the_count() {
+        let mut fleets = Vec::new();
+        for (id, system, trading) in [(1, 4, true), (2, 4, true), (3, 4, false), (4, 9, true)] {
+            let mut f = fleet::SimFleet::new(FleetKind::Convoy, AiShipType::MerchantPrinces, system, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+            f.id = id;
+            f.trade = trading.then(TradeRun::default);
+            fleets.push(f);
+        }
+        // Nothing here says who is alive: none of them need be.
+        let counts = trader_counts(&fleets);
+        assert_eq!(counts.get(&4), Some(&2));
+        assert_eq!(counts.get(&9), Some(&1));
+        assert_eq!(counts.get(&7), None);
+    }
+
+    #[test]
+    fn nobody_trades_in_the_dark() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let system = galaxy.systems.iter_mut().find(|s| s.faction == Some(AiShipType::TerranHegemony)).unwrap();
+        assert!(trade_quota(system) > 0);
+        system.dark = crate::narrative::front::TAKEN;
+        assert_eq!(trade_quota(system), 0);
     }
 
     #[test]

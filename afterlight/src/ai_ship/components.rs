@@ -530,6 +530,11 @@ pub struct SavedWorld {
     pub fleets: Vec<super::fleet::SimFleet>,
     #[serde(default)]
     pub next_fleet_id: u32,
+    /// The systems that have had their first population (see
+    /// `WorldSimulation::populated`). Empty in a save from before it was
+    /// kept: then it is every system a saved ship is in.
+    #[serde(default)]
+    pub populated: Vec<u32>,
 }
 
 impl SavedWorld {
@@ -567,6 +572,12 @@ pub struct WorldSimulation {
     pub fleets: Vec<super::fleet::SimFleet>,
     pub tick_timer: Timer,
     pub initialized: bool,
+    /// The systems that have been given their first population. It was
+    /// "any system with a ship in it", which a system could become or stop
+    /// being by accident: fleets falling back into one nobody had visited
+    /// meant it never got its own, and one emptied of its last ship would
+    /// have been filled again from nothing, all at once.
+    pub populated: std::collections::HashSet<u32>,
     next_bounty_id: u32,
     next_ship_id: u32,
     next_fleet_id: u32,
@@ -579,6 +590,7 @@ impl Default for WorldSimulation {
             fleets: Vec::new(),
             tick_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
             initialized: false,
+            populated: Default::default(),
             next_bounty_id: 1,
             next_ship_id: 1,
             next_fleet_id: 1,
@@ -607,6 +619,11 @@ impl WorldSimulation {
             next_bounty_id: self.next_bounty_id,
             fleets: self.fleets.clone(),
             next_fleet_id: self.next_fleet_id,
+            populated: {
+                let mut ids: Vec<u32> = self.populated.iter().copied().collect();
+                ids.sort_unstable();
+                ids
+            },
         }
     }
 
@@ -628,6 +645,11 @@ impl WorldSimulation {
                 ship.fleet = 0;
             }
         }
+        self.populated = if saved.populated.is_empty() {
+            self.ships.iter().map(|s| s.system_id).collect()
+        } else {
+            saved.populated.iter().copied().collect()
+        };
         self.initialized = true;
     }
 

@@ -500,6 +500,10 @@ const ALLY_RANGE: f32 = 20_000.0;
 /// a ship that flies alone.
 struct Side {
     faction: AiShipType,
+    /// Which system it is in. Every system shares one set of coordinates,
+    /// and two fleets at the same numbers in different systems are not near
+    /// each other.
+    system: u32,
     center: Vec2,
     spread: f32,
     members: Vec<usize>,
@@ -522,11 +526,11 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
         }
         let side = if s.fleet != 0 {
             *by_fleet.entry(s.fleet).or_insert_with(|| {
-                sides.push(Side { faction: s.faction, center: Vec2::ZERO, spread: 0.0, members: Vec::new() });
+                sides.push(Side { faction: s.faction, system: s.system_id, center: Vec2::ZERO, spread: 0.0, members: Vec::new() });
                 sides.len() - 1
             })
         } else {
-            sides.push(Side { faction: s.faction, center: Vec2::ZERO, spread: 0.0, members: Vec::new() });
+            sides.push(Side { faction: s.faction, system: s.system_id, center: Vec2::ZERO, spread: 0.0, members: Vec::new() });
             sides.len() - 1
         };
         sides[side].members.push(i);
@@ -541,7 +545,7 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
     let mut fights: Vec<(usize, usize)> = Vec::new();
     for a in 0..sides.len() {
         for b in (a + 1)..sides.len() {
-            if !super::components::factions_hostile(sides[a].faction, sides[b].faction) {
+            if sides[a].system != sides[b].system || !super::components::factions_hostile(sides[a].faction, sides[b].faction) {
                 continue;
             }
             let reach = BATTLE_RANGE + sides[a].spread + sides[b].spread;
@@ -563,6 +567,7 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
             for c in 0..sides.len() {
                 let helps = c != trader
                     && c != attacker
+                    && sides[c].system == sides[trader].system
                     && sides[c].faction.defends(sides[trader].faction)
                     && !sides[c].faction.defends(sides[attacker].faction)
                     && sides[c].center.distance(sides[trader].center) < ALLY_RANGE + sides[c].spread;
@@ -615,6 +620,27 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two hostile fleets at the same numbers in different systems are not
+    /// near each other, and don't fight.
+    #[test]
+    fn fleets_in_different_systems_do_not_fight() {
+        let ship = |system: u32, faction: AiShipType, fleet: u32| {
+            let mut s = SimulatedShip::patrolling(system, faction, Vec2::ZERO, Vec2::ZERO, 1_000.0, 80.0);
+            s.fleet = fleet;
+            s
+        };
+        let mut apart = vec![ship(3, AiShipType::TerranHegemony, 1), ship(8, AiShipType::RecursiveKingdom, 2)];
+        for _ in 0..40 {
+            resolve_battles(&mut apart, |_| true, 2.0);
+        }
+        assert!(apart.iter().all(|s| s.health >= 1.0 && s.behavior != SimBehavior::Dead), "they fought across the galaxy");
+        let mut together = vec![ship(3, AiShipType::TerranHegemony, 1), ship(3, AiShipType::RecursiveKingdom, 2)];
+        for _ in 0..40 {
+            resolve_battles(&mut together, |_| true, 2.0);
+        }
+        assert!(together.iter().any(|s| s.health < 1.0), "in one system, they do");
+    }
 
     #[test]
     fn formation_slots_never_overlap() {

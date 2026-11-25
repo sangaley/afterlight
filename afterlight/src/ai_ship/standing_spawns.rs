@@ -66,6 +66,35 @@ pub struct StandingSpawns {
     escorted_in: Option<u32>,
     /// The system the clocks were counting for.
     system: Option<u32>,
+    /// Factions that would have hunted you in a harbour, and are waiting
+    /// for you to leave it: their next hunt comes soon after you do.
+    waiting: Vec<AiShipType>,
+    /// Factions whose war fleet is owed, the same way.
+    war_waiting: Vec<AiShipType>,
+}
+
+/// A faction that waited for you outside a harbour hunts you this soon
+/// after you come where it can.
+const WAITED_HUNT: f32 = 60.0;
+
+/// Who may hunt you here, now. In a harbour, nobody: whoever would have is
+/// put on `waiting` instead, to come for you when you leave.
+pub fn hunters_here(harbour: bool, hunters: Vec<AiShipType>, waiting: &mut Vec<AiShipType>) -> Vec<AiShipType> {
+    if !harbour {
+        return hunters;
+    }
+    for faction in hunters {
+        if !waiting.contains(&faction) {
+            waiting.push(faction);
+        }
+    }
+    Vec::new()
+}
+
+/// How long until a faction's first hunt in a system: the usual wait, or
+/// much less for one that has been waiting for you.
+pub fn hunt_start(waited: bool, usual: f32) -> f32 {
+    if waited { usual.min(WAITED_HUNT) } else { usual }
 }
 
 /// AFTERLIGHT_HUNT_FIRST=<seconds>: the first hunt comes this soon (test switch).
@@ -151,8 +180,13 @@ pub fn standing_spawns(
     let player_pos = player.translation.truncate();
     let Some(system_id) = streaming.loaded_system else { return };
     let Some(system) = galaxy.systems.iter().find(|s| s.id == system_id) else { return };
+    // Nobody hunts in the dark.
+    if crate::narrative::front::is_taken(system) {
+        return;
+    }
     let dt = time.delta_secs();
     let mut rng = rand::thread_rng();
+    let state: &mut StandingSpawns = &mut state;
     if state.system != Some(system_id) {
         // A new system: the clocks start over, and an escort can be sent.
         state.system = Some(system_id);
@@ -168,8 +202,11 @@ pub fn standing_spawns(
         .map(|f| f.ally().filter(|_| f.is_trading()).unwrap_or(*f))
         .filter(|f| standing.attacks_player(*f))
         .collect();
+    // Not in a harbour: they wait outside it.
+    let hunters = hunters_here(super::simulation::safe_harbour(system), hunters, &mut state.waiting);
     for faction in hunters {
-        let t = clock(&mut state.hunt_clock, faction, first_hunt());
+        let waited = state.waiting.contains(&faction);
+        let t = clock(&mut state.hunt_clock, faction, hunt_start(waited, first_hunt()));
         *t -= dt;
         if *t > 0.0 {
             continue;
@@ -182,13 +219,14 @@ pub fn standing_spawns(
         }
         let Some(hulls) = hunter_hulls(faction, standing.value(faction), &mut rng) else { continue };
         let id = send_fleet(&mut sim, faction, FleetKind::Raiders, &hulls, system_id, player_pos, ARRIVAL_RANGE, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
-        info!("STANDING hunt: {:?} sends fleet {id} ({} ships) at standing {:.0}", faction, hulls.len(), standing.value(faction));
+        info!("STANDING hunt: {:?} sends fleet {id} ({} ships) at standing {:.0}{}", faction, hulls.len(), standing.value(faction), if waited { ", waited for you" } else { "" });
+        state.waiting.retain(|f| *f != faction);
         notes.write(crate::events::ShowNotification {
-            message: format!(
-                "A {} hunter wing is on your trail ({} ships)",
-                faction_display_name(faction),
-                hulls.len()
-            ),
+            message: if waited {
+                format!("A {} hunter wing was waiting for you to leave harbour ({} ships)", faction_display_name(faction), hulls.len())
+            } else {
+                format!("A {} hunter wing is on your trail ({} ships)", faction_display_name(faction), hulls.len())
+            },
             notification_type: crate::events::NotificationType::Danger,
             duration: 5.0,
         });
@@ -221,6 +259,7 @@ pub fn war_fleets(
     mut sim: ResMut<WorldSimulation>,
     mut standing: ResMut<FactionStanding>,
     streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    galaxy: Res<crate::celestial::resources::GalaxyMap>,
     player: Query<&Transform, With<Ship>>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
 ) {
@@ -231,11 +270,32 @@ pub fn war_fleets(
     // Only touch standing when there is something to take: a mutable borrow
     // marks it changed, and every frame of that made the diplomacy window
     // rebuild itself every frame.
-    if standing.provocations.is_empty() {
+    if standing.provocations.is_empty() && state.war_waiting.is_empty() {
         return;
     }
-    let provoked: Vec<AiShipType> = std::mem::take(&mut standing.provocations);
+    let mut provoked: Vec<AiShipType> =
+        if standing.provocations.is_empty() { Vec::new() } else { std::mem::take(&mut standing.provocations) };
     let (Ok(player), Some(system_id)) = (player.single(), streaming.loaded_system) else { return };
+    let system = galaxy.systems.iter().find(|s| s.id == system_id);
+    // Into the dark, nobody follows.
+    if system.is_some_and(crate::narrative::front::is_taken) {
+        return;
+    }
+    // Into a harbour, nobody follows either: the fleet is owed, and comes
+    // when you leave.
+    if system.is_some_and(super::simulation::safe_harbour) {
+        for faction in provoked {
+            if !state.war_waiting.contains(&faction) {
+                state.war_waiting.push(faction);
+            }
+        }
+        return;
+    }
+    for faction in std::mem::take(&mut state.war_waiting) {
+        if !provoked.contains(&faction) {
+            provoked.push(faction);
+        }
+    }
     let player_pos = player.translation.truncate();
     let mut rng = rand::thread_rng();
     for faction in provoked {
@@ -379,6 +439,25 @@ mod tests {
                 assert!(hulls.iter().any(|&(f, c)| fleet::role_of(f, c) == crate::ai_ship::roster::ClassRole::Capital));
             }
         }
+    }
+
+    /// In a harbour nobody hunts; whoever would have is remembered, and
+    /// comes soon after you leave.
+    #[test]
+    fn no_hunt_starts_in_a_harbour_and_the_hunters_wait_outside() {
+        use AiShipType::*;
+        let mut waiting = Vec::new();
+        assert!(hunters_here(true, vec![CorpseStars, BrokenChoir], &mut waiting).is_empty());
+        assert_eq!(waiting, vec![CorpseStars, BrokenChoir]);
+        // Still there a second later: remembered once, not twice.
+        assert!(hunters_here(true, vec![CorpseStars], &mut waiting).is_empty());
+        assert_eq!(waiting.len(), 2);
+        // Out of it, they hunt, and the one that waited comes soon.
+        assert_eq!(hunters_here(false, vec![CorpseStars], &mut waiting), vec![CorpseStars]);
+        assert_eq!(hunt_start(true, FIRST_HUNT), WAITED_HUNT);
+        assert_eq!(hunt_start(false, FIRST_HUNT), FIRST_HUNT);
+        // A test run asking for a hunt sooner still gets it sooner.
+        assert_eq!(hunt_start(true, 20.0), 20.0);
     }
 
     #[test]
