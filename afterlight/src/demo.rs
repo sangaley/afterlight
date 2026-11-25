@@ -577,7 +577,16 @@ impl Plugin for DemoPlugin {
         // don't reach the zoom in an offscreen run). 1.8 is the default; 20
         // the furthest out.
         if let Some(z) = std::env::var("AFTERLIGHT_ZOOM").ok().and_then(|v| v.parse::<f32>().ok()) {
-            app.add_systems(Update, move |mut cam: ResMut<crate::camera::CameraState>| {
+            // AFTERLIGHT_ZOOM_ALT=<z2>: every other real second, hold z2
+            // instead -- with AFTERLIGHT_SHOTS=1, frames a second apart show
+            // the same fight from both, e.g. the bare blocks close in against
+            // the shell or picture far out.
+            let alt = std::env::var("AFTERLIGHT_ZOOM_ALT").ok().and_then(|v| v.parse::<f32>().ok());
+            app.add_systems(Update, move |mut cam: ResMut<crate::camera::CameraState>, time: Res<Time<Real>>| {
+                let z = match alt {
+                    Some(z2) if (time.elapsed_secs() as u64) % 2 == 1 => z2,
+                    _ => z,
+                };
                 // filming may go wider than play allows
                 cam.max_zoom = cam.max_zoom.max(z);
                 cam.zoom = z.clamp(cam.min_zoom, cam.max_zoom);
