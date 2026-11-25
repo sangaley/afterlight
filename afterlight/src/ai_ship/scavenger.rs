@@ -19,8 +19,12 @@ use super::components::*;
 const WAVE_CHANCE: f32 = 0.35;
 /// How long after the kill the vultures arrive (randomized per wave) —
 /// generous enough to strip most of a wreck first if you start promptly.
-const WAVE_DELAY_MIN: f32 = 50.0;
-const WAVE_DELAY_MAX: f32 = 110.0;
+/// Shorter than it was (50-110 s): they come in a jump away now, not on top
+/// of the wreck, and the flight in is the rest of the wait.
+const WAVE_DELAY_MIN: f32 = 20.0;
+const WAVE_DELAY_MAX: f32 = 70.0;
+/// A swarm stays for a wreck this long, then leaves the system.
+const SWARM_STAYS: f32 = 600.0;
 /// How far out the wave spawns from the wreck.
 const SPAWN_DIST_MIN: f32 = 1600.0;
 const SPAWN_DIST_MAX: f32 = 2200.0;
@@ -82,10 +86,14 @@ pub fn spawn_scavenger_waves(
     wreck_query: Query<&Wreck>,
     mut sim: ResMut<super::components::WorldSimulation>,
     streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    galaxy: Option<Res<crate::celestial::resources::GalaxyMap>>,
+    player: Query<&Transform, With<crate::components::Ship>>,
     mut notifications: MessageWriter<ShowNotification>,
 ) {
     let mut rng = rand::thread_rng();
     let system_id = streaming.loaded_system.unwrap_or(0);
+    let system = galaxy.as_deref().and_then(|g| g.systems.iter().find(|s| s.id == system_id));
+    let you = player.single().ok().map(|t| t.translation.truncate());
     waves.pending.retain_mut(|wave| {
         wave.timer.tick(time.delta());
         if !wave.timer.is_finished() {
@@ -98,6 +106,11 @@ pub fn spawn_scavenger_waves(
         let angle = rng.gen_range(0.0..std::f32::consts::TAU);
         let base = wave.position
             + Vec2::new(angle.cos(), angle.sin()) * rng.gen_range(SPAWN_DIST_MIN..SPAWN_DIST_MAX);
+        // Not two km from a wreck you are sitting on: out of sight, and in.
+        let base = match system {
+            Some(system) => super::simulation::arrival_point(system, you, base, 2_000.0),
+            None => base,
+        };
         // One fleet: they arrive together and leave together. Home is the
         // carcass: their patrol rings it and the wreck-chasing brain does
         // the rest.
@@ -116,6 +129,9 @@ pub fn spawn_scavenger_waves(
         );
         fleet.heading = (wave.position - base).to_angle();
         fleet.destination = wave.position;
+        fleet.cruise = super::simulation::TRANSIT_CRUISE;
+        fleet.mission = super::fleet::Mission::Scavenge { left: SWARM_STAYS };
+        sim.flash(system_id, base, true, AiShipType::RecursiveKingdom);
         sim.add_fleet(fleet, members);
         notifications.write(ShowNotification {
             message: "Scavenger swarm inbound - they smell the wreck!".into(),

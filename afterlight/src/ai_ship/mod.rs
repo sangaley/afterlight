@@ -96,6 +96,8 @@ impl Plugin for AiShipPlugin {
                 traffic::run_traffic,
                 simulation::hold_guard_posts,
                 nav::refresh_nav_bodies,
+                simulation::fly_departures,
+                simulation::show_jump_flashes,
             )
                 .run_if(in_state(crate::states::GameState::Exploring)),
         );

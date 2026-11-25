@@ -357,6 +357,321 @@ pub fn safe_harbour(system: &crate::celestial::resources::StarSystemDef) -> bool
 /// Room a fleet's home keeps from a star or the path of a planet.
 const HOLDING_CLEAR: f32 = 8_000.0;
 
+/// Nothing new is put into the world nearer you than this: past where ships
+/// come on screen (48 km), inside where their far pictures show (105 km).
+/// What arrives, arrives: a flash at a distance, then a silhouette, then hulls.
+pub const ARRIVAL_RANGE: f32 = 54_000.0;
+/// How fast a fleet that has just jumped in, or is on its way out, travels
+/// while nobody is flying it. Patrol pace (45-140 u/s) across a system
+/// hundreds of km wide is an hour's journey; this is minutes.
+pub const TRANSIT_CRUISE: f32 = 600.0;
+
+/// Where something that wants to be at `want` is actually put: there, if
+/// that is out of your sight; otherwise out along the line from you through
+/// it until it is `ARRIVAL_RANGE` off. Clear of the star and the planets
+/// either way.
+///
+/// Scavengers used to appear 2 km from a wreck you were sitting on, an
+/// escort 12 km from you, a garrison wherever the new owner's rally point
+/// was, you or no you.
+pub fn arrival_point(system: &crate::celestial::resources::StarSystemDef, you: Option<Vec2>, want: Vec2, reach: f32) -> Vec2 {
+    let clear = |at: Vec2| super::traffic::clear_point(system, at, reach);
+    let Some(you) = you else { return clear(want) };
+    let at = clear(want);
+    if at.distance(you) >= ARRIVAL_RANGE {
+        return at;
+    }
+    // On the side it was wanted, if there is clear space there at that
+    // range; else the nearest bearing to it that has some. Near a star the
+    // space between it and the first planet's path is a narrow band, and
+    // straight out can be a long way before anything is clear.
+    let out = (want - you).normalize_or(Vec2::X);
+    for ring in 0..6 {
+        let range = ARRIVAL_RANGE + 500.0 + ring as f32 * 8_000.0;
+        let best = (0..12)
+            .map(|k| {
+                // 0, +30, -30, +60, -60 ... degrees off the side it was wanted.
+                let turn = ((k + 1) / 2) as f32 * 30.0_f32.to_radians() * if k % 2 == 0 { -1.0 } else { 1.0 };
+                clear(you + Vec2::from_angle(turn).rotate(out) * range)
+            })
+            .filter(|at| at.distance(you) >= ARRIVAL_RANGE && at.distance(you) <= range + 30_000.0)
+            .min_by(|a, b| a.distance(want).total_cmp(&b.distance(want)));
+        if let Some(at) = best {
+            return at;
+        }
+    }
+    clear(you + out * (ARRIVAL_RANGE * 2.0))
+}
+
+/// The jump point a fleet of `from` comes into `system` by: the one toward
+/// the nearest other system `from` holds, or toward any neighbour.
+pub fn jump_in_point(
+    galaxy: &crate::celestial::resources::GalaxyMap,
+    system: &crate::celestial::resources::StarSystemDef,
+    from: Option<AiShipType>,
+    rng: &mut impl Rng,
+) -> Vec2 {
+    let theirs = galaxy
+        .systems
+        .iter()
+        .filter(|s| s.id != system.id && from.is_some() && s.faction == from)
+        .min_by(|a, b| a.galaxy_pos.distance(system.galaxy_pos).total_cmp(&b.galaxy_pos.distance(system.galaxy_pos)));
+    let other = theirs.or_else(|| {
+        let near = crate::celestial::galaxy::nearest_neighbors(galaxy, system.id, 3);
+        (!near.is_empty()).then(|| near[rng.gen_range(0..near.len())]).and_then(|id| galaxy.systems.iter().find(|s| s.id == id))
+    });
+    match other {
+        Some(other) => super::traffic::jump_point(system, other, 1.0),
+        None => super::traffic::clear_point(system, system.local_center + Vec2::X * 90_000.0, 6_000.0),
+    }
+}
+
+/// The jump point nearest `from` that leads out of `system`.
+pub fn depart_point(galaxy: &crate::celestial::resources::GalaxyMap, system: &crate::celestial::resources::StarSystemDef, from: Vec2) -> Vec2 {
+    crate::celestial::galaxy::nearest_neighbors(galaxy, system.id, 3)
+        .into_iter()
+        .filter_map(|id| galaxy.systems.iter().find(|s| s.id == id))
+        .map(|other| super::traffic::jump_point(system, other, 1.0))
+        .min_by(|a, b| a.distance(from).total_cmp(&b.distance(from)))
+        .unwrap_or_else(|| super::traffic::clear_point(system, system.local_center + (from - system.local_center).normalize_or(Vec2::X) * 90_000.0, 6_000.0))
+}
+
+/// Show the jumps: the player's own drive flash, one ring to a fleet, for
+/// those in the system you are in and near enough to see.
+pub fn show_jump_flashes(
+    mut commands: Commands,
+    mut sim: ResMut<WorldSimulation>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    player: Query<&Transform, With<Ship>>,
+    fx: Option<Res<crate::vfx::effect_textures::EffectTextures>>,
+) {
+    if sim.jumps.is_empty() {
+        return;
+    }
+    let jumps = std::mem::take(&mut sim.jumps);
+    let you = player.single().ok().map(|t| t.translation.truncate());
+    for jump in jumps {
+        let off = you.map(|p| p.distance(jump.at));
+        let seen = streaming.loaded_system == Some(jump.system) && off.is_some_and(|d| d <= super::preview::PREVIEW_RANGE);
+        if !seen {
+            continue;
+        }
+        info!("JUMP {} {:?}, {:.0} km from you", if jump.arriving { "in" } else { "out" }, jump.faction, off.unwrap_or(0.0) / 1000.0);
+        if let Some(fx) = fx.as_deref() {
+            crate::vfx::particles::spawn_warp_flash(&mut commands, fx, jump.at, jump.reach, Color::srgb(0.45, 0.70, 1.0));
+        }
+    }
+}
+
+/// On screen, a fleet that is leaving flies for its jump point, and goes
+/// when it gets there.
+pub fn fly_departures(
+    time: Res<Time>,
+    mut next: Local<f32>,
+    mut sim: ResMut<WorldSimulation>,
+    mut leaders: Query<(&Transform, &mut AiShipNav, &super::fleet::FleetMember)>,
+) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 1.0;
+    let mut gone: Vec<u32> = Vec::new();
+    for (tf, mut nav, member) in leaders.iter_mut().filter(|(.., m)| m.leader) {
+        let Some(point) = sim.fleet(member.fleet).and_then(|f| f.depart) else { continue };
+        if nav.waypoints.len() != 1 || nav.waypoints[0] != point {
+            nav.waypoints = vec![point];
+            nav.current_waypoint = 0;
+            nav.destination = Some(point);
+        }
+        if tf.translation.truncate().distance(point) < DEPART_AT {
+            gone.push(member.fleet);
+        }
+    }
+    sim.fold_back.extend(gone);
+}
+
+/// A fleet this near its jump point has reached it.
+const DEPART_AT: f32 = 3_000.0;
+
+/// How many hulls `system`'s owner keeps there: what it is populated to,
+/// and what it is topped back up toward.
+pub fn owner_target(system: &crate::celestial::resources::StarSystemDef) -> usize {
+    let Some(faction) = system.faction else { return 0 };
+    let Some(template) = faction_territories().into_iter().find(|t| t.faction == faction) else { return 0 };
+    let count = system_ship_count(template.ship_count, super::components::faction_power(faction));
+    // A capital is where a faction keeps its strength.
+    if system.capital { (count as f32 * CAPITAL_SHARE).round() as usize } else { count }
+}
+
+/// Seconds between looks at whether a system needs anyone sent to it.
+pub const REFILL_EVERY: f32 = 300.0;
+/// A system with this share of its strength left is left alone. Not nearer
+/// full than this: its own traders come and go between systems, and a
+/// convoy away on a run is not a loss to be made good.
+const REFILL_BELOW: f32 = 0.75;
+/// A boss killed in its haunt is gone this long before another comes.
+const BOSS_RETURNS: f32 = 1_800.0;
+/// A dead ship's `fuel` counts down by 0.01 a tick (2 s) from wherever it
+/// was. At this it is struck off (a fleet lost with all hands, a ship
+/// flying alone)...
+const STRUCK_OFF_AT: f32 = -0.5;
+/// ...and at this a fleet that still has ships is sent a replacement for
+/// one it lost: about ten minutes.
+const MENDED_AT: f32 = -2.0;
+
+/// Who a system's fighting ships belong to: its owner, or the owner's ally
+/// when the owner is a trading house with no navy of its own.
+fn flier_of(owner: AiShipType) -> AiShipType {
+    owner.ally().filter(|_| owner.is_trading()).unwrap_or(owner)
+}
+
+/// Send one fleet to a system that has lost too many: the owner's first,
+/// else one for a neighbour that has nobody left there. It comes in by the
+/// jump from its own nearest system and makes for a holding. Nothing for a
+/// harbour, the dark, or a point you would see it appear at.
+///
+/// This is what there is instead of the dead getting up again where they
+/// fell, five minutes on, whether you were looking or not.
+pub fn refill_system(
+    sim: &mut WorldSimulation,
+    galaxy: &crate::celestial::resources::GalaxyMap,
+    system: &crate::celestial::resources::StarSystemDef,
+    you: Option<Vec2>,
+    rng: &mut impl Rng,
+) -> Option<String> {
+    use super::fleet::{FleetKind, Mission};
+    if safe_harbour(system) || crate::narrative::front::is_taken(system) {
+        return None;
+    }
+    // Who counts as being here: everyone but fleets sent for or with you,
+    // and fleets on their way out. Traders count: a system's convoys are
+    // part of what it was populated with, and the freight lanes keep their
+    // own numbers up (ai_ship::traffic), so none are sent from here.
+    let ordinary: std::collections::HashSet<u32> =
+        sim.fleets.iter().filter(|f| f.system_id == system.id && f.mission == Mission::None && f.depart.is_none()).map(|f| f.id).collect();
+    // The hulls of `faction` here and alive, as (faction, class).
+    let living = |sim: &WorldSimulation, faction: AiShipType| -> Vec<super::fleet::Hull> {
+        sim.ships
+            .iter()
+            .filter(|s| s.system_id == system.id && s.faction == faction && s.behavior != SimBehavior::Dead)
+            .filter(|s| s.fleet == 0 || ordinary.contains(&s.fleet))
+            .map(|s| (s.faction, s.class))
+            .collect()
+    };
+    // Not where you would see it arrive out of nothing.
+    let unseen = |at: Vec2| you.is_none_or(|p| p.distance(at) >= ARRIVAL_RANGE);
+    let stations: Vec<Vec2> = crate::world::home_base::station_sites(system).iter().map(|s| s.pos).collect();
+
+    if let Some(owner) = system.faction {
+        let flier = flier_of(owner);
+        let here = living(sim, owner).len() + if flier != owner { living(sim, flier).len() } else { 0 };
+        let target = owner_target(system);
+        if (here as f32) < target as f32 * REFILL_BELOW {
+            let template = faction_territories().into_iter().find(|t| t.faction == owner)?;
+            // The caps count what is already here.
+            let mut held = super::fleet::Held::new();
+            for (faction, class) in living(sim, owner).into_iter().chain(living(sim, flier)) {
+                super::fleet::hold(&mut held, super::fleet::role_of(faction, class));
+            }
+            let has_guard = sim.fleets.iter().any(|f| ordinary.contains(&f.id) && f.kind == FleetKind::StationGuard);
+            let wants_guard = crate::diplomacy::stations::station_plan(owner).is_some() && !has_guard;
+            let holdings = faction_holdings(system, rng);
+            // Its station's guard first, if that is what it has lost.
+            let guard = wants_guard
+                .then(|| super::fleet::compose(owner, FleetKind::StationGuard, rng, &mut held))
+                .flatten()
+                .map(|hulls| (FleetKind::StationGuard, hulls));
+            let (kind, hulls) = match guard {
+                Some(guard) => guard,
+                None => super::fleet::roll_fleet(owner, rng, &mut held, |k| !matches!(k, FleetKind::StationGuard | FleetKind::Convoy))?,
+            };
+            let at = jump_in_point(galaxy, system, Some(owner), rng);
+            if !unseen(at) {
+                return None;
+            }
+            let h = if kind == FleetKind::StationGuard { 0 } else { rng.gen_range(0..holdings.len()) };
+            let home = holdings[h];
+            let radius = if kind == FleetKind::StationGuard { GUARD_RADIUS } else { template.radius };
+            let (mut fleet, members) = super::fleet::new_fleet(owner, kind, &hulls, system.id, at, home, radius, rng);
+            fleet.destination = home;
+            fleet.cruise = TRANSIT_CRUISE;
+            let n = members.len();
+            sim.add_fleet(fleet, members);
+            sim.flash(system.id, at, true, owner);
+            return Some(format!("{:?} sends a {:?} of {n} to {} ({here} of {target} left)", owner, kind, system.name));
+        }
+    }
+    // A neighbour with nobody left here sends a patrol or raiders back.
+    for neighbour in crate::celestial::territory::border_factions(galaxy, system.id) {
+        if !living(sim, neighbour).is_empty() {
+            continue;
+        }
+        let Some(template) = faction_territories().into_iter().find(|t| t.faction == neighbour) else { continue };
+        let mut held = super::fleet::Held::new();
+        let Some((kind, hulls)) = super::fleet::roll_fleet(neighbour, rng, &mut held, |k| matches!(k, FleetKind::Patrol | FleetKind::Raiders)) else { continue };
+        let at = jump_in_point(galaxy, system, Some(neighbour), rng);
+        if !unseen(at) {
+            continue;
+        }
+        let edge = system.local_center + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(OPEN_HOLDING_RANGE);
+        let home = clear_in_system(system, edge, HOLDING_CLEAR, &stations);
+        let (mut fleet, members) = super::fleet::new_fleet(neighbour, kind, &hulls, system.id, at, home, template.radius * 1.5, rng);
+        fleet.destination = home;
+        fleet.cruise = TRANSIT_CRUISE;
+        let n = members.len();
+        sim.add_fleet(fleet, members);
+        sim.flash(system.id, at, true, neighbour);
+        return Some(format!("{:?} sends {:?} of {n} across the border into {}", neighbour, kind, system.name));
+    }
+    None
+}
+
+/// The boss that haunts a system, and its patrol: come in at the edge.
+fn spawn_haunt(sim: &mut WorldSimulation, system: &crate::celestial::resources::StarSystemDef, you: Option<Vec2>, rng: &mut impl Rng) -> usize {
+    use super::fleet::FleetKind;
+    let Some(boss) = system.haunt else { return 0 };
+    let stations: Vec<Vec2> = crate::world::home_base::station_sites(system).iter().map(|s| s.pos).collect();
+    let mut sent = 0;
+    for kind in [FleetKind::BattleGroup, FleetKind::Patrol] {
+        let mut held = super::fleet::Held::new();
+        let Some(hulls) = super::fleet::compose(boss, kind, rng, &mut held) else { continue };
+        let edge = system.local_center + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(OPEN_HOLDING_RANGE);
+        let home = arrival_point(system, you, clear_in_system(system, edge, HOLDING_CLEAR, &stations), HOLDING_CLEAR);
+        let (mut fleet, members) =
+            super::fleet::new_fleet(boss, kind, &hulls, system.id, home, system.local_center, OPEN_HOLDING_RANGE.end, rng);
+        fleet.destination = patrol_waypoint(rng, system.local_center, fleet.patrol_radius);
+        sent += members.len();
+        sim.add_fleet(fleet, members);
+        sim.flash(system.id, home, true, boss);
+    }
+    sent
+}
+
+/// Strike off what is lost for good and has waited out its time: fleets
+/// with no ship left alive, and dead ships that flew alone. Not what is on
+/// screen as a wreck with its record still wanted (`spawned`). Returns how
+/// many ships went.
+pub fn prune_the_lost(sim: &mut WorldSimulation) -> usize {
+    let gone: std::collections::HashSet<u32> = sim
+        .fleets
+        .iter()
+        .filter(|f| sim.ships.iter().filter(|s| s.fleet == f.id).all(|s| s.behavior == SimBehavior::Dead && s.fuel <= STRUCK_OFF_AT))
+        .map(|f| f.id)
+        .collect();
+    let fleets: std::collections::HashSet<u32> = sim.fleets.iter().map(|f| f.id).collect();
+    let before = sim.ships.len();
+    sim.ships.retain(|s| {
+        let lost_alone = !fleets.contains(&s.fleet) && s.behavior == SimBehavior::Dead && s.fuel <= STRUCK_OFF_AT;
+        !(gone.contains(&s.fleet) || lost_alone)
+    });
+    sim.fleets.retain(|f| !gone.contains(&f.id));
+    for id in gone {
+        sim.out_of_sight.remove(&id);
+    }
+    before - sim.ships.len()
+}
+
 /// `pos` in `system`, moved off its star, out of every planet's path and
 /// away from its stations: somewhere ships can be set down and left.
 ///
@@ -415,9 +730,7 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
     let holdings = faction_holdings(system, &mut rng);
     // The danger the faction itself brings (a haunted system's danger is the
     // boss's, and the boss brings its own ships).
-    let count = system_ship_count(template.ship_count, super::components::faction_power(faction));
-    // A capital is where a faction keeps its strength.
-    let count = if system.capital { (count as f32 * CAPITAL_SHARE).round() as usize } else { count };
+    let count = owner_target(system);
     // How many of each capped role this system already holds.
     let mut held = super::fleet::Held::new();
     let has_station = crate::diplomacy::stations::station_plan(faction).is_some();
@@ -468,9 +781,7 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
             }
             // Out of tries: carried on outward until it's clear, never set
             // down through a formation.
-            let anchor = clear_spot(anchor, Vec2::from_angle(angle), reach, &placed_fleets);
-            // And clear of the star and the planets, formation and all.
-            let anchor = super::traffic::clear_point(system, anchor, reach);
+            let anchor = settle_fleet(system, anchor, Vec2::from_angle(angle), reach, &placed_fleets);
             placed_fleets.push((anchor, reach));
             let (mut fleet, members) = super::fleet::new_fleet(
                 faction, kind, &classes, system.id, anchor, home, template.radius, &mut rng,
@@ -519,8 +830,7 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
             let reach = hulls.iter().map(|&(f, c)| super::spawner::design_extent(f, c)).fold(0.0_f32, f32::max)
                 * (hulls.len() as f32 + 1.0)
                 + 1_000.0;
-            let at = clear_spot(holdings[0] + Vec2::new(0.0, 6_000.0), Vec2::Y, reach, &placed_fleets);
-            let at = super::traffic::clear_point(system, at, reach);
+            let at = settle_fleet(system, holdings[0] + Vec2::new(0.0, 6_000.0), Vec2::Y, reach, &placed_fleets);
             let (mut fleet, members) = super::fleet::new_fleet(
                 faction, super::fleet::FleetKind::StationGuard, &hulls, system.id, at, holdings[0], HOME_FLEET_RADIUS, &mut rng,
             );
@@ -580,19 +890,7 @@ fn spawn_visitors(sim: &mut WorldSimulation, system: &crate::celestial::resource
             sim.add_fleet(fleet, members);
         }
     }
-    if let Some(boss) = system.haunt {
-        // The boss's battle group, ranging the whole system, and a patrol of
-        // its own.
-        for kind in [FleetKind::BattleGroup, FleetKind::Patrol] {
-            let mut held = super::fleet::Held::new();
-            let Some(hulls) = super::fleet::compose(boss, kind, &mut rng, &mut held) else { continue };
-            let home = clear_in_system(system, edge(&mut rng), HOLDING_CLEAR, &stations);
-            let (mut fleet, members) =
-                super::fleet::new_fleet(boss, kind, &hulls, system.id, home, system.local_center, OPEN_HOLDING_RANGE.end, &mut rng);
-            fleet.destination = patrol_waypoint(&mut rng, system.local_center, fleet.patrol_radius);
-            sim.add_fleet(fleet, members);
-        }
-    }
+    spawn_haunt(sim, system, None, &mut rng);
 }
 
 /// Share of a system's ships kept at the faction's cluster point; the rest
@@ -657,6 +955,28 @@ fn clear_spot(mut at: Vec2, dir: Vec2, reach: f32, placed: &[(Vec2, f32)]) -> Ve
         at += dir * 1_000.0;
     }
     at
+}
+
+/// Where a fleet of `reach` wanted at `at` is set down: clear of every
+/// fleet already placed, and of the star and every planet's path. Moving it
+/// off a planet's path can put it onto another fleet, and off the fleet
+/// back onto the path, so it is carried outward until both are satisfied.
+fn settle_fleet(system: &crate::celestial::resources::StarSystemDef, at: Vec2, dir: Vec2, reach: f32, placed: &[(Vec2, f32)]) -> Vec2 {
+    let roll = crate::celestial::galaxy::system_roll(system);
+    let planets = roll.planet_paths();
+    let keep = crate::celestial::poi::KeepClear { center: system.local_center, star_radius: roll.star_radius(), planets: &planets };
+    let ok = |p: Vec2| keep.is_clear_by(p, reach) && placed.iter().all(|&(c, r)| c.distance(p) > r + reach);
+    // Out from the star: past the last planet everything is clear, and the
+    // fleets already placed come to an end.
+    let out = (at - system.local_center).try_normalize().unwrap_or(dir.normalize_or(Vec2::Y));
+    let mut p = at;
+    for _ in 0..900 {
+        if ok(p) {
+            return p;
+        }
+        p += out * 1_500.0;
+    }
+    p
 }
 
 fn clear_of_stations(mut pos: Vec2, stations: &[Vec2]) -> Vec2 {
@@ -839,6 +1159,41 @@ pub fn tick_world_simulation(
         *reach = reach.max(ship.slot.length());
     }
 
+    // Fleets leaving the system make for their jump point, quickly, and go
+    // when they reach it -- or at once, if nobody can see them.
+    {
+        let you_here = |system: u32, at: Vec2| {
+            streaming.loaded_system == Some(system) && player_pos.is_some_and(|p| p.distance(at) <= super::preview::PREVIEW_RANGE)
+        };
+        let mut gone: Vec<(u32, u32, Vec2, AiShipType, bool)> = Vec::new();
+        for fleet in sim.fleets.iter_mut() {
+            let Some(point) = fleet.depart else { continue };
+            fleet.destination = point;
+            fleet.home_zone = point;
+            fleet.patrol_radius = f32::MAX;
+            fleet.cruise = fleet.cruise.max(TRANSIT_CRUISE);
+            fleet.route.clear();
+            let seen = you_here(fleet.system_id, fleet.position);
+            if !live_fleets.contains(&fleet.id) && (!seen || fleet.position.distance(point) < DEPART_AT) {
+                gone.push((fleet.id, fleet.system_id, fleet.position, fleet.faction, seen));
+            }
+        }
+        for (id, system, at, faction, seen) in gone {
+            if seen {
+                sim.flash(system, at, false, faction);
+            }
+            sim.remove_fleet(id);
+        }
+        // Nothing stays hidden that isn't on its way out or through a jump.
+        let leaving: std::collections::HashSet<u32> = sim
+            .fleets
+            .iter()
+            .filter(|f| f.depart.is_some() || f.trade.as_ref().is_some_and(|t| t.leaving.is_some()))
+            .map(|f| f.id)
+            .collect();
+        sim.out_of_sight.retain(|id| leaving.contains(id));
+    }
+
     // Phase 1: Move off-screen ships that fly alone.
     for ship in sim.ships.iter_mut() {
         if ship.spawned || ship.behavior == SimBehavior::Dead || !is_active_system(ship.system_id) {
@@ -934,6 +1289,11 @@ pub fn tick_world_simulation(
         } else {
             // Arrived -- or its point is somewhere a planet has got to.
             if !trading && (remaining <= ARRIVE_RADIUS || super::nav::in_a_body(fleet.destination, pad, bodies)) {
+                // Come in by the jump and got where it was sent: from here
+                // on it goes about at its own pace.
+                if fleet.cruise == TRANSIT_CRUISE && fleet.mission == super::fleet::Mission::None && fleet.depart.is_none() {
+                    fleet.cruise = super::fleet::cruise_for(fleet.kind, &mut rng);
+                }
                 let next = next_fleet_waypoint(&mut rng, fleet, &anchors, harbour);
                 fleet.destination = super::nav::push_clear(next, pad, bodies);
             }
@@ -980,70 +1340,79 @@ pub fn tick_world_simulation(
         if leaving > 0 {
             info!("SIM harbour: {leaving} ships that had no business there are gone");
         }
+        // ...and one you can see is told to go, and flies out.
+        if let Some(g) = galaxy.as_deref() {
+            for fleet in sim.fleets.iter_mut() {
+                let Some(system) = system_of(fleet.system_id).filter(|s| safe_harbour(s)) else { continue };
+                if fleet.trade.is_none() && fleet.mission == super::fleet::Mission::None && fleet.depart.is_none() {
+                    fleet.depart = Some(depart_point(g, system, fleet.position));
+                }
+            }
+        }
     }
 
-    // Phase 3: The dead come back after a while: a lone ship by itself, a
-    // fleet only once all of it is gone. A fleet that lost two of five
-    // stays three strong; that's damage that sticks. Not in the dark: what
-    // the dark took stays where it stopped. And not a trader: a lost convoy
-    // is struck off, and another sets out in its place (ai_ship::traffic).
+    // Phase 3: the lost. A fleet lost with all hands, and a ship that flew
+    // alone, are struck off once their time is up; nothing gets up again
+    // where it fell. A fleet that still has ships is sent a replacement for
+    // a lost one after a good while, and only where nobody is looking. What
+    // a system has lost comes back through the jump, a fleet at a time
+    // (`refill_system`) -- and not at all in the dark, where what was taken
+    // stays where it stopped.
     let dark = |id: u32| system_of(id).is_some_and(crate::narrative::front::is_taken);
-    prune_dead_traders(sim);
-    let fleet_ids: std::collections::HashSet<u32> = sim.fleets.iter().map(|f| f.id).collect();
-    for ship in sim.ships.iter_mut() {
-        if ship.behavior != SimBehavior::Dead {
-            continue;
-        }
+    for ship in sim.ships.iter_mut().filter(|s| s.behavior == SimBehavior::Dead) {
         // The countdown (fuel doubles as the timer).
         ship.fuel -= 0.01;
-        if fleet_ids.contains(&ship.fleet) || ship.fuel > -0.5 || dark(ship.system_id) {
-            continue;
-        }
-        // Respawn at home zone
-        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-        let dist = rng.gen_range(0.0..1500.0);
-        ship.position = ship.home_zone + Vec2::new(angle.cos() * dist, angle.sin() * dist);
-        revive(ship);
     }
-    for fleet in sim.fleets.iter_mut() {
-        let mut members = sim.ships.iter().filter(|s| s.fleet == fleet.id).peekable();
-        if members.peek().is_none() || !members.all(|s| s.behavior == SimBehavior::Dead && s.fuel <= -0.5) {
-            continue;
-        }
-        if dark(fleet.system_id) {
-            continue;
-        }
-        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-        fleet.position = fleet.home_zone + Vec2::from_angle(angle) * rng.gen_range(0.0..1500.0);
-        fleet.velocity = Vec2::ZERO;
-        fleet.destination = fleet.position;
-        for ship in sim.ships.iter_mut().filter(|s| s.fleet == fleet.id) {
-            ship.position = fleet.slot_position(ship.slot);
-            revive(ship);
-        }
-    }
-}
-
-/// Strike off every trader fleet that has lost all hands and waited out its
-/// time. Returns how many fleets went.
-///
-/// A dead ship's `fuel` counts down to its return; a trader's counts down to
-/// its being forgotten. Its wrecks, where it died on screen, stay as wrecks:
-/// they are entities of their own by then.
-pub fn prune_dead_traders(sim: &mut WorldSimulation) -> usize {
-    let gone: std::collections::HashSet<u32> = sim
+    prune_the_lost(sim);
+    let unseen_fleet: std::collections::HashSet<u32> = sim
         .fleets
         .iter()
-        .filter(|f| f.trade.is_some())
-        .filter(|f| sim.ships.iter().filter(|s| s.fleet == f.id).all(|s| s.behavior == SimBehavior::Dead && s.fuel <= -0.5))
+        .filter(|f| !live_fleets.contains(&f.id))
+        .filter(|f| streaming.loaded_system != Some(f.system_id) || player_pos.is_none_or(|p| p.distance(f.position) > super::preview::PREVIEW_RANGE))
         .map(|f| f.id)
         .collect();
-    if gone.is_empty() {
-        return 0;
+    let slots: std::collections::HashMap<u32, super::fleet::SimFleet> =
+        sim.fleets.iter().filter(|f| unseen_fleet.contains(&f.id) && f.trade.is_none()).map(|f| (f.id, f.clone())).collect();
+    for ship in sim.ships.iter_mut() {
+        if ship.behavior != SimBehavior::Dead || ship.fuel > MENDED_AT || dark(ship.system_id) {
+            continue;
+        }
+        let Some(fleet) = slots.get(&ship.fleet) else { continue };
+        ship.position = fleet.slot_position(ship.slot);
+        revive(ship);
     }
-    sim.ships.retain(|s| !gone.contains(&s.fleet));
-    sim.fleets.retain(|f| !gone.contains(&f.id));
-    gone.len()
+
+    // Phase 4: who needs sending for.
+    if let Some(galaxy) = galaxy.as_deref() {
+        let running: Vec<u32> = streaming.loaded_system.into_iter().chain(streaming.warm_systems.iter().copied()).collect();
+        for id in running {
+            let Some(system) = galaxy.systems.iter().find(|s| s.id == id) else { continue };
+            if !sim.populated.contains(&id) || crate::demo::skip_ai_ship_spawn() {
+                continue;
+            }
+            let you = player_pos.filter(|_| streaming.loaded_system == Some(id));
+            // A boss killed in its haunt stays gone a long while.
+            if let Some(boss) = system.haunt.filter(|_| !crate::narrative::front::is_taken(system)) {
+                let about = sim.ships.iter().any(|s| s.system_id == id && s.faction == boss && s.behavior != SimBehavior::Dead);
+                let gone = sim.boss_gone.entry(id).or_insert(0.0);
+                *gone = if about { 0.0 } else { *gone + dt };
+                if *gone >= BOSS_RETURNS {
+                    *gone = 0.0;
+                    let n = spawn_haunt(sim, system, you, &mut rng);
+                    info!("REFILL system {id}: {boss:?} returns to its haunt, {n} ships");
+                }
+            }
+            let clock = sim.refill_clock.entry(id).or_insert(0.0);
+            *clock += dt;
+            if *clock < REFILL_EVERY {
+                continue;
+            }
+            *clock = 0.0;
+            if let Some(what) = refill_system(sim, galaxy, system, you, &mut rng) {
+                info!("REFILL system {id}: {what}");
+            }
+        }
+    }
 }
 
 /// Take out of every harbour (`is_harbour`) whatever has no business in
@@ -1274,6 +1643,9 @@ pub fn sync_simulation_entities(
     };
     let sim: &mut WorldSimulation = &mut sim;
     let mut rng = rand::thread_rng();
+    // Fleets going off screen this frame on purpose (see `fold_back`).
+    let folding: std::collections::HashSet<u32> = sim.fold_back.drain(..).collect();
+    sim.out_of_sight.extend(folding.iter().copied());
 
     // Spawn what entered render distance, nearest first, while the block
     // budget allows. Living hulls only: a wreck's blocks are a pile of
@@ -1297,7 +1669,7 @@ pub fn sync_simulation_entities(
     let mut groups: Vec<Group> = Vec::new();
     let mut fleet_group: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     for (i, s) in sim.ships.iter().enumerate() {
-        if s.spawned || s.behavior == SimBehavior::Dead {
+        if s.spawned || s.behavior == SimBehavior::Dead || (s.fleet != 0 && sim.out_of_sight.contains(&s.fleet)) {
             continue;
         }
         let lost = s.wounds.as_ref().map_or(0, |w| w.hull.len() + w.modules.len() + w.turret_parts.len());
@@ -1467,7 +1839,8 @@ pub fn sync_simulation_entities(
 
         let pos = transform.translation.truncate();
         // Sent back to make room for a nearer fleet, or gone out of range.
-        let made_room = evicted.contains(&member.map_or(Unit::Ship(entity), |m| Unit::Fleet(m.fleet)));
+        let made_room = evicted.contains(&member.map_or(Unit::Ship(entity), |m| Unit::Fleet(m.fleet)))
+            || member.is_some_and(|m| folding.contains(&m.fleet));
         if !made_room && near(pos) <= despawn_distance() {
             continue;
         }
@@ -1519,6 +1892,10 @@ pub fn sync_simulation_entities(
         let Some(fleet) = sim.fleets.iter_mut().find(|f| f.id == fleet_id) else { continue };
         fleet.position = centre;
         let fleet = fleet.clone();
+        // Gone in a flash, where you were watching it.
+        if folding.contains(&fleet_id) {
+            sim.flash(fleet.system_id, centre, false, fleet.faction);
+        }
         for ship in sim.ships.iter_mut().filter(|s| s.fleet == fleet_id && !s.spawned && s.behavior != SimBehavior::Dead) {
             ship.position = fleet.slot_position(ship.slot);
         }
@@ -1623,10 +2000,14 @@ pub fn fleets_change_hands(
     mut flips: MessageReader<crate::celestial::territory::SystemChangedHands>,
     mut sim: ResMut<WorldSimulation>,
     galaxy: Res<crate::celestial::resources::GalaxyMap>,
+    streaming: Option<Res<crate::celestial::resources::SystemStreamingManager>>,
+    player: Query<&Transform, With<Ship>>,
 ) {
     use super::fleet::FleetKind;
     let sim: &mut WorldSimulation = &mut sim;
     let mut rng = rand::thread_rng();
+    let loaded = streaming.as_deref().and_then(|s| s.loaded_system);
+    let you = player.single().ok().map(|t| t.translation.truncate());
     for flip in flips.read() {
         if !sim.populated.contains(&flip.system_id) {
             continue;
@@ -1678,6 +2059,12 @@ pub fn fleets_change_hands(
             }
             let Some(hulls) = super::fleet::compose(flip.to, kind, &mut rng, &mut held) else { continue };
             let at = home + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(3_000.0..12_000.0);
+            // Not out of nothing in front of you: in sight, they come in.
+            let here = loaded == Some(flip.system_id);
+            let at = arrival_point(lost, you.filter(|_| here), at, 2_000.0);
+            if here {
+                sim.flash(flip.system_id, at, true, flip.to);
+            }
             let radius = if kind == FleetKind::StationGuard { GUARD_RADIUS } else { template.radius };
             let (mut fleet, members) = super::fleet::new_fleet(flip.to, kind, &hulls, flip.system_id, at, home, radius, &mut rng);
             fleet.destination = patrol_waypoint(&mut rng, home, radius);
@@ -1963,34 +2350,115 @@ mod population_tests {
         sim.add_fleet(fleet, members)
     }
 
-    /// A convoy lost with all hands is struck off once its time is up, and
-    /// nothing brings it back; one with a ship left, or still in its time,
-    /// stays.
+    /// What is lost with all hands is struck off once its time is up, and
+    /// nothing gets up again where it fell: a fleet whole, a ship that flew
+    /// alone. A fleet with a ship left stays, and so does one lost a moment ago.
     #[test]
-    fn a_lost_convoy_is_struck_off_not_brought_back() {
+    fn the_lost_are_struck_off_not_brought_back() {
         let mut sim = WorldSimulation::default();
         let lost = a_fleet(&mut sim, AiShipType::MerchantPrinces, 3, Vec2::ZERO, 3);
-        let hurt = a_fleet(&mut sim, AiShipType::MerchantPrinces, 3, Vec2::ZERO, 3);
+        let hurt = a_fleet(&mut sim, AiShipType::TerranHegemony, 3, Vec2::ZERO, 3);
         let fresh = a_fleet(&mut sim, AiShipType::MerchantPrinces, 3, Vec2::ZERO, 2);
         let navy = a_fleet(&mut sim, AiShipType::TerranHegemony, 3, Vec2::ZERO, 2);
-        for f in sim.fleets.iter_mut().filter(|f| f.id != navy) {
-            f.trade = Some(Default::default());
-        }
+        sim.fleets.iter_mut().find(|f| f.id == lost).unwrap().trade = Some(Default::default());
         for s in sim.ships.iter_mut() {
-            let dead = s.fleet == lost || s.fleet == navy || s.fleet == fresh || (s.fleet == hurt && s.slot != Vec2::ZERO);
-            if dead {
-                s.behavior = SimBehavior::Dead;
-                // Long dead, except the convoy lost a moment ago.
-                s.fuel = if s.fleet == fresh { 0.4 } else { -0.6 };
-            }
+            s.behavior = SimBehavior::Dead;
+            // Long dead, except the convoy lost a moment ago.
+            s.fuel = if s.fleet == fresh { 0.4 } else { STRUCK_OFF_AT - 0.1 };
         }
-        // One of the hurt convoy is alive whatever its slots were.
+        // One of the hurt fleet is alive.
         sim.ships.iter_mut().find(|s| s.fleet == hurt).unwrap().behavior = SimBehavior::Patrolling;
-        assert_eq!(prune_dead_traders(&mut sim), 1);
-        assert!(sim.fleet(lost).is_none() && !sim.ships.iter().any(|s| s.fleet == lost));
-        assert!(sim.fleet(hurt).is_some() && sim.fleet(fresh).is_some());
-        assert!(sim.fleet(navy).is_some(), "a navy's dead are its own business");
-        assert_eq!(prune_dead_traders(&mut sim), 0);
+        // Two that flew alone: one long dead, one alive.
+        let mut gone = SimulatedShip::patrolling(3, AiShipType::RecursiveKingdom, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+        gone.behavior = SimBehavior::Dead;
+        gone.fuel = STRUCK_OFF_AT - 0.1;
+        sim.add(gone);
+        sim.add(SimulatedShip::patrolling(3, AiShipType::RecursiveKingdom, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0));
+        sim.out_of_sight.insert(lost);
+        assert_eq!(prune_the_lost(&mut sim), 3 + 2 + 1, "the convoy, the navy's fleet and the lone ship");
+        assert!(sim.fleet(lost).is_none() && sim.fleet(navy).is_none());
+        assert!(sim.fleet(hurt).is_some() && sim.ships.iter().filter(|s| s.fleet == hurt).count() == 3);
+        assert!(sim.fleet(fresh).is_some());
+        assert_eq!(sim.ships.iter().filter(|s| s.fleet == 0).count(), 1);
+        assert!(sim.out_of_sight.is_empty());
+        assert_eq!(prune_the_lost(&mut sim), 0);
+    }
+
+    /// Wherever something is wanted, it is not put in front of you: within
+    /// sight it comes in `ARRIVAL_RANGE` off, on that side, and never in a
+    /// star or on a planet's path.
+    #[test]
+    fn nothing_arrives_in_front_of_you() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        for system in galaxy.systems.iter().take(8) {
+            let roll = crate::celestial::galaxy::system_roll(system);
+            let planets = roll.planet_paths();
+            let keep = crate::celestial::poi::KeepClear { center: system.local_center, star_radius: roll.star_radius(), planets: &planets };
+            let you = crate::world::home_base::station_sites(system)[0].pos + Vec2::new(4_000.0, 0.0);
+            for i in 0..12 {
+                let side = Vec2::from_angle(std::f32::consts::TAU * i as f32 / 12.0);
+                // By a wreck 2 km from you; 12 km off; and well out of sight.
+                for off in [2_000.0, 12_000.0, 160_000.0] {
+                    let at = arrival_point(system, Some(you), you + side * off, 2_000.0);
+                    assert!(at.distance(you) >= ARRIVAL_RANGE - 1.0, "{}: {:.0} km from you", system.name, at.distance(you) / 1000.0);
+                    assert!(keep.is_clear(at), "{}: arrived in something's way", system.name);
+                    if off < ARRIVAL_RANGE {
+                        assert!(at.distance(you) < ARRIVAL_RANGE * 3.0, "{}: sent {:.0} km off", system.name, at.distance(you) / 1000.0);
+                    }
+                }
+            }
+            // With nobody to see, where it was wanted (or the nearest clear spot).
+            let want = system.local_center + Vec2::new(300_000.0, 20_000.0);
+            assert!(keep.is_clear(arrival_point(system, None, want, 2_000.0)));
+        }
+    }
+
+    /// A system that has lost ships is sent a fleet, through the jump, a
+    /// fleet at a time. A full one is sent nothing; nor is the dark, nor a
+    /// harbour, nor a jump point you are sitting on.
+    #[test]
+    fn a_system_that_has_lost_ships_is_sent_a_fleet_through_the_jump() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut rng = rand::thread_rng();
+        let system = galaxy.systems.iter().find(|s| s.faction == Some(AiShipType::TerranHegemony) && !s.capital && s.haunt.is_none()).unwrap();
+        let mut sim = WorldSimulation::default();
+        ensure_system_population(&mut sim, &galaxy, system.id);
+        assert_eq!(refill_system(&mut sim, &galaxy, system, None, &mut rng), None, "a full system was sent more");
+
+        // All but two of the navy's fleets are lost.
+        let theirs: Vec<u32> = sim.fleets.iter().filter(|f| f.faction == AiShipType::TerranHegemony).map(|f| f.id).collect();
+        for id in theirs.iter().skip(2) {
+            sim.remove_fleet(*id);
+        }
+        let left = sim.ships.iter().filter(|s| s.faction == AiShipType::TerranHegemony).count();
+        assert!((left as f32) < owner_target(system) as f32 * REFILL_BELOW, "{left} of {} left: not a loss to test with", owner_target(system));
+        let (fleets, ships) = (sim.fleets.len(), sim.ships.len());
+        // Sitting on every way in: nothing comes.
+        let on_the_jump = jump_in_point(&galaxy, system, Some(AiShipType::TerranHegemony), &mut rng);
+        assert_eq!(refill_system(&mut sim, &galaxy, system, Some(on_the_jump), &mut rng), None);
+        assert_eq!(sim.fleets.len(), fleets);
+
+        let what = refill_system(&mut sim, &galaxy, system, None, &mut rng);
+        assert!(what.is_some(), "nothing was sent to a system with {left} of {} left", owner_target(system));
+        assert_eq!(sim.fleets.len(), fleets + 1, "one fleet at a time");
+        assert!(sim.ships.len() > ships);
+        let new = sim.fleets.last().unwrap();
+        assert_eq!(new.faction, AiShipType::TerranHegemony);
+        assert_eq!(new.cruise, TRANSIT_CRUISE);
+        assert!(new.trade.is_none() && new.kind != super::super::fleet::FleetKind::Convoy);
+        let roll = crate::celestial::galaxy::system_roll(system);
+        assert!(new.position.distance(system.local_center) > roll.star_radius(), "it came in inside the star");
+        assert!(new.position.distance(new.destination) > 10_000.0, "it has somewhere to go");
+        assert_eq!(sim.jumps.len(), 1);
+        assert!(sim.jumps[0].arriving && sim.jumps[0].at == new.position);
+
+        // The dark gets nobody, and neither does Haven.
+        let mut dark = galaxy.systems.clone();
+        let taken = dark.iter_mut().find(|s| s.id == system.id).unwrap();
+        taken.dark = crate::narrative::front::TAKEN;
+        let taken = taken.clone();
+        assert_eq!(refill_system(&mut sim, &galaxy, &taken, None, &mut rng), None);
+        assert_eq!(refill_system(&mut sim, &galaxy, &galaxy.systems[0], None, &mut rng), None);
     }
 
     /// Haven is a harbour: what has no business there and can't be seen

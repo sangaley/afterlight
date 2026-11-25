@@ -27,9 +27,7 @@ use super::fleet::{self, FleetKind, FleetMember, Mission};
 use crate::components::Ship;
 use crate::diplomacy::{FactionStanding, StandingTier};
 
-/// How far out a hunt or war fleet starts: past where ships materialise, so
-/// it arrives rather than appears.
-const ARRIVAL_RANGE: f32 = 54_000.0;
+use super::simulation::{arrival_point, ARRIVAL_RANGE};
 /// First hunt after this long in a system with a faction that hates you.
 const FIRST_HUNT: f32 = 240.0;
 /// Then one every this long, give or take.
@@ -40,8 +38,9 @@ const HUNT_LASTS: f32 = 900.0;
 pub const PROVOCATION: f32 = 20.0;
 /// No second war fleet from the same faction within this long.
 const WAR_FLEET_COOLDOWN: f32 = 600.0;
-/// How fast a fleet sent after (or with) you travels off-screen.
-const MISSION_CRUISE: f32 = 150.0;
+/// How fast a fleet sent after (or with) you travels off-screen. It was
+/// 150, slower than you drift: a hunt that started 54 km off never closed.
+const MISSION_CRUISE: f32 = super::simulation::TRANSIT_CRUISE;
 /// An escort holds station this far behind you.
 const ESCORT_BEHIND: f32 = 2_500.0;
 /// Your distress reaches an ally's ships this far off.
@@ -135,8 +134,29 @@ fn hunter_hulls(faction: AiShipType, standing: f32, rng: &mut impl Rng) -> Optio
     Some(hulls)
 }
 
-/// Put a mission fleet into the simulation: `hulls` coming in from
-/// `range` out on a random bearing, headed for `target`.
+/// Where a fleet sent for you comes in: `ARRIVAL_RANGE` off, on the bearing
+/// of the sender's own ground in this system if it has any (so a navy comes
+/// from its base, not from nowhere), else from any side.
+fn comes_from(
+    system: Option<&crate::celestial::resources::StarSystemDef>,
+    sender: AiShipType,
+    you: Vec2,
+    rng: &mut impl Rng,
+) -> Vec2 {
+    let theirs = system.filter(|s| s.faction.is_some_and(|o| o == sender || (o.is_trading() && o.ally() == Some(sender))));
+    let bearing = theirs
+        .map(|s| crate::celestial::galaxy::faction_cluster_center(s) - you)
+        .and_then(|v| v.try_normalize())
+        .unwrap_or_else(|| Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)));
+    let want = you + bearing * (ARRIVAL_RANGE + 1_000.0);
+    match system {
+        Some(system) => arrival_point(system, Some(you), want, 2_500.0),
+        None => want,
+    }
+}
+
+/// Put a mission fleet into the simulation: `hulls` jumping in at `at`,
+/// headed for `target`.
 pub fn send_fleet(
     sim: &mut WorldSimulation,
     faction: AiShipType,
@@ -144,11 +164,12 @@ pub fn send_fleet(
     hulls: &[fleet::Hull],
     system_id: u32,
     target: Vec2,
-    range: f32,
+    at: Vec2,
     mission: Mission,
     rng: &mut impl Rng,
 ) -> u32 {
-    let at = target + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * range;
+    let range = at.distance(target).max(1_000.0);
+    sim.flash(system_id, at, true, faction);
     let (mut f, mut members) = fleet::new_fleet(faction, kind, hulls, system_id, at, target, range * 2.0, rng);
     f.heading = (target - at).to_angle();
     f.destination = target;
@@ -218,7 +239,8 @@ pub fn standing_spawns(
             continue;
         }
         let Some(hulls) = hunter_hulls(faction, standing.value(faction), &mut rng) else { continue };
-        let id = send_fleet(&mut sim, faction, FleetKind::Raiders, &hulls, system_id, player_pos, ARRIVAL_RANGE, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
+        let at = comes_from(Some(system), faction, player_pos, &mut rng);
+        let id = send_fleet(&mut sim, faction, FleetKind::Raiders, &hulls, system_id, player_pos, at, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
         info!("STANDING hunt: {:?} sends fleet {id} ({} ships) at standing {:.0}{}", faction, hulls.len(), standing.value(faction), if waited { ", waited for you" } else { "" });
         state.waiting.retain(|f| *f != faction);
         notes.write(crate::events::ShowNotification {
@@ -240,10 +262,13 @@ pub fn standing_spawns(
             if let Some(hulls) = fleet::compose(flier, FleetKind::StationGuard, &mut rng, &mut held) {
                 let hulls: Vec<_> = hulls.into_iter().take(3).collect();
                 state.escorted_in = Some(system_id);
-                let id = send_fleet(&mut sim, flier, FleetKind::Patrol, &hulls, system_id, player_pos, 12_000.0, Mission::Escort, &mut rng);
+                // From their own ground, a minute off: it was 12 km from
+                // you, out of nothing.
+                let at = comes_from(Some(system), flier, player_pos, &mut rng);
+                let id = send_fleet(&mut sim, flier, FleetKind::Patrol, &hulls, system_id, player_pos, at, Mission::Escort, &mut rng);
                 info!("STANDING escort: {:?} sends fleet {id} ({} ships)", flier, hulls.len());
                 notes.write(crate::events::ShowNotification {
-                    message: format!("{} ships form up on you: an escort through their space", faction_display_name(flier)),
+                    message: format!("{} ships are on their way to form up on you: an escort through their space", faction_display_name(flier)),
                     notification_type: crate::events::NotificationType::Success,
                     duration: 5.0,
                 });
@@ -316,7 +341,8 @@ pub fn war_fleets(
             Some(a)
         });
         let Some(hulls) = hulls else { continue };
-        let id = send_fleet(&mut sim, sender, FleetKind::BattleGroup, &hulls, system_id, player_pos, ARRIVAL_RANGE, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
+        let at = comes_from(system, sender, player_pos, &mut rng);
+        let id = send_fleet(&mut sim, sender, FleetKind::BattleGroup, &hulls, system_id, player_pos, at, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
         info!("STANDING war fleet: {:?} sends fleet {id} ({} ships)", sender, hulls.len());
         notes.write(crate::events::ShowNotification {
             message: format!("The {} has sent a war fleet after you", faction_display_name(sender)),
@@ -385,6 +411,12 @@ pub fn tick_missions(
                     f.home_zone = p;
                 }
             }
+            Mission::Scavenge { left } => {
+                *left -= dt;
+                if *left <= 0.0 {
+                    done.push(f.id);
+                }
+            }
             Mission::Escort => {
                 let owner = galaxy.systems.iter().find(|s| s.id == f.system_id).and_then(|s| s.faction);
                 let still = owner.is_some_and(|o| standing.tier(o) == StandingTier::Allied);
@@ -399,10 +431,14 @@ pub fn tick_missions(
     }
     for id in done {
         if live.contains(&id) {
-            // On screen: it stops being a mission and is just a fleet here,
-            // and an escort stops flying with you.
+            // On screen: its business here is done, and it leaves by the
+            // nearest jump. It used to become one more fleet of the system,
+            // homed on wherever you had last been.
             if let Some(f) = sim.fleets.iter_mut().find(|f| f.id == id) {
                 f.mission = Mission::None;
+                if let Some(system) = galaxy.systems.iter().find(|s| s.id == f.system_id) {
+                    f.depart = Some(super::simulation::depart_point(&galaxy, system, f.position));
+                }
             }
             for (e, m) in escorts.iter() {
                 if m.fleet == id {
@@ -410,8 +446,7 @@ pub fn tick_missions(
                 }
             }
         } else {
-            sim.ships.retain(|s| s.fleet != id);
-            sim.fleets.retain(|f| f.id != id);
+            sim.remove_fleet(id);
         }
     }
 }
@@ -465,7 +500,7 @@ mod tests {
         let mut sim = WorldSimulation::default();
         let mut rng = rand::thread_rng();
         let hulls = fleet::hulls_of(AiShipType::TerranHegemony, &[crate::ai_ship::roster::intern("halberd")]);
-        let id = send_fleet(&mut sim, AiShipType::TerranHegemony, FleetKind::Patrol, &hulls, 1, Vec2::ZERO, 12_000.0, Mission::Escort, &mut rng);
+        let id = send_fleet(&mut sim, AiShipType::TerranHegemony, FleetKind::Patrol, &hulls, 1, Vec2::ZERO, Vec2::new(60_000.0, 0.0), Mission::Escort, &mut rng);
         let ship = sim.ships.iter().find(|s| s.fleet == id).unwrap();
         assert!(ship.slot.x <= -ESCORT_BEHIND);
         assert_eq!(sim.fleet(id).unwrap().destination, Vec2::ZERO);

@@ -39,8 +39,6 @@ const CRUISE: (f32, f32) = (600.0, 900.0);
 /// looked parked. Its escorts go a little faster, to keep up.
 pub const SPEED_ON_SCREEN: f32 = 380.0;
 pub const ESCORT_SPEED_ON_SCREEN: f32 = 460.0;
-/// New traders start this far from the station they're bound for.
-const ARRIVING_FROM: (f32, f32) = (55_000.0, 110_000.0);
 
 /// Fleets of traders a system keeps going. An empty lane where it's at war
 /// with both trading houses.
@@ -76,7 +74,7 @@ pub fn trade_factions(owner: Option<AiShipType>) -> Vec<AiShipType> {
 /// at once -- and then came back from the dead a few minutes later as well.
 /// A lane the pirates work was the busiest in the galaxy, and no system's
 /// traders ever stopped growing. A lost convoy keeps its place in the count
-/// until it is struck off (`simulation::prune_dead_traders`), and then one
+/// until it is struck off (`simulation::prune_the_lost`), and then one
 /// new one sets out for it.
 pub fn trader_counts(fleets: &[fleet::SimFleet]) -> std::collections::HashMap<u32, usize> {
     let mut counts: std::collections::HashMap<u32, usize> = Default::default();
@@ -346,6 +344,7 @@ pub fn run_traffic(
     }
 
     let mut jumps: Vec<(u32, u32, Vec2)> = Vec::new();
+    let mut jumping_out: Vec<u32> = Vec::new();
     for fleet in sim.fleets.iter_mut().filter(|f| f.trade.is_some() && active(f.system_id) && manned.contains(&f.id)) {
         let here = fleet.system_id == loaded;
         let is_live = live.contains(&fleet.id);
@@ -378,13 +377,15 @@ pub fn run_traffic(
             }
         } else if position.distance(fleet.destination) <= ARRIVE {
             match run.leaving {
-                // Going out of a system is out of your sight: one still on
-                // screen thinks better of it and stays another while.
                 Some(to) if !is_live => jumps.push((fleet.id, to, position)),
-                // Refugees don't turn back: they wait at the jump until
-                // nobody's watching, then go.
-                Some(_) if run.refugees => fleet.velocity = Vec2::ZERO,
-                _ => {
+                // On screen at the jump: it goes, where you can see it go.
+                // (One on screen used to think better of it and stay, and
+                // refugees waited there until nobody was watching.)
+                Some(_) => {
+                    fleet.velocity = Vec2::ZERO;
+                    jumping_out.push(fleet.id);
+                }
+                None => {
                     run.leaving = None;
                     run.last_stop = std::mem::take(&mut run.bound_for);
                     run.dwell = rng.gen_range(DWELL_S.0..DWELL_S.1);
@@ -420,15 +421,24 @@ pub fn run_traffic(
         }
     }
 
+    // On screen at its jump point: off screen, this frame (sync folds it
+    // back), and through the jump on the next turn of this.
+    sim.fold_back.extend(jumping_out);
+
     // Through the jump: out of one system, into the next.
-    for (id, to, _) in jumps {
+    let mut flashes: Vec<(u32, Vec2, bool, AiShipType)> = Vec::new();
+    for (id, to, left_from) in jumps {
         let Some(fleet) = sim.fleets.iter_mut().find(|f| f.id == id) else { continue };
         let Some((from, dest)) = galaxy.systems.iter().find(|s| s.id == fleet.system_id).zip(galaxy.systems.iter().find(|s| s.id == to)) else { continue };
         let arrive = jump_point(dest, from, 1.0);
-        // Not out of nowhere, in front of you.
-        if to == loaded && player_pos.is_some_and(|p| p.distance(arrive) < super::simulation::RENDER_DISTANCE * 1.5) {
+        // Not out of nowhere, in front of you: a jump in is seen from a
+        // distance. (It was held back inside 72 km, where its far picture
+        // would have shown it coming.)
+        if to == loaded && player_pos.is_some_and(|p| p.distance(arrive) < super::simulation::ARRIVAL_RANGE) {
             continue;
         }
+        flashes.push((fleet.system_id, left_from, false, fleet.faction));
+        flashes.push((to, arrive, true, fleet.faction));
         fleet.system_id = to;
         fleet.position = arrive;
         fleet.home_zone = arrive;
@@ -448,6 +458,10 @@ pub fn run_traffic(
             ship.destination = at;
             ship.velocity = Vec2::ZERO;
         }
+    }
+
+    for (system, at, arriving, faction) in flashes {
+        sim.flash(system, at, arriving, faction);
     }
 
     trading.0.clear();
@@ -476,6 +490,7 @@ pub fn run_traffic(
     // Keep them coming, a couple at a time.
     let counts = trader_counts(&sim.fleets);
     let systems: Vec<u32> = streaming.warm_systems.iter().copied().chain([loaded]).collect();
+    let mut arrivals: Vec<(u32, Vec2, AiShipType)> = Vec::new();
     for id in systems {
         let Some(system) = galaxy.systems.iter().find(|s| s.id == id) else { continue };
         let quota = trade_quota(system);
@@ -489,12 +504,14 @@ pub fn run_traffic(
             let Some(hulls) = fleet::compose(faction, wanted, &mut rng, &mut held).filter(|h| !h.is_empty()) else { continue };
             // Already on its way somewhere, and not on top of you.
             let stop = (id == loaded && !stops.is_empty()).then(|| stops[rng.gen_range(0..stops.len())].clone());
-            let centre = stop.as_ref().map_or(system.local_center, |s| s.pos);
-            let at = centre + Vec2::from_angle(rng.gen_range(0.0..std::f32::consts::TAU)) * rng.gen_range(ARRIVING_FROM.0..ARRIVING_FROM.1);
-            let at = clear_point(system, at, JUMP_MARGIN);
-            if id == loaded && player_pos.is_some_and(|p| p.distance(at) < super::simulation::RENDER_DISTANCE * 1.1) {
+            // In by a jump from next door, like anyone else. They used to
+            // begin 55-110 km from the station they were bound for, on any
+            // bearing, as if they had always been there.
+            let at = super::simulation::jump_in_point(&galaxy, system, Some(faction), &mut rng);
+            if id == loaded && player_pos.is_some_and(|p| p.distance(at) < super::simulation::ARRIVAL_RANGE) {
                 continue;
             }
+            arrivals.push((id, at, faction));
             let (mut new_fleet, members) = fleet::new_fleet(faction, FleetKind::Convoy, &hulls, id, at, at, 1.0e9, &mut rng);
             new_fleet.cruise = rng.gen_range(CRUISE.0..CRUISE.1);
             new_fleet.trade = Some(TradeRun {
@@ -504,6 +521,9 @@ pub fn run_traffic(
             new_fleet.destination = stop.as_ref().map_or(at, |s| s.berth(at));
             sim.add_fleet(new_fleet, members);
         }
+    }
+    for (system, at, faction) in arrivals {
+        sim.flash(system, at, true, faction);
     }
     if crate::combat::gun_assembly::trace() && (now % 10.0) < TICK_S {
         let docked = sim.fleets.iter().filter(|f| f.system_id == loaded && f.trade.as_ref().is_some_and(|t| t.dwell > 0.0)).count();

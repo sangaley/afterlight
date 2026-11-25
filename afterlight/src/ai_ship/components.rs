@@ -563,6 +563,17 @@ pub enum SimBehavior {
     Dead,
 }
 
+/// A fleet coming into a system through a jump, or going out of one.
+#[derive(Clone, Copy, Debug)]
+pub struct JumpFlash {
+    pub system: u32,
+    pub at: Vec2,
+    /// How far the formation reaches, for the size of it.
+    pub reach: f32,
+    pub arriving: bool,
+    pub faction: AiShipType,
+}
+
 /// Global off-screen world simulation
 #[derive(Resource)]
 pub struct WorldSimulation {
@@ -578,6 +589,18 @@ pub struct WorldSimulation {
     /// meant it never got its own, and one emptied of its last ship would
     /// have been filled again from nothing, all at once.
     pub populated: std::collections::HashSet<u32>,
+    /// Jumps in and out since the last frame, to be shown (not saved).
+    pub jumps: Vec<JumpFlash>,
+    /// Fleets on screen that go off it this frame -- a trader jumping out,
+    /// a fleet leaving the system: sync folds their ships back into here.
+    pub fold_back: Vec<u32>,
+    /// Fleets that have gone from sight on purpose and must not be brought
+    /// back on screen where they stand: they are about to jump or be gone.
+    pub out_of_sight: std::collections::HashSet<u32>,
+    /// Seconds since each running system was last looked at for new arrivals.
+    pub refill_clock: std::collections::HashMap<u32, f32>,
+    /// Seconds each haunted system has been without its boss.
+    pub boss_gone: std::collections::HashMap<u32, f32>,
     next_bounty_id: u32,
     next_ship_id: u32,
     next_fleet_id: u32,
@@ -591,6 +614,11 @@ impl Default for WorldSimulation {
             tick_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
             initialized: false,
             populated: Default::default(),
+            jumps: Vec::new(),
+            fold_back: Vec::new(),
+            out_of_sight: Default::default(),
+            refill_clock: Default::default(),
+            boss_gone: Default::default(),
             next_bounty_id: 1,
             next_ship_id: 1,
             next_fleet_id: 1,
@@ -651,6 +679,21 @@ impl WorldSimulation {
             saved.populated.iter().copied().collect()
         };
         self.initialized = true;
+    }
+
+    /// A fleet has jumped in or out at `at`: show it, if anyone is looking.
+    pub fn flash(&mut self, system: u32, at: Vec2, arriving: bool, faction: AiShipType) {
+        self.jumps.push(JumpFlash { system, at, reach: 1_600.0, arriving, faction });
+    }
+
+    /// Take a fleet and all its ships out of the world.
+    pub fn remove_fleet(&mut self, id: u32) {
+        if id == 0 {
+            return;
+        }
+        self.ships.retain(|s| s.fleet != id);
+        self.fleets.retain(|f| f.id != id);
+        self.out_of_sight.remove(&id);
     }
 
     /// Add a ship, issuing it an id.

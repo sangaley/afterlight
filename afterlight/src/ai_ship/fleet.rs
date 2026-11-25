@@ -61,6 +61,10 @@ pub struct SimFleet {
     /// A trader on its rounds (ai_ship::traffic), which flies it.
     #[serde(default)]
     pub trade: Option<TradeRun>,
+    /// Leaving the system: the jump point it is making for. It goes when it
+    /// gets there, or as soon as nobody can see it.
+    #[serde(default)]
+    pub depart: Option<Vec2>,
 }
 
 /// Where a trader is on its rounds.
@@ -90,6 +94,9 @@ pub enum Mission {
     Hunt { left: f32 },
     /// Flying with you through its faction's space.
     Escort,
+    /// Come for a wreck (ai_ship::scavenger), for `left` more seconds: then
+    /// it leaves, rather than settling where the wreck was for good.
+    Scavenge { left: f32 },
 }
 
 impl SimFleet {
@@ -110,6 +117,7 @@ impl SimFleet {
             leg: 0,
             mission: Mission::None,
             trade: None,
+            depart: None,
         }
     }
 
@@ -161,7 +169,7 @@ fn kind_weights(faction: AiShipType) -> &'static [(FleetKind, u32)] {
 
 /// How fast a kind of fleet cruises off-screen. A fleet goes at its slowest
 /// member's pace, so a battle group crawls and raiders run.
-fn cruise_for(kind: FleetKind, rng: &mut impl Rng) -> f32 {
+pub(crate) fn cruise_for(kind: FleetKind, rng: &mut impl Rng) -> f32 {
     match kind {
         FleetKind::Patrol => rng.gen_range(80.0..120.0),
         FleetKind::BattleGroup => rng.gen_range(50.0..70.0),
@@ -178,7 +186,7 @@ fn held_count(held: &Held, role: ClassRole) -> usize {
     held.iter().find(|(r, _)| *r == role).map_or(0, |(_, n)| *n)
 }
 
-fn hold(held: &mut Held, role: ClassRole) {
+pub(crate) fn hold(held: &mut Held, role: ClassRole) {
     match held.iter_mut().find(|(r, _)| *r == role) {
         Some((_, n)) => *n += 1,
         None => held.push((role, 1)),
