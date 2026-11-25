@@ -81,6 +81,10 @@ const PATCH_S: f32 = 0.1;
 /// the spot. Handed to the painter it waited behind every other ship's
 /// picture, and a block shot off stayed in the picture for a moment too long.
 const OWN_PATCH_S: f32 = 1.0 / 30.0;
+/// Other ships' patches are painted on the spot too, up to this long a frame
+/// and this big a ship; past either they go to the painter as before.
+const INLINE_PATCH_BUDGET_S: f32 = 0.004;
+const INLINE_PATCH_SPRITES: usize = 16_000;
 /// Sprites looked over a frame: a big fleet takes a few frames to get round.
 const SPRITES_PER_FRAME: usize = 8000;
 /// The side of a square of picture painted over at once, in blocks. Wide
@@ -926,6 +930,7 @@ pub fn bake_far_art(
     }
     due.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
 
+    let started = std::time::Instant::now();
     let white = Arc::new(Mip::white());
     let trace = std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some();
     let (mut looked, mut baked_whole) = (0, false);
@@ -1030,9 +1035,17 @@ pub fn bake_far_art(
         // Fully out, what gets painted stops drawing once its picture is in.
         let hide: Vec<Entity> = if full { layers.iter().filter(|l| !l.hidden).map(|l| l.block).collect() } else { Vec::new() };
         let job = Job { stamps, picture: art.picture.take(), painted: std::mem::take(&mut art.painted), may_paint_whole: true, trace };
-        // Your own ship's patches are painted here and now; only a whole
-        // picture goes to the painter.
-        let patch_here = job.stamps.len() > INLINE_SPRITES && own.contains(owner) && job.picture.is_some() && !std::mem::take(&mut art.whole_due);
+        // Patches are painted here and now, a few milliseconds' worth a
+        // frame (your own ship's always); only a whole picture goes to the
+        // painter. Handed over, an enemy's patch for the blocks you just shot
+        // off queued behind the station's 24,000-sprite repaints and showed
+        // seconds late, or not before the next one.
+        let whole_due = std::mem::take(&mut art.whole_due);
+        let mine = own.contains(owner);
+        let patch_here = job.stamps.len() > INLINE_SPRITES
+            && job.picture.is_some()
+            && !whole_due
+            && (mine || (job.stamps.len() <= INLINE_PATCH_SPRITES && started.elapsed().as_secs_f32() < INLINE_PATCH_BUDGET_S));
         if patch_here {
             let baked = paint_job(Job { may_paint_whole: false, ..job });
             if matches!(baked.what, Painted::Waiting) {
@@ -1321,9 +1334,24 @@ mod tests {
     /// not after waiting its turn with the painter.
     #[test]
     fn your_big_ship_shows_a_hit_the_same_frame() {
+        big_ship_shows_a_hit_the_same_frame(true);
+    }
+
+    /// So does an enemy's, when you shoot it: handed to the painter, its
+    /// patch queued behind every other picture being painted.
+    #[test]
+    fn an_enemy_big_ship_shows_a_hit_the_same_frame() {
+        big_ship_shows_a_hit_the_same_frame(false);
+    }
+
+    fn big_ship_shows_a_hit_the_same_frame(mine: bool) {
         bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
         let mut app = app(20.0);
-        let s = ship(&mut app);
+        let s = if mine {
+            ship(&mut app)
+        } else {
+            app.world_mut().spawn((AiShip, Transform::default(), Visibility::Inherited, crate::vfx::ship_roof::Scars::default())).id()
+        };
         let mut hit = None;
         for x in 0..24 {
             for y in 0..24 {
