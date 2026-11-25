@@ -138,7 +138,6 @@ pub fn lay_deck(
                             },
                             Transform::from_translation(at.extend(RUNNER_Z)).with_rotation(Quat::from_rotation_z(turn)),
                             DeckMark,
-                            ChildOf(ship),
                         ))
                         .id(),
                 );
@@ -165,7 +164,6 @@ pub fn lay_deck(
                                 },
                                 Transform::from_translation(at.extend(SHADE_Z)).with_rotation(Quat::from_rotation_z(turn)),
                                 DeckMark,
-                                ChildOf(ship),
                             ))
                             .id(),
                     );
@@ -173,6 +171,7 @@ pub fn lay_deck(
             }
         }
         if !spawned.is_empty() {
+            super::adopt_or_drop(&mut commands, ship, spawned.clone());
             laid.insert(ship, spawned);
         }
     }
@@ -183,6 +182,57 @@ pub fn lay_deck(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decked_ship(app: &mut App) -> Entity {
+        let ship = app.world_mut().spawn((AiShip, LayoutVersion(1), Transform::default(), Visibility::default())).id();
+        for x in 0..4 {
+            for y in 0..3 {
+                app.world_mut().spawn((
+                    HullSegment { grid_position: IVec2::new(x, y), hull_layer: crate::components::HullLayer::Hallway, health: 1.0, max_health: 1.0, ..default() },
+                    ChildOf(ship),
+                ));
+            }
+        }
+        ship
+    }
+
+    fn deck_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<Image>();
+        app.insert_resource(LayoutEpoch(1));
+        app
+    }
+
+    /// A ship despawned in the same batch of commands as its deck is laid
+    /// leaves no deck behind: before, every tile arrived parentless (a
+    /// warning each) and stayed in the world at the origin.
+    #[test]
+    fn a_ship_gone_before_its_deck_lands_leaves_no_deck() {
+        let mut app = deck_app();
+        let ship = decked_ship(&mut app);
+        fn sink(mut commands: Commands, ships: Query<Entity, With<AiShip>>) {
+            for s in &ships {
+                commands.entity(s).despawn();
+            }
+        }
+        app.add_systems(Update, (sink, lay_deck).chain_ignore_deferred());
+        app.update();
+        assert!(app.world().get_entity(ship).is_err());
+        let left = app.world_mut().query_filtered::<(), With<DeckMark>>().iter(app.world()).count();
+        assert_eq!(left, 0, "deck tiles left in the world");
+    }
+
+    #[test]
+    fn a_ship_that_stays_gets_its_deck() {
+        let mut app = deck_app();
+        let ship = decked_ship(&mut app);
+        app.add_systems(Update, lay_deck);
+        app.update();
+        let tiles: Vec<Entity> = app.world_mut().query_filtered::<&ChildOf, With<DeckMark>>().iter(app.world()).map(|c| c.parent()).collect();
+        assert!(!tiles.is_empty());
+        assert!(tiles.iter().all(|p| *p == ship));
+    }
 
     fn rect(x0: i32, y0: i32, w: i32, h: i32) -> HashSet<IVec2> {
         let mut s = HashSet::default();

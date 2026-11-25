@@ -238,6 +238,7 @@ pub fn update_ship_roof(
     let turn = ship_gt.to_scale_rotation_translation().1;
     let frame = roof_frame(&mut commands, ship, ship_gt, Vec2::ZERO);
     lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), &mine_hull, &mine_modules, scars, &paint.resolve(), false);
+    super::adopt_or_drop(&mut commands, ship, vec![frame]);
 }
 
 /// Lay a ship's whole roof: plates, skin, layers, angles, art and edges, as
@@ -2222,6 +2223,7 @@ pub fn update_ai_ship_roofs(
         let turn = gt.to_scale_rotation_translation().1;
         let frame = roof_frame(&mut commands, root, gt, Vec2::ZERO);
         lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), hulls, mods, scars, &ship_paint_for(*faction, root), wrecked);
+        super::adopt_or_drop(&mut commands, root, vec![frame]);
         commands.entity(root).try_insert(RoofLaid(key));
         if std::env::var_os("AFTERLIGHT_FAR_TRACE").is_some() {
             info!("ROOF laid on {root}: {} hull, {} parts, wrecked {wrecked}", hulls.len(), mods.len());
@@ -2238,12 +2240,15 @@ pub fn update_ai_ship_roofs(
 #[derive(Component)]
 pub struct RoofFrame;
 
-/// A new frame on `ship` (standing at `ship_gt`) for its roof, `offset` from
-/// the ship's middle. Placed from the start: fit_roofs lights the roof by the
-/// frame's turn before the frame would otherwise have one.
+/// A new frame for `ship`'s roof (standing at `ship_gt`), `offset` from the
+/// ship's middle. Not yet hung on the ship: lay the roof on it, then
+/// `adopt_or_drop` it, so a ship despawned in the meantime leaves no roof
+/// behind at the world's origin. Placed from the start: fit_roofs lights the
+/// roof by the frame's turn before the frame would otherwise have one.
 pub fn roof_frame(commands: &mut Commands, ship: Entity, ship_gt: &GlobalTransform, offset: Vec2) -> Entity {
     let local = Transform::from_translation(offset.extend(0.0));
-    commands.spawn((local, ship_gt.mul_transform(local), Visibility::default(), RoofFrame, ChildOf(ship))).id()
+    let _ = ship;
+    commands.spawn((local, ship_gt.mul_transform(local), Visibility::default(), RoofFrame)).id()
 }
 
 /// On a broken-off piece with its roof laid: what it was laid for, and on what.
@@ -2326,6 +2331,7 @@ pub fn update_section_roofs(
         let hull_only: Vec<&HullSegment> = mine_hull.iter().map(|(h, _)| *h).collect();
         let turn = gt.to_scale_rotation_translation().1;
         lay_roof(&mut commands, &assets, frame, (camera.zoom, turn, alpha), &hull_only, &mine_modules, &none, paint, true);
+        super::adopt_or_drop(&mut commands, section, vec![frame]);
         commands.entity(section).try_insert(SectionRoof { key, frame });
         if let Some(fresh) = fresh {
             commands.entity(section).try_insert(SectionPaint(fresh));

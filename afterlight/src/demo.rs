@@ -184,6 +184,39 @@ fn open_build_tab(
 /// components they carry, and how many of the placed ones are hidden. Every
 /// placed entity under a moving ship costs transform work each frame,
 /// shown or not.
+fn orphan_trace(world: &mut World) {
+    use crate::vfx::ship_roof::{AiRoofTile, Edge, RoofFrame, RoofTile};
+    use crate::components::{HullSegment, Module};
+    let mut q = world.query_filtered::<(Entity, &Transform, Has<RoofTile>, Has<AiRoofTile>, Has<Edge>, Has<RoofFrame>, Has<HullSegment>, Has<Module>, Has<crate::world::raft_art::RaftHull>, Has<Children>), (Added<Sprite>, Without<ChildOf>)>();
+    let rows: Vec<_> = q.iter(world).collect();
+    if rows.len() < 20 {
+        return;
+    }
+    let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+    for (_, _, roof, ai_roof, edge, frame, hull, module, raft, kids) in &rows {
+        let k = format!("roof={roof} ai_roof={ai_roof} edge={edge} frame={frame} hull={hull} module={module} raft={raft} children={kids}");
+        *kinds.entry(k).or_default() += 1;
+    }
+    let (e, t, ..) = rows[0];
+    info!("ORPHANS {} new parentless sprites this frame at t={:.2}; e.g. {e:?} at {:?}", rows.len(), world.resource::<Time>().elapsed_secs(), t.translation);
+    // What they draw names where they came from.
+    let ids: Vec<Entity> = rows.iter().map(|r| r.0).collect();
+    let mut arts: std::collections::BTreeMap<String, usize> = Default::default();
+    for id in ids {
+        let path = world
+            .get::<Sprite>(id)
+            .and_then(|s| world.resource::<AssetServer>().get_path(s.image.id()))
+            .map_or_else(|| "(no image)".to_string(), |p| p.to_string());
+        *arts.entry(path).or_default() += 1;
+    }
+    for (art, n) in arts.iter().rev().take(6) {
+        info!("ORPHANS   art {n:>5} {art}");
+    }
+    for (k, n) in kinds {
+        info!("ORPHANS   {n:>5} {k}");
+    }
+}
+
 fn archetype_census(world: &mut World, mut done: Local<bool>) {
     if *done || world.resource::<Time>().elapsed_secs() < 30.0 {
         return;
@@ -569,6 +602,12 @@ impl Plugin for DemoPlugin {
             app.add_systems(Update, whats_there.run_if(bevy::time::common_conditions::on_timer(
                 std::time::Duration::from_millis(900),
             )));
+        }
+        // AFTERLIGHT_ORPHAN_TRACE=1: name the sprites spawned under a parent
+        // that was already gone (Bevy's "relationship ... relates to an
+        // entity that does not exist" warnings), by what they are.
+        if std::env::var_os("AFTERLIGHT_ORPHAN_TRACE").is_some() {
+            app.add_systems(Last, orphan_trace);
         }
         if std::env::var("AFTERLIGHT_CENSUS").ok().as_deref() == Some("1") {
             app.add_systems(Update, (census, archetype_census));
