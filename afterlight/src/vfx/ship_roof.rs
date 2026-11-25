@@ -421,9 +421,10 @@ pub fn lay_roof(
         }
         over_plate(scheme.colour(slot, layer) * tone, material)
     };
-    // A wreck's roof is burnt dull.
+    // A wreck's roof is burnt dull; so is the plate over a part shot off.
     let colour = |cell: IVec2| -> Color {
         let c = painted(cell);
+        let c = if burnt.contains(&cell) { scorch(c, cell) } else { c };
         if wrecked { crate::ai_ship::components::wreck_shade(c) } else { c }
     };
     for &cell in &roof {
@@ -476,18 +477,6 @@ pub fn lay_roof(
                 ChildOf(ship),
             ));
         }
-    }
-    for cell in burnt {
-        commands.spawn((
-            Sprite {
-                color: Color::srgba(SCAR.0, SCAR.1, SCAR.2, SCAR_SHADE * alpha),
-                custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
-                ..default()
-            },
-            Transform::from_translation(grid_to_local(cell).extend(ROOF_Z)),
-            RoofTile(SCAR_SHADE),
-            ChildOf(ship),
-        ));
     }
     for cell in &frame {
         if roof_all {
@@ -2488,9 +2477,17 @@ pub struct AiRoofLaid(usize, usize, usize);
 #[derive(Component, Default, Debug)]
 pub struct Scars(pub HashSet<IVec2>, pub HashSet<IVec2>);
 
-/// Colour of a scar: burnt metal.
-const SCAR: (f32, f32, f32) = (0.055, 0.035, 0.03);
-const SCAR_SHADE: f32 = 0.95;
+/// A scar's plate: the shell closes over where the part stood, burnt. A flat
+/// near-black square there read as a tile missing from the shell, not as
+/// damage. Some burns are darker than others, so a cluster reads as a wound
+/// and not as a grid.
+pub fn scorch(color: Color, cell: IVec2) -> Color {
+    let c = color.to_srgba();
+    let h = (cell.x.wrapping_mul(73) ^ cell.y.wrapping_mul(179)).rem_euclid(3) as f32;
+    let dim = 0.5 - h * 0.06;
+    // Burnt metal goes a little warm.
+    Color::srgba(c.red * dim * 1.06, c.green * dim * 0.97, c.blue * dim * 0.9, c.alpha)
+}
 
 /// Keep each ship's scars: a module lost marks its cells, a module rebuilt
 /// clears them.
@@ -2540,11 +2537,11 @@ pub fn embers(scars: &Scars, standing: &HashSet<IVec2>) -> Vec<(IVec2, f32)> {
     burns.chain(edges).collect()
 }
 
-/// The floor cells showing a scar, and the roof with them taken out.
-pub fn scarred(roof: HashSet<IVec2>, scars: &HashSet<IVec2>) -> (HashSet<IVec2>, Vec<IVec2>) {
-    let burnt: Vec<IVec2> = roof.iter().filter(|c| scars.contains(*c)).copied().collect();
-    let clean = roof.into_iter().filter(|c| !scars.contains(c)).collect();
-    (clean, burnt)
+/// The roof, still whole, and which of its cells are burnt: floor a part was
+/// shot off and that's still there.
+pub fn scarred(roof: HashSet<IVec2>, scars: &HashSet<IVec2>) -> (HashSet<IVec2>, HashSet<IVec2>) {
+    let burnt = roof.iter().filter(|c| scars.contains(*c)).copied().collect();
+    (roof, burnt)
 }
 
 /// Lay the zoomed-out roof on every AI ship, and fade it with the zoom.
@@ -2603,24 +2600,13 @@ pub fn update_ai_roofs(
         let material = counts.into_iter().max_by_key(|(_, n)| *n).map_or(HullMaterial::Steel, |(m, _)| m);
         let image = assets.load(roof_path(material));
         let (roof, burnt) = scarred(roof_cells(&cells, &parts), &scars.0);
-        for cell in burnt {
-            commands.spawn((
-                Sprite {
-                    color: Color::srgba(SCAR.0, SCAR.1, SCAR.2, SCAR_SHADE * alpha),
-                    custom_size: Some(Vec2::splat(crate::building::GRID_SIZE)),
-                    ..default()
-                },
-                Transform::from_translation(grid_to_local(cell).extend(ROOF_Z)),
-                AiRoofTile(SCAR_SHADE),
-                ChildOf(root),
-            ));
-        }
         for cell in roof {
             let plate = cell.div_euclid(IVec2::splat(2));
             let q = cell.rem_euclid(IVec2::splat(2));
             let rect = Rect::new(q.x as f32 * 128.0, (1 - q.y) as f32 * 128.0, q.x as f32 * 128.0 + 128.0, (2 - q.y) as f32 * 128.0);
             let tone = plate_tone(plate) * DECK_LIGHTEN;
             let color = Color::srgba(tone, tone, tone, alpha);
+            let color = if burnt.contains(&cell) { scorch(color, cell) } else { color };
             commands.spawn((
                 Sprite {
                     image: image.clone(),
@@ -2778,12 +2764,18 @@ mod tests {
     }
 
     #[test]
-    fn a_lost_module_leaves_a_burn_and_not_a_clean_plate() {
+    fn a_lost_module_leaves_burnt_plating_not_a_clean_plate_or_a_black_square() {
         let roof: HashSet<IVec2> = [IVec2::new(0, 0), IVec2::new(1, 0)].into_iter().collect();
         let scars: HashSet<IVec2> = [IVec2::new(1, 0), IVec2::new(9, 9)].into_iter().collect();
-        let (clean, burnt) = scarred(roof, &scars);
-        assert!(clean.contains(&IVec2::new(0, 0)) && !clean.contains(&IVec2::new(1, 0)));
-        assert_eq!(burnt, vec![IVec2::new(1, 0)], "only floor that's still there burns");
+        let (shell, burnt) = scarred(roof.clone(), &scars);
+        assert_eq!(shell, roof, "the shell closes over the spot");
+        assert_eq!(burnt, [IVec2::new(1, 0)].into_iter().collect(), "only floor that's still there burns");
+        // Darker than the plate, but still a plate: not near-black.
+        let plate = Color::srgb(0.6, 0.6, 0.6);
+        for x in 0..6 {
+            let c = scorch(plate, IVec2::new(x, 0)).to_srgba();
+            assert!(c.red < 0.6 * 0.6 && c.red > 0.6 * 0.3, "{c:?}");
+        }
     }
 
     use super::*;
