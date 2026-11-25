@@ -520,6 +520,7 @@ impl Plugin for CombatPlugin {
             .add_systems(Startup, gun_design::load_weapon_kits)
             .add_systems(Update, (
                 turret_deck::ensure_turret_bodies,
+                turret_deck::drop_stranded_turrets,
                 turret_deck::mount_pending_turret_blocks,
                 turret_deck::update_player_aim_point,
                 turret_deck::measure_turrets,

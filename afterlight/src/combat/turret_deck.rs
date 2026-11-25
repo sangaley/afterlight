@@ -463,6 +463,81 @@ pub fn ensure_turret_bodies(
     }
 }
 
+/// How long a stranded turret's parts burn before what's left is cleared.
+const STRANDED_CLEAR_S: f32 = 0.6;
+/// How often jammed turrets are checked for hull under them.
+const STRANDED_CHECK_S: f32 = 0.25;
+
+/// A turret with nothing under it any more, going (`drop_stranded_turrets`):
+/// seconds since.
+#[derive(Component)]
+pub struct Stranded(pub f32);
+
+/// A jammed turret whose ring is gone and every hull cell under it too is
+/// lost: its parts are destroyed the way any shot-out block is, and the deck
+/// cleared away soon after. A turret jams to wait for its ring to be rebuilt,
+/// but nothing rebuilds an enemy's or a wreck's ring, and with the hull gone
+/// round it a duel left gun housings hanging in empty space beside the
+/// wreck. Your own ship's turrets still wait: your crew rebuild the hull and
+/// ring under them.
+#[allow(clippy::type_complexity)]
+pub fn drop_stranded_turrets(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut bodies: Query<(Entity, &TurretBody, &ChildOf, Option<&mut Stranded>, Option<&Children>)>,
+    player: Query<(), With<Ship>>,
+    hull: Query<(&HullSegment, &ChildOf), (Without<crate::components::HullDestroyed>, Without<TurretPlate>)>,
+    mut parts: Query<&mut Module, Without<DestroyedModule>>,
+    mut since_check: Local<f32>,
+) {
+    let dt = time.delta_secs();
+    for (body, _, _, stranded, _) in bodies.iter_mut() {
+        if let Some(mut s) = stranded {
+            s.0 += dt;
+            if s.0 >= STRANDED_CLEAR_S {
+                commands.entity(body).try_despawn();
+            }
+        }
+    }
+    *since_check += dt;
+    if *since_check < STRANDED_CHECK_S {
+        return;
+    }
+    *since_check = 0.0;
+    let candidates: Vec<(Entity, Entity, Vec<IVec2>)> = bodies
+        .iter()
+        .filter(|(_, t, on, stranded, _)| t.jammed && stranded.is_none() && !player.contains(on.parent()))
+        .map(|(body, t, on, _, _)| (body, on.parent(), t.ring_cells()))
+        .collect();
+    if candidates.is_empty() {
+        return;
+    }
+    let ships: std::collections::HashSet<Entity> = candidates.iter().map(|c| c.1).collect();
+    let mut standing: std::collections::HashMap<Entity, std::collections::HashSet<IVec2>> = std::collections::HashMap::new();
+    for (h, on) in hull.iter() {
+        if ships.contains(&on.parent()) {
+            standing.entry(on.parent()).or_default().insert(h.grid_position);
+        }
+    }
+    for (body, ship, cells) in candidates {
+        let held = standing.get(&ship).is_some_and(|s| cells.iter().any(|c| s.contains(c)));
+        if held {
+            continue;
+        }
+        if let Ok((_, _, _, _, Some(children))) = bodies.get(body) {
+            for child in children.iter() {
+                if let Ok(mut part) = parts.get_mut(child) {
+                    part.health = 0.0;
+                }
+            }
+        }
+        commands.entity(body).try_insert(Stranded(0.0));
+        if crate::combat::gun_assembly::trace() {
+            info!("TURRET STRANDED {:?}: no hull left under its ring", body);
+        }
+    }
+}
+
 /// Move blocks waiting for a turret onto it, once it exists.
 #[allow(clippy::type_complexity)]
 pub fn mount_pending_turret_blocks(
@@ -893,6 +968,66 @@ mod turret_deck_tests {
             .find(|(e, _)| *e != old)
             .map(|(e, t)| (e, t.ring));
         assert_eq!(fresh.map(|f| f.1), Some(new_ring), "a new turret on the loaded ring");
+    }
+
+    /// An enemy's jammed turret waits while there's hull under its ring,
+    /// and goes -- parts destroyed, deck cleared -- once there isn't.
+    #[test]
+    fn an_enemy_turret_with_no_hull_left_under_it_falls_away() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<Image>();
+        app.add_systems(Update, (ensure_turret_bodies, drop_stranded_turrets).chain());
+        let ship = app.world_mut().spawn(Transform::default()).id();
+        let ring = spawn_ring(&mut app, ship);
+        let hull: Vec<Entity> = (4..7)
+            .flat_map(|x| (0..3).map(move |y| IVec2::new(x, y)))
+            .map(|cell| app.world_mut().spawn((HullSegment { grid_position: cell, health: 100.0, max_health: 100.0, ..default() }, ChildOf(ship))).id())
+            .collect();
+        app.update();
+        app.update();
+        let (body, _) = the_body(&mut app).expect("a ring gets a turret");
+        let gun = app.world_mut().spawn((
+            Module { module_type: ModuleType::Laser, health: 50.0, max_health: 50.0, power_consumption: 0.0, power_generation: 0.0,
+                     is_active: true, grid_position: IVec2::ZERO, size: IVec2::ONE, rotation: crate::components::Rotation::North },
+            ChildOf(body),
+        )).id();
+        app.world_mut().entity_mut(ring).insert(DestroyedModule { original_type: ModuleType::TurretRing });
+        app.update();
+        app.world_mut().entity_mut(ring).despawn();
+        let run = |app: &mut App, secs: f32| {
+            let end = std::time::Instant::now() + std::time::Duration::from_secs_f32(secs);
+            while std::time::Instant::now() < end {
+                app.update();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        };
+        run(&mut app, 0.4);
+        assert!(app.world().get_entity(body).is_ok(), "hull still under it: it waits for its ring");
+        assert_eq!(app.world().get::<Module>(gun).unwrap().health, 50.0);
+        for h in hull {
+            app.world_mut().entity_mut(h).insert(crate::components::HullDestroyed);
+        }
+        run(&mut app, 0.4);
+        assert!(app.world().get_entity(gun).is_err() || app.world().get::<Module>(gun).unwrap().health <= 0.0, "its parts are shot out with it");
+        run(&mut app, 0.8);
+        assert!(app.world().get_entity(body).is_err(), "nothing left hanging in space");
+    }
+
+    /// Your own ship's jammed turret waits for the crew, hull or not.
+    #[test]
+    fn your_turret_waits_for_the_crew_even_over_a_hole() {
+        let (mut app, _, ring) = app_with_ring();
+        app.add_systems(Update, drop_stranded_turrets.after(ensure_turret_bodies));
+        let (body, _) = the_body(&mut app).unwrap();
+        app.world_mut().entity_mut(ring).insert(DestroyedModule { original_type: ModuleType::TurretRing });
+        app.update();
+        app.world_mut().entity_mut(ring).despawn();
+        for _ in 0..60 {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(app.world().get_entity(body).is_ok());
     }
 
     #[test]
