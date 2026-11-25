@@ -231,6 +231,8 @@ impl Plugin for ShipPlugin {
                 Update,
                 rebuild::cleanup_built_over_ghosts.run_if(in_state(GameState::StationDocked)),
             )
+            // Rebuild ghosts show docked at a station only (build and repair).
+            .add_systems(Update, rebuild::show_ghosts_while_docked)
 
             // Heat network (7 systems, chained)
             .add_systems(

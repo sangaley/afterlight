@@ -4,6 +4,7 @@ use crate::events::*;
 use crate::resources::*;
 use crate::building::{GridOccupancy, ModuleRegistry};
 use crate::building::footprints;
+use crate::states::GameState;
 
 // ============================================================================
 // GHOST REBUILD — the ship remembers its own design.
@@ -100,6 +101,24 @@ fn ghost_name(kind: &GhostKind) -> String {
 /// How strongly a ghost's outline shows.
 const GHOST_EDGE_ALPHA: f32 = 0.28;
 
+/// Whether the rebuild ghosts show in this state: docked at a station, where
+/// the ship is built and repaired. In flight they crowded the ship -- every
+/// block lost in a fight left a mark -- so there the crew rebuild unseen.
+pub fn ghosts_shown(state: GameState) -> bool {
+    state == GameState::StationDocked
+}
+
+/// Show the ghosts on docking, hide them on leaving.
+pub fn show_ghosts_while_docked(state: Res<State<GameState>>, mut ghosts: Query<&mut Sprite, With<RebuildGhostSprite>>) {
+    if !state.is_changed() {
+        return;
+    }
+    let alpha = if ghosts_shown(*state.get()) { GHOST_EDGE_ALPHA } else { 0.0 };
+    for mut sprite in &mut ghosts {
+        sprite.color.set_alpha(alpha);
+    }
+}
+
 /// A ghost's outline: a square frame two pixels in from a 32-pixel edge,
 /// clear inside.
 fn ghost_frame_image() -> Image {
@@ -135,8 +154,9 @@ pub fn record_rebuild_ghosts(
     registry: Res<ModuleRegistry>,
     mut queue: ResMut<RebuildQueue>,
     kept: KeptSettings,
-    (mut images, mut frame): (Option<ResMut<Assets<Image>>>, Local<Option<Handle<Image>>>),
+    (mut images, mut frame, state): (Option<ResMut<Assets<Image>>>, Local<Option<Handle<Image>>>, Option<Res<State<GameState>>>),
 ) {
+    let shown = state.is_some_and(|s| ghosts_shown(*s.get()));
     let frame = match (&*frame, images.as_mut()) {
         (Some(h), _) => Some(h.clone()),
         (None, Some(images)) => {
@@ -209,7 +229,7 @@ pub fn record_rebuild_ghosts(
         // hull, a part and its armour got a square for each, and close in the
         // lost blocks stood there in solid grey as if nothing had gone. An
         // outline stacks only along its edge.
-        let ghost_color = color.with_alpha(if frame.is_some() { GHOST_EDGE_ALPHA } else { 0.15 });
+        let ghost_color = color.with_alpha(if !shown { 0.0 } else if frame.is_some() { GHOST_EDGE_ALPHA } else { 0.15 });
         let mut sprites = Vec::new();
         for &cell in &cells {
             let sprite = commands.spawn((
@@ -618,5 +638,27 @@ mod ghost_look_tests {
         let solid = (0..32).flat_map(|y| (0..32).map(move |x| (x, y))).filter(|&(x, y)| alpha(x, y) > 0).count();
         assert!(solid * 4 < 32 * 32, "mostly clear: {solid} of 1024 solid");
         assert!(GHOST_EDGE_ALPHA < 0.5);
+    }
+
+    /// Ghosts show where the ship is built and repaired, not in flight.
+    #[test]
+    fn ghosts_show_only_docked_at_a_station() {
+        assert!(ghosts_shown(GameState::StationDocked));
+        assert!(!ghosts_shown(GameState::Exploring));
+        assert!(!ghosts_shown(GameState::Docked));
+
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+        app.init_state::<GameState>();
+        app.add_systems(Update, show_ghosts_while_docked);
+        let ghost = app.world_mut().spawn((Sprite { color: Color::WHITE.with_alpha(0.0), ..default() }, RebuildGhostSprite)).id();
+        app.world_mut().resource_mut::<NextState<GameState>>().set(GameState::StationDocked);
+        app.update();
+        app.update();
+        assert!(app.world().get::<Sprite>(ghost).unwrap().color.alpha() > 0.1, "docked: shown");
+        app.world_mut().resource_mut::<NextState<GameState>>().set(GameState::Exploring);
+        app.update();
+        app.update();
+        assert_eq!(app.world().get::<Sprite>(ghost).unwrap().color.alpha(), 0.0, "in flight: hidden");
     }
 }
