@@ -97,6 +97,32 @@ fn ghost_name(kind: &GhostKind) -> String {
     }
 }
 
+/// How strongly a ghost's outline shows.
+const GHOST_EDGE_ALPHA: f32 = 0.28;
+
+/// A ghost's outline: a square frame two pixels in from a 32-pixel edge,
+/// clear inside.
+fn ghost_frame_image() -> Image {
+    const N: u32 = 32;
+    const EDGE: u32 = 2;
+    let mut data = vec![0u8; (N * N * 4) as usize];
+    for y in 0..N {
+        for x in 0..N {
+            if x < EDGE || y < EDGE || x >= N - EDGE || y >= N - EDGE {
+                let i = ((y * N + x) * 4) as usize;
+                data[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
+    }
+    Image::new(
+        bevy::render::render_resource::Extent3d { width: N, height: N, depth_or_array_layers: 1 },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
 /// Records a rebuild ghost for every PLAYER block queued for destruction
 /// removal. AI ships get no ghosts — their wrecks are salvage, not repairs.
 pub fn record_rebuild_ghosts(
@@ -109,7 +135,17 @@ pub fn record_rebuild_ghosts(
     registry: Res<ModuleRegistry>,
     mut queue: ResMut<RebuildQueue>,
     kept: KeptSettings,
+    (mut images, mut frame): (Option<ResMut<Assets<Image>>>, Local<Option<Handle<Image>>>),
 ) {
+    let frame = match (&*frame, images.as_mut()) {
+        (Some(h), _) => Some(h.clone()),
+        (None, Some(images)) => {
+            let h = images.add(ghost_frame_image());
+            *frame = Some(h.clone());
+            Some(h)
+        }
+        (None, None) => None,
+    };
     let Ok(ship) = ship_query.single() else { return };
 
     for (entity, parent, module, hull) in fresh.iter() {
@@ -168,14 +204,19 @@ pub fn record_rebuild_ghosts(
         }
         let extras = module.map(|_| kept.extras(entity, turret)).filter(|x| !x.is_empty());
 
-        // Faint outline where the block stood — subtle, reads as a memory
-        let ghost_color = color.with_alpha(0.15);
+        // A faint outline where the block stood -- a memory, not a block. A
+        // filled square at 15% was meant to be faint, but a cell that lost its
+        // hull, a part and its armour got a square for each, and close in the
+        // lost blocks stood there in solid grey as if nothing had gone. An
+        // outline stacks only along its edge.
+        let ghost_color = color.with_alpha(if frame.is_some() { GHOST_EDGE_ALPHA } else { 0.15 });
         let mut sprites = Vec::new();
         for &cell in &cells {
             let sprite = commands.spawn((
                 (Sprite {
+                        image: frame.clone().unwrap_or_default(),
                         color: ghost_color,
-                        custom_size: Some(Vec2::splat(58.0)),
+                        custom_size: Some(Vec2::splat(60.0)),
                         ..default()
                     }, Transform::from_xyz(
                         cell.x as f32 * 66.0,
@@ -555,5 +596,27 @@ mod turret_rebuild_tests {
         app.world_mut().entity_mut(body).despawn();
         app.update();
         assert!(app.world().resource::<RebuildQueue>().ghosts.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod ghost_look_tests {
+    use super::*;
+
+    /// A ghost is an outline: solid round the edge, clear inside, so the
+    /// ghosts of a cell's hull, part and armour don't pile up into a grey
+    /// block where nothing stands.
+    #[test]
+    fn a_ghost_is_an_outline_not_a_square() {
+        let image = ghost_frame_image();
+        let data = image.data.as_ref().unwrap();
+        let alpha = |x: u32, y: u32| data[((y * 32 + x) * 4 + 3) as usize];
+        assert_eq!(alpha(0, 16), 255);
+        assert_eq!(alpha(16, 0), 255);
+        assert_eq!(alpha(16, 16), 0);
+        assert_eq!(alpha(5, 5), 0);
+        let solid = (0..32).flat_map(|y| (0..32).map(move |x| (x, y))).filter(|&(x, y)| alpha(x, y) > 0).count();
+        assert!(solid * 4 < 32 * 32, "mostly clear: {solid} of 1024 solid");
+        assert!(GHOST_EDGE_ALPHA < 0.5);
     }
 }
