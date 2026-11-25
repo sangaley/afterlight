@@ -368,6 +368,7 @@ fn collect_save_data(
         }).collect(),
         uncharted_galaxy_pos: streaming.loaded_system.is_none().then_some(streaming.current_galaxy_pos),
         fuel: Some(fuel.current_fuel),
+        drive: fuel.drive,
         contracts: contracts.clone(),
         reputation: reputation.clone(),
         standing: Some(standing.clone()),
@@ -605,6 +606,7 @@ fn apply_pending_load(
     // Not clamped to max_fuel: signature tanks raise the cap
     // (diplomacy::signatures::fuel_capacity), and they're respawned after this.
     fuel.current_fuel = save.fuel.unwrap_or(fuel.max_fuel).max(0.0);
+    fuel.drive = save.drive;
     *contracts = save.contracts.clone();
     *reputation = save.reputation.clone();
     *standing = save.standing.clone().unwrap_or_default();

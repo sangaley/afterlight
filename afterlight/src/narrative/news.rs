@@ -46,6 +46,47 @@ pub struct Heard {
     /// Who held it before the dark did, which the map shows until you hear.
     pub owner_before: Option<AiShipType>,
     pub capital_before: bool,
+    /// You have heard who holds it and what it is like: at a bar, from a
+    /// log, from the news. A system you have visited, or one next to one
+    /// you have, you know without hearing.
+    #[serde(default)]
+    pub known: bool,
+}
+
+/// The systems you know who holds: those you have been to, the ones next
+/// to those, and those you have heard of. The rest are stars on a map.
+pub fn known_ids(galaxy: &GalaxyMap) -> std::collections::HashSet<u32> {
+    let mut known: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    for sys in &galaxy.systems {
+        if sys.heard.known || sys.heard.taken_at.is_some() {
+            known.insert(sys.id);
+        }
+        if sys.discovery == SystemDiscovery::Visited {
+            known.insert(sys.id);
+            known.extend(crate::celestial::galaxy::nearest_neighbors(galaxy, sys.id, crate::celestial::galaxy::PASSIVE_NEIGHBOURS));
+        }
+    }
+    known
+}
+
+/// Docked at a port, you hear the talk: who holds the systems within two
+/// jumps of here, and what they're like.
+pub fn hear_at_port(
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    mut galaxy: ResMut<GalaxyMap>,
+) {
+    let Some(here) = streaming.loaded_system else { return };
+    let near = crate::celestial::galaxy::nearest_neighbors(&galaxy, here, crate::celestial::galaxy::PASSIVE_NEIGHBOURS);
+    let mut heard: Vec<u32> = near.clone();
+    for id in &near {
+        heard.extend(crate::celestial::galaxy::nearest_neighbors(&galaxy, *id, crate::celestial::galaxy::PASSIVE_NEIGHBOURS));
+    }
+    for sys in galaxy.systems.iter_mut().filter(|s| heard.contains(&s.id)) {
+        sys.heard.known = true;
+        if sys.discovery == SystemDiscovery::Unknown {
+            sys.discovery = SystemDiscovery::Located;
+        }
+    }
 }
 
 /// Bring what you know of `sys` up to the truth. Returns true when this is
@@ -55,6 +96,7 @@ pub fn hear(sys: &mut StarSystemDef, now: f64) -> bool {
     sys.heard.at = now;
     if is_taken(sys) && sys.heard.taken_at.is_none() {
         sys.heard.taken_at = Some(now);
+        sys.heard.known = true;
         if sys.discovery == SystemDiscovery::Unknown {
             sys.discovery = SystemDiscovery::Located;
         }

@@ -139,6 +139,22 @@ pub fn warp_input_system(
             }
 
             let dist = streaming.current_galaxy_pos.distance(target_pos);
+            // The drive goes so far and no further: a far place takes several
+            // jumps, through other people's space. One tank used to reach
+            // nine tenths of the galaxy, a hostile capital included.
+            let reach = drive_reach(fuel_state.drive, &galaxy_map);
+            if dist > reach {
+                notifications.write(ShowNotification {
+                    message: format!(
+                        "Beyond the jump drive's reach ({:.1} of {:.1}). Go by way of a nearer system, or refit the drive at a shipyard.",
+                        dist / 1_000_000.0,
+                        reach / 1_000_000.0
+                    ),
+                    notification_type: NotificationType::Warning,
+                    duration: 4.0,
+                });
+                return;
+            }
             if dist < 1.0 {
                 notifications.write(ShowNotification {
                     message: "Already there.".into(),
@@ -259,7 +275,8 @@ pub fn execute_warp_jump(
         let (resolved_system_id, arrival_pos, ready_info) = match ready {
             Some(p) => (p.system, p.arrival.unwrap_or_default(), p.info),
             None => {
-                let (id, at) = plan_arrival(&galaxy_map, event.target);
+                let from = streaming.current_galaxy_pos;
+                let (id, at) = plan_arrival(&galaxy_map, event.target, |d| d.faction.is_some_and(|f| standing.attacks_player(f)), from);
                 (id, at, None)
             }
         };
@@ -358,7 +375,12 @@ pub fn execute_warp_jump(
 /// from a live faction ship on every arrival.) Otherwise in the faction's
 /// population cluster, clear of the star, or clear of the star in a safe
 /// system; a blind point with nothing there is empty space.
-pub(crate) fn plan_arrival(galaxy_map: &GalaxyMap, target: GalaxyWarpTarget) -> (Option<u32>, Vec2) {
+pub(crate) fn plan_arrival(
+    galaxy_map: &GalaxyMap,
+    target: GalaxyWarpTarget,
+    hostile: impl Fn(&super::resources::StarSystemDef) -> bool,
+    from: Vec2,
+) -> (Option<u32>, Vec2) {
     let resolved = match target {
         GalaxyWarpTarget::System(id) => Some(id),
         GalaxyWarpTarget::BlindPoint(pos) => galaxy::system_within_snap_tolerance(galaxy_map, pos),
@@ -372,6 +394,11 @@ pub(crate) fn plan_arrival(galaxy_map: &GalaxyMap, target: GalaxyWarpTarget) -> 
         };
         return (resolved, at);
     };
+    // Into the space of someone who shoots on sight: the drive puts you at
+    // the edge, on the side you came from, not in their docking lane.
+    if hostile(def) {
+        return (resolved, hostile_arrival(def, from));
+    }
     if let Some(site) = crate::world::home_base::station_sites(def).first() {
         // Out in its docking lane (east, kept clear for the berths), a little
         // to one side: a random bearing put the ship on top of a starport's
@@ -393,6 +420,54 @@ pub(crate) fn plan_arrival(galaxy_map: &GalaxyMap, target: GalaxyWarpTarget) -> 
     (resolved, at)
 }
 
+/// How far out from a hostile system's star the drive puts you: past the
+/// jump points, short of its stations (180-420 km out).
+const HOSTILE_EDGE: f32 = 140_000.0;
+
+/// Where a jump from `from` (galaxy position) into the hostile system `def`
+/// comes out: on the side you came from, clear of the star and the planets.
+pub fn hostile_arrival(def: &super::resources::StarSystemDef, from: Vec2) -> Vec2 {
+    let side = (from - def.galaxy_pos).normalize_or(Vec2::X);
+    crate::ai_ship::traffic::clear_point(def, def.local_center + side * HOSTILE_EDGE, 8_000.0)
+}
+
+/// The jump drive's reach, by refit, before the galaxy has its say.
+pub const DRIVE_REACH: [f32; 3] = [1_800_000.0, 2_800_000.0, 4_200_000.0];
+/// What each refit costs, at a shipyard.
+pub const DRIVE_REFIT_COST: [u32; 2] = [3_000, 7_000];
+
+/// How far a jump drive with `refits` reaches in one jump. Never less than
+/// the longest single jump needed to get everywhere by hops: no system may
+/// be cut off by an unlucky galaxy.
+pub fn drive_reach(refits: u8, galaxy: &GalaxyMap) -> f32 {
+    DRIVE_REACH[(refits as usize).min(DRIVE_REACH.len() - 1)].max(longest_hop(galaxy) * 1.02)
+}
+
+/// The longest jump there is no way round: the hop every route to some
+/// system needs at least (the widest link of a minimum spanning tree).
+pub fn longest_hop(galaxy: &GalaxyMap) -> f32 {
+    let n = galaxy.systems.len();
+    if n < 2 {
+        return 0.0;
+    }
+    let mut joined = vec![false; n];
+    let mut best = vec![f32::MAX; n];
+    best[0] = 0.0;
+    let mut widest: f32 = 0.0;
+    for _ in 0..n {
+        let Some(i) = (0..n).filter(|&i| !joined[i]).min_by(|&a, &b| best[a].total_cmp(&best[b])) else { break };
+        joined[i] = true;
+        widest = widest.max(best[i]);
+        for j in 0..n {
+            if !joined[j] {
+                let d = galaxy.systems[i].galaxy_pos.distance(galaxy.systems[j].galaxy_pos);
+                best[j] = best[j].min(d);
+            }
+        }
+    }
+    widest
+}
+
 /// Load where a charging warp is going while the drive spools: a jump
 /// between stars spawns the system it lands in (planets, star, its stations
 /// via world::home_base, its population on the warm list) once the charge is
@@ -410,13 +485,15 @@ pub fn preload_warp_destination(
     members: Query<(Entity, &StarSystemMember)>,
     spawn_assets: (Res<crate::vfx::procedural_textures::CelestialTextures>, Res<AssetServer>, Res<LootedPois>),
     time: Res<Time>,
+    standing: Res<crate::diplomacy::FactionStanding>,
 ) {
     let (stars, dash) = ship.single().map_or((None, None), |(s, d)| (s, d));
     let now = time.elapsed_secs_f64();
     if let Some(charge) = stars {
         if preload.target != Some(charge.target) {
             call_off(&mut commands, &mut preload, &mut galaxy_map, &mut streaming, &members, now);
-            let (system, arrival) = plan_arrival(&galaxy_map, charge.target);
+            let from = streaming.current_galaxy_pos;
+            let (system, arrival) = plan_arrival(&galaxy_map, charge.target, |d| d.faction.is_some_and(|f| standing.attacks_player(f)), from);
             *preload = WarpPreload { target: Some(charge.target), system, arrival: Some(arrival), ..default() };
         }
         // A little way in, so a jump called off at once costs nothing.
@@ -496,6 +573,57 @@ pub fn on_warp_complete(
 #[cfg(test)]
 mod arrival_tests {
     use super::*;
+
+    /// The first drive gets you everywhere, a hop at a time, in any galaxy;
+    /// it doesn't get you across the galaxy in one; each refit goes further.
+    #[test]
+    fn the_drive_reaches_everywhere_by_hops_and_nowhere_in_one() {
+        for seed in [42, 7, 1_234, 99_999, 5_148_093_764_381_399_055] {
+            let map = galaxy::generate_galaxy_map(seed);
+            let reach = drive_reach(0, &map);
+            // Everyone reachable from Haven by hops of at most `reach`.
+            let mut seen = vec![false; map.systems.len()];
+            let mut todo = vec![0usize];
+            seen[0] = true;
+            while let Some(i) = todo.pop() {
+                for j in 0..map.systems.len() {
+                    if !seen[j] && map.systems[i].galaxy_pos.distance(map.systems[j].galaxy_pos) <= reach {
+                        seen[j] = true;
+                        todo.push(j);
+                    }
+                }
+            }
+            assert!(seen.iter().all(|s| *s), "seed {seed}: a system no hops reach");
+            let furthest = map.systems.iter().map(|s| s.galaxy_pos.distance(map.systems[0].galaxy_pos)).fold(0.0, f32::max);
+            assert!(reach < furthest * 0.6, "seed {seed}: one jump reaches {:.0}% of the way to the furthest", reach / furthest * 100.0);
+            assert!(drive_reach(1, &map) >= reach && drive_reach(2, &map) > drive_reach(1, &map));
+            assert_eq!(drive_reach(9, &map), drive_reach(2, &map));
+        }
+    }
+
+    /// Into hostile space you come out at the edge, on your side, clear of
+    /// the star, the planets and the stations; into friendly space, at a station.
+    #[test]
+    fn into_hostile_space_you_arrive_at_the_edge() {
+        let map = galaxy::generate_galaxy_map(42);
+        for def in map.systems.iter().filter(|s| s.faction.is_some()).take(12) {
+            let from = def.galaxy_pos + Vec2::new(-900_000.0, 300_000.0);
+            let (id, at) = plan_arrival(&map, GalaxyWarpTarget::System(def.id), |_| true, from);
+            assert_eq!(id, Some(def.id));
+            let roll = galaxy::system_roll(def);
+            let planets = roll.planet_paths();
+            let keep = crate::celestial::poi::KeepClear { center: def.local_center, star_radius: roll.star_radius(), planets: &planets };
+            assert!(keep.is_clear(at), "{}: came out in something", def.name);
+            for site in crate::world::home_base::station_sites(def) {
+                assert!(at.distance(site.pos) > site.radius() * 1.9 + 20_000.0, "{}: came out by {}", def.name, site.name);
+            }
+            let side = (at - def.local_center).dot((from - def.galaxy_pos).normalize());
+            assert!(side > 0.0, "{}: came out on the far side", def.name);
+            let (_, friendly) = plan_arrival(&map, GalaxyWarpTarget::System(def.id), |_| false, from);
+            let station = crate::world::home_base::station_sites(def)[0].pos;
+            assert!(friendly.distance(station) < at.distance(station));
+        }
+    }
 
     /// Warping into a system has to leave you able to press F. These two
     /// constants live in different files, so nothing but this connects them.

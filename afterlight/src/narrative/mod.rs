@@ -160,6 +160,9 @@ pub struct NarrativePlugin;
 
 impl Plugin for NarrativePlugin {
     fn build(&self, app: &mut App) {
+        // Port talk: who holds what, within two jumps.
+        app.add_systems(OnEnter(crate::states::GameState::StationDocked), news::hear_at_port);
+        app.add_systems(OnEnter(crate::states::GameState::Docked), news::hear_at_port);
         app.init_resource::<FinaleFound>();
         app.add_plugins(reader::LogReaderPlugin);
         app.add_plugins(truth::TruthPlugin);

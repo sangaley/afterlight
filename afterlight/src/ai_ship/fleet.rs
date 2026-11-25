@@ -186,6 +186,23 @@ fn held_count(held: &Held, role: ClassRole) -> usize {
     held.iter().find(|(r, _)| *r == role).map_or(0, |(_, n)| *n)
 }
 
+/// The role caps a system of `depth` starts from: as if it already held so
+/// many capital ships and experimentals that none (at the border), one and
+/// two (behind it), or the full three and four (a capital) can be added.
+/// A battle group needs a capital ship to lead it, so the border gets none.
+pub fn held_for(depth: crate::celestial::territory::Depth) -> Held {
+    use crate::celestial::territory::Depth;
+    let cap = |r: ClassRole| r.per_system_cap();
+    match depth {
+        Depth::Border => vec![(ClassRole::Capital, cap(ClassRole::Capital)), (ClassRole::Experimental, cap(ClassRole::Experimental))],
+        Depth::Interior => vec![
+            (ClassRole::Capital, cap(ClassRole::Capital).saturating_sub(1)),
+            (ClassRole::Experimental, cap(ClassRole::Experimental).saturating_sub(2)),
+        ],
+        Depth::Capital => Held::new(),
+    }
+}
+
 pub(crate) fn hold(held: &mut Held, role: ClassRole) {
     match held.iter_mut().find(|(r, _)| *r == role) {
         Some((_, n)) => *n += 1,
@@ -628,6 +645,31 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// No capital ship, and so no battle group, is ever rolled for a border
+    /// system; one at most behind the line; up to three at a capital.
+    #[test]
+    fn border_systems_get_no_capital_ships() {
+        use crate::celestial::territory::Depth;
+        let mut rng = rand::thread_rng();
+        for faction in [AiShipType::TerranHegemony, AiShipType::GildedThrone, AiShipType::CorpseStars] {
+            for _ in 0..300 {
+                let mut held = held_for(Depth::Border);
+                for _ in 0..6 {
+                    if let Some((_, hulls)) = roll_fleet(faction, &mut rng, &mut held, |_| true) {
+                        assert!(hulls.iter().all(|&(f, c)| role_of(f, c) != ClassRole::Capital), "{faction:?}: a capital ship at the border");
+                    }
+                }
+                assert!(compose(faction, FleetKind::BattleGroup, &mut rng, &mut held_for(Depth::Border)).is_none());
+            }
+            let mut held = held_for(Depth::Interior);
+            let capitals: usize = (0..12)
+                .filter_map(|_| roll_fleet(faction, &mut rng, &mut held, |_| true))
+                .map(|(_, h)| h.iter().filter(|&&(f, c)| role_of(f, c) == ClassRole::Capital).count())
+                .sum();
+            assert!(capitals <= 1, "{faction:?}: {capitals} capital ships behind the line");
+        }
+    }
 
     /// Two hostile fleets at the same numbers in different systems are not
     /// near each other, and don't fight.

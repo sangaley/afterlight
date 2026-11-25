@@ -153,6 +153,54 @@ pub fn border_factions(map: &GalaxyMap, system_id: u32) -> Vec<AiShipType> {
 }
 
 /// The system a faction rules from, if it holds one.
+/// How deep in its owner's ground a system lies: what decides how hard it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Depth {
+    /// Next to someone its owner is at war with (or nobody's space): pickets
+    /// and patrols, no capital ships.
+    Border,
+    /// Behind the border: line ships, a battle group or two.
+    Interior,
+    /// The owner's capital: everything it has.
+    Capital,
+}
+
+impl Depth {
+    /// How many hulls a system of this depth keeps, against the faction's
+    /// usual number.
+    pub fn ships(self) -> f32 {
+        match self {
+            Depth::Border => 0.6,
+            Depth::Interior => 1.0,
+            Depth::Capital => 1.5,
+        }
+    }
+
+    /// What the map says of it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Depth::Border => "Light: border pickets and patrols",
+            Depth::Interior => "Defended: line ships, battle groups",
+            Depth::Capital => "Fortress: capital ships and the home fleet",
+        }
+    }
+}
+
+/// How deep `system_id` lies in its owner's ground, read off the map as it
+/// stands, so it follows the borders as they move.
+///
+/// Every system of a faction used to be built the same: the same mix, up to
+/// three capital ships anywhere, and the count barely moved with anything.
+pub fn depth_of(map: &GalaxyMap, system_id: u32) -> Depth {
+    let Some(def) = map.systems.iter().find(|s| s.id == system_id) else { return Depth::Border };
+    let Some(owner) = def.faction else { return Depth::Border };
+    if def.capital {
+        return Depth::Capital;
+    }
+    let at_war = border_factions(map, system_id).into_iter().any(|other| factions_hostile(owner, other));
+    if at_war { Depth::Border } else { Depth::Interior }
+}
+
 pub fn capital_of(map: &GalaxyMap, faction: AiShipType) -> Option<u32> {
     map.systems.iter().find(|s| s.capital && s.faction == Some(faction)).map(|s| s.id)
 }
@@ -533,6 +581,33 @@ fn player_pushes_borders(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A capital is a capital; a system next to an enemy is its border; one
+    /// with nothing but friends about is behind the line. And when a system
+    /// changes hands, its neighbours' depth goes with it.
+    #[test]
+    fn depth_is_read_off_the_map_as_it_stands() {
+        let mut map = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut counts = [0usize; 3];
+        for s in map.systems.iter().filter(|s| s.faction.is_some()) {
+            let d = depth_of(&map, s.id);
+            counts[d as usize] += 1;
+            assert_eq!(d == Depth::Capital, s.capital, "{}", s.name);
+        }
+        eprintln!("border {} interior {} capital {}", counts[0], counts[1], counts[2]);
+        assert_eq!(counts[2], TERRITORIAL.len());
+        assert!(counts[0] > 0);
+        assert_eq!(depth_of(&map, 0), Depth::Border, "nobody's space is nobody's interior");
+        // Give a border system's every neighbour to its owner: no longer a border.
+        let border = map.systems.iter().find(|s| s.faction.is_some() && depth_of(&map, s.id) == Depth::Border).unwrap().clone();
+        for n in crate::celestial::galaxy::nearest_neighbors(&map, border.id, NEIGHBOURS) {
+            let sys = map.systems.iter_mut().find(|s| s.id == n).unwrap();
+            sys.faction = border.faction;
+            sys.capital = false;
+        }
+        assert_eq!(depth_of(&map, border.id), Depth::Interior);
+        assert!(Depth::Border.ships() < Depth::Interior.ships() && Depth::Interior.ships() < Depth::Capital.ships());
+    }
     use crate::celestial::galaxy::generate_galaxy_map;
 
     #[test]

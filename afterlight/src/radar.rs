@@ -460,9 +460,33 @@ pub fn update_radar(
     }
 }
 
+/// How far the long-range scan finds stars with the standard radar (range
+/// 2,500); a better radar reaches further in proportion.
+pub const BASE_SCAN: f32 = 1_800_000.0;
+/// The standard radar's range, which `BASE_SCAN` is for.
+const BASE_RADAR_RANGE: f32 = 2_500.0;
+/// Seconds before the long-range scan can be used again.
+pub const SCAN_RECHARGE: f32 = 40.0;
+
+/// How far the long-range scan reaches with a radar of `range`.
+///
+/// It was 3.2 million units with any radar at all, in a galaxy 5 million in
+/// radius, every time Z was pressed: one or two presses charted everything.
+pub fn scan_reach(range: f32) -> f32 {
+    BASE_SCAN * (range / BASE_RADAR_RANGE).max(0.25)
+}
+
+/// Seconds until the long-range scan is ready again: 0 when it is.
+pub fn scan_wait(last: Option<f32>, now: f32) -> f32 {
+    last.map_or(0.0, |t| (SCAN_RECHARGE - (now - t)).max(0.0))
+}
+
 /// Handles Z key radar ping - spawns expanding ring, reveals entities, generates noise
+#[allow(clippy::too_many_arguments)]
 fn radar_ping_system(
     mut commands: Commands,
+    time: Res<Time>,
+    mut last_scan: Local<Option<f32>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     // Our radar. Unscoped, the first active radar in the world answered --
     // which could be an enemy's, with its range.
@@ -495,19 +519,32 @@ fn radar_ping_system(
         return;
     };
 
-    // Interstellar scan: reveal Unknown galaxy systems within scan range as
-    // Located (Phase 5 active discovery — longer reach than passive proximity).
+    // Interstellar scan: reveal Unknown galaxy systems within the radar's
+    // reach as Located -- a star on the map, no more: who holds it and how
+    // hard it is comes from going there or hearing of it (narrative::news).
+    // Then it needs time to charge again. The close ping below goes out on
+    // every press.
+    let now = time.elapsed_secs();
+    let wait = scan_wait(*last_scan, now);
     let scan_pos = streaming.current_galaxy_pos;
+    let reach = scan_reach(range);
     let mut newly_found = 0;
-    for system in galaxy_map.systems.iter_mut() {
-        if system.discovery == SystemDiscovery::Unknown
-            && system.galaxy_pos.distance(scan_pos) <= GALAXY_SCAN_RANGE
-        {
-            system.discovery = SystemDiscovery::Located;
-            newly_found += 1;
+    if wait <= 0.0 {
+        *last_scan = Some(now);
+        for system in galaxy_map.systems.iter_mut() {
+            if system.discovery == SystemDiscovery::Unknown && system.galaxy_pos.distance(scan_pos) <= reach {
+                system.discovery = SystemDiscovery::Located;
+                newly_found += 1;
+            }
         }
     }
-    if newly_found > 0 {
+    if wait > 0.0 {
+        notifications.write(ShowNotification {
+            message: format!("Long-range scan recharging: {:.0} s", wait.ceil()),
+            notification_type: NotificationType::Info,
+            duration: 2.0,
+        });
+    } else if newly_found > 0 {
         notifications.write(ShowNotification {
             message: format!("Scan: {} new system{} detected - check the galaxy map (M).",
                 newly_found, if newly_found == 1 { "" } else { "s" }),
@@ -746,5 +783,20 @@ mod ping_tests {
         assert!(ring_crossed(1000.0, 1300.0, 1150.0));
         assert!(!ring_crossed(1000.0, 1300.0, 1600.0));
         assert!(!ring_crossed(1000.0, 1300.0, 900.0));
+    }
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+
+    #[test]
+    fn a_better_radar_scans_further_and_the_scan_must_recharge() {
+        assert!(scan_reach(4_000.0) > scan_reach(2_500.0));
+        assert_eq!(scan_reach(2_500.0), BASE_SCAN);
+        assert!(scan_reach(2_500.0) < crate::celestial::galaxy::GALAXY_RADIUS * 0.5, "one press charts half the galaxy");
+        assert_eq!(scan_wait(None, 5.0), 0.0);
+        assert_eq!(scan_wait(Some(100.0), 110.0), SCAN_RECHARGE - 10.0);
+        assert_eq!(scan_wait(Some(100.0), 100.0 + SCAN_RECHARGE + 1.0), 0.0);
     }
 }

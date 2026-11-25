@@ -226,6 +226,8 @@ pub struct FuelState {
     pub current_fuel: f32,
     pub max_fuel: f32,
     pub fuel_consumption_rate: f32,
+    /// The jump drive's refits, 0-2 (celestial::warp::drive_reach).
+    pub drive: u8,
 }
 
 impl Default for FuelState {
@@ -236,6 +238,7 @@ impl Default for FuelState {
             // Per engine. 0.8 was set for a five-engine ship; the starter now
             // has twenty, and at 0.8 it burned its tank in 94 s at full throttle.
             fuel_consumption_rate: 0.2,
+            drive: 0,
         }
     }
 }
@@ -1817,6 +1820,9 @@ pub struct SaveData {
     /// with a full tank, which is what loading one from the menu always gave.
     #[serde(default)]
     pub fuel: Option<f32>,
+    /// The jump drive's refits. 0 on saves made before it had any.
+    #[serde(default)]
+    pub drive: u8,
     /// Contract boards and accepted contracts. Empty on older saves.
     #[serde(default)]
     pub contracts: crate::contracts::ContractState,
@@ -1885,6 +1891,7 @@ impl Default for SaveData {
             drifting_dead: Vec::new(),
             uncharted_galaxy_pos: None,
             fuel: None,
+            drive: 0,
             contracts: crate::contracts::ContractState::default(),
             reputation: crate::contracts::FactionReputation::default(),
             standing: None,

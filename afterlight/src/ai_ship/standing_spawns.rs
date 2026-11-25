@@ -277,6 +277,82 @@ pub fn standing_spawns(
     }
 }
 
+/// How long you have been noticed in hostile space, and what has been sent.
+#[derive(Resource, Default)]
+pub struct Alarm {
+    system: Option<u32>,
+    level: f32,
+    sent: usize,
+}
+
+/// What a hostile system sends as the alarm grows: (seconds you've been
+/// there, what comes). A border sends a patrol, eventually. A capital sends
+/// battle groups, and the first within a minute.
+pub fn alarm_steps(depth: crate::celestial::territory::Depth) -> &'static [(f32, FleetKind)] {
+    use crate::celestial::territory::Depth;
+    match depth {
+        Depth::Border => &[(150.0, FleetKind::Patrol)],
+        Depth::Interior => &[(90.0, FleetKind::Patrol), (240.0, FleetKind::BattleGroup)],
+        Depth::Capital => &[(45.0, FleetKind::BattleGroup), (150.0, FleetKind::BattleGroup), (300.0, FleetKind::BattleGroup)],
+    }
+}
+
+/// In a system whose owner shoots on sight, the longer you stay the more of
+/// its fleet comes for you. It forgets you as soon as you leave.
+#[allow(clippy::too_many_arguments)]
+pub fn raise_alarm(
+    time: Res<Time>,
+    mut alarm: ResMut<Alarm>,
+    mut sim: ResMut<WorldSimulation>,
+    standing: Res<FactionStanding>,
+    galaxy: Res<crate::celestial::resources::GalaxyMap>,
+    streaming: Res<crate::celestial::resources::SystemStreamingManager>,
+    player: Query<&Transform, With<Ship>>,
+    mut notes: MessageWriter<crate::events::ShowNotification>,
+) {
+    let dt = time.delta_secs();
+    let Ok(player) = player.single() else { return };
+    let you = player.translation.truncate();
+    if alarm.system != streaming.loaded_system {
+        *alarm = Alarm { system: streaming.loaded_system, ..default() };
+    }
+    let Some(system) = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id)) else { return };
+    if super::simulation::safe_harbour(system) || crate::narrative::front::is_taken(system) || crate::demo::skip_ai_ship_spawn() {
+        return;
+    }
+    // Its own navy, or its ally's for a trading house.
+    let Some(owner) = system.faction else { return };
+    let sender = owner.ally().filter(|_| owner.is_trading()).unwrap_or(owner);
+    if !standing.attacks_player(owner) && !standing.attacks_player(sender) {
+        alarm.level = (alarm.level - dt).max(0.0);
+        return;
+    }
+    alarm.level += dt;
+    let depth = crate::celestial::territory::depth_of(&galaxy, system.id);
+    let steps = alarm_steps(depth);
+    let mut rng = rand::thread_rng();
+    while alarm.sent < steps.len() && alarm.level >= steps[alarm.sent].0 {
+        let (_, kind) = steps[alarm.sent];
+        alarm.sent += 1;
+        let mut held = fleet::held_for(depth);
+        let hulls = fleet::compose(sender, kind, &mut rng, &mut held)
+            .or_else(|| fleet::compose(sender, FleetKind::Patrol, &mut rng, &mut fleet::held_for(depth)));
+        let Some(hulls) = hulls else { continue };
+        let at = comes_from(Some(system), sender, you, &mut rng);
+        let id = send_fleet(&mut sim, sender, kind, &hulls, system.id, you, at, Mission::Hunt { left: HUNT_LASTS }, &mut rng);
+        info!("ALARM {:?} in system {} ({:?}) after {:.0} s: sends fleet {id}, {} ships", sender, system.id, depth, alarm.level, hulls.len());
+        notes.write(crate::events::ShowNotification {
+            message: if alarm.sent == 1 {
+                format!("The {} know you're here: ships are coming ({})", faction_display_name(sender), hulls.len())
+            } else {
+                format!("More {} ships are coming for you ({})", faction_display_name(sender), hulls.len())
+            },
+            notification_type: crate::events::NotificationType::Danger,
+            duration: 5.0,
+        });
+    }
+}
+
 /// A big blow to a faction brings a war fleet to the system you're in.
 pub fn war_fleets(
     time: Res<Time>,
@@ -493,6 +569,20 @@ mod tests {
         assert_eq!(hunt_start(false, FIRST_HUNT), FIRST_HUNT);
         // A test run asking for a hunt sooner still gets it sooner.
         assert_eq!(hunt_start(true, 20.0), 20.0);
+    }
+
+    /// The deeper in hostile ground, the sooner and the more comes for you.
+    #[test]
+    fn the_alarm_comes_sooner_and_heavier_the_deeper_you_are() {
+        use crate::celestial::territory::Depth;
+        let first = |d: Depth| alarm_steps(d)[0].0;
+        assert!(first(Depth::Capital) < first(Depth::Interior) && first(Depth::Interior) < first(Depth::Border));
+        assert!(first(Depth::Capital) <= 60.0, "a capital takes more than a minute to notice you");
+        assert!(alarm_steps(Depth::Capital).len() > alarm_steps(Depth::Border).len());
+        assert!(alarm_steps(Depth::Border).iter().all(|(_, k)| *k != FleetKind::BattleGroup), "a border has no battle group to send");
+        for d in [Depth::Border, Depth::Interior, Depth::Capital] {
+            assert!(alarm_steps(d).windows(2).all(|w| w[0].0 < w[1].0));
+        }
     }
 
     #[test]

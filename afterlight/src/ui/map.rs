@@ -280,6 +280,8 @@ struct Scene {
     target: Option<Vec2>,
     fuel: f32,
     max_fuel: f32,
+    /// How far the jump drive reaches in one jump (celestial::warp::drive_reach).
+    drive_reach: f32,
     hull: f32,
     hold: (f32, f32),
     cargo: Vec<(String, u32)>,
@@ -370,6 +372,15 @@ fn system_brief_living(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &F
             C::TEXT_SECONDARY,
         ));
     }
+    if sys.faction.is_some() {
+        let depth = crate::celestial::territory::depth_of(galaxy_map, sys.id);
+        let color = match depth {
+            crate::celestial::territory::Depth::Border => C::TEXT_SECONDARY,
+            crate::celestial::territory::Depth::Interior => C::ACCENT_ORANGE,
+            crate::celestial::territory::Depth::Capital => Color::srgb(0.95, 0.3, 0.3),
+        };
+        lines.push(line(depth.label().to_string(), color));
+    }
     let borders = border_factions(galaxy_map, sys.id);
     if !borders.is_empty() {
         let names: Vec<&str> = borders.iter().map(|f| faction_display_name(*f)).collect();
@@ -391,6 +402,23 @@ fn system_brief_living(sys: &StarSystemDef, galaxy_map: &GalaxyMap, standing: &F
 
 /// What the map lets go of in a system the dark took (narrative::news):
 /// first what was in it, then its name.
+/// A star you have found but know nothing of: no owner, no stations, no
+/// fleets, grey. Going there, or hearing of it, fills it in.
+fn veil(sys: &mut SceneSystem) {
+    sys.owner = None;
+    sys.color = Color::srgb(0.45, 0.47, 0.52);
+    sys.capital = false;
+    sys.haunted = false;
+    sys.contested = false;
+    sys.hostile = false;
+    sys.stations.clear();
+    sys.ships.clear();
+    sys.brief = vec![
+        BriefLine { text: "Uncharted".into(), color: C::TEXT_MUTED, lead: true },
+        BriefLine { text: "Whose it is, and how hard, you'll hear at a port or by going.".into(), color: C::TEXT_MUTED, lead: false },
+    ];
+}
+
 fn forget(sys: &mut SceneSystem, how_much: crate::narrative::news::Forgot) {
     use crate::narrative::news::Forgot;
     if how_much == Forgot::Nothing {
@@ -664,6 +692,12 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         (None, Some(p)) => Some(here.frame.to_galaxy(p)),
         _ => None,
     };
+    // Stars found but not heard of are bare dots (narrative::news::known_ids).
+    let known_ids = crate::narrative::news::known_ids(&world.galaxy_map);
+    for sys in systems.iter_mut().filter(|s| !s.here && !known_ids.contains(&s.id)) {
+        veil(sys);
+    }
+
     Scene {
         here_name: here_id
             .and_then(|id| systems.iter().find(|s| s.id == id))
@@ -677,6 +711,7 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         target,
         fuel: world.fuel.current_fuel,
         max_fuel: world.fuel.max_fuel,
+        drive_reach: crate::celestial::warp::drive_reach(world.fuel.drive, &world.galaxy_map),
         hull: world.hull.hull_integrity,
         hold: (world.inventory.current_weight, world.inventory.max_capacity),
         cargo: world.inventory.items.iter().map(|(item, count)| (item.name().to_string(), *count)).collect(),
@@ -1202,7 +1237,12 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
             (scene.fuel, REACH_ONE_WAY, "One way, on this tank"),
             (scene.fuel / 2.0, REACH_RETURN, "There and back"),
         ] {
-            let Some(radius) = jump_reach(fuel) else { continue };
+            // The tank's reach, but never past the drive's own.
+            let radius = match jump_reach(fuel) {
+                Some(r) => r.min(scene.drive_reach),
+                None if fuel > INTERSTELLAR_BASE_FUEL => scene.drive_reach,
+                None => continue,
+            };
             paint.dashed_circle(cam, scene.here.galaxy, radius, faded(color, 0.5 * fade));
             let top = cam.to_px(scene.here.galaxy + Vec2::Y * radius, stage);
             if paint.on_stage(top, -30.0) {
@@ -1553,8 +1593,17 @@ fn list_row(p: &mut ChildSpawnerCommands, swatch: Color, name: &str, right: &str
 
 fn jump_block(p: &mut ChildSpawnerCommands, scene: &Scene, to: Vec2) {
     let (fuel, charge) = jump_price(scene.here.galaxy, to);
-    let afford = scene.fuel >= fuel;
     section(p, "Jump");
+    if scene.here.galaxy.distance(to) > scene.drive_reach {
+        fact(p, "Drive", "Out of reach", C::ACCENT_RED);
+        p.spawn(text_bundle(
+            "Beyond the jump drive's reach. Go by way of a nearer system, or refit the drive at a shipyard.",
+            F::BODY_SMALL,
+            C::ACCENT_RED,
+        ));
+        return;
+    }
+    let afford = scene.fuel >= fuel;
     fact(p, "Fuel", format!("{:.0} of {:.0}", fuel, scene.fuel), if afford { C::TEXT_PRIMARY } else { C::ACCENT_RED });
     fact(p, "Charge", format!("{charge:.0} s"), C::TEXT_PRIMARY);
     fact(p, "Left after", format!("{:.0}", (scene.fuel - fuel).max(0.0)), C::TEXT_PRIMARY);

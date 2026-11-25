@@ -341,7 +341,8 @@ pub fn ensure_system_population(sim: &mut WorldSimulation, galaxy_map: &crate::c
             return;
         }
         let borders = crate::celestial::territory::border_factions(galaxy_map, system_id);
-        spawn_system_faction_population(sim, system);
+        let depth = crate::celestial::territory::depth_of(galaxy_map, system_id);
+        spawn_system_faction_population_at(sim, system, depth);
         spawn_visitors(sim, system, &borders);
         sim.populated.insert(system_id);
     }
@@ -496,12 +497,12 @@ const DEPART_AT: f32 = 3_000.0;
 
 /// How many hulls `system`'s owner keeps there: what it is populated to,
 /// and what it is topped back up toward.
-pub fn owner_target(system: &crate::celestial::resources::StarSystemDef) -> usize {
+pub fn owner_target(system: &crate::celestial::resources::StarSystemDef, depth: crate::celestial::territory::Depth) -> usize {
     let Some(faction) = system.faction else { return 0 };
     let Some(template) = faction_territories().into_iter().find(|t| t.faction == faction) else { return 0 };
     let count = system_ship_count(template.ship_count, super::components::faction_power(faction));
-    // A capital is where a faction keeps its strength.
-    if system.capital { (count as f32 * CAPITAL_SHARE).round() as usize } else { count }
+    // A capital is where a faction keeps its strength; its border is thin.
+    ((count as f32 * depth.ships()).round() as usize).max(4)
 }
 
 /// Seconds between looks at whether a system needs anyone sent to it.
@@ -566,11 +567,12 @@ pub fn refill_system(
     if let Some(owner) = system.faction {
         let flier = flier_of(owner);
         let here = living(sim, owner).len() + if flier != owner { living(sim, flier).len() } else { 0 };
-        let target = owner_target(system);
+        let depth = crate::celestial::territory::depth_of(galaxy, system.id);
+        let target = owner_target(system, depth);
         if (here as f32) < target as f32 * REFILL_BELOW {
             let template = faction_territories().into_iter().find(|t| t.faction == owner)?;
-            // The caps count what is already here.
-            let mut held = super::fleet::Held::new();
+            // The caps count what is already here, on top of what its depth allows.
+            let mut held = super::fleet::held_for(depth);
             for (faction, class) in living(sim, owner).into_iter().chain(living(sim, flier)) {
                 super::fleet::hold(&mut held, super::fleet::role_of(faction, class));
             }
@@ -711,6 +713,17 @@ fn clear_in_system(system: &crate::celestial::resources::StarSystemDef, pos: Vec
 /// a jittered-origin position. No-ops for a safe system (faction: None,
 /// e.g. Haven).
 fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::celestial::resources::StarSystemDef) {
+    use crate::celestial::territory::Depth;
+    spawn_system_faction_population_at(sim, system, if system.capital { Depth::Capital } else { Depth::Interior });
+}
+
+/// The same, for a system of a known `depth` in its owner's ground: fewer
+/// and lighter at the border, the most and heaviest at the capital.
+fn spawn_system_faction_population_at(
+    sim: &mut WorldSimulation,
+    system: &crate::celestial::resources::StarSystemDef,
+    depth: crate::celestial::territory::Depth,
+) {
     let Some(faction) = system.faction else { return };
     let Some(template) = faction_territories().into_iter().find(|t| t.faction == faction) else { return };
     let mut rng = rand::thread_rng();
@@ -730,9 +743,10 @@ fn spawn_system_faction_population(sim: &mut WorldSimulation, system: &crate::ce
     let holdings = faction_holdings(system, &mut rng);
     // The danger the faction itself brings (a haunted system's danger is the
     // boss's, and the boss brings its own ships).
-    let count = owner_target(system);
-    // How many of each capped role this system already holds.
-    let mut held = super::fleet::Held::new();
+    let count = owner_target(system, depth);
+    // How many of each capped role this system already holds, starting from
+    // what its depth allows.
+    let mut held = super::fleet::held_for(depth);
     let has_station = crate::diplomacy::stations::station_plan(faction).is_some();
     let mut guarded = false;
     // Fleets placed so far, (centre, reach): a new one is set down clear of
@@ -846,8 +860,6 @@ const HOME_FLEET_RADIUS: f32 = 14_000.0;
 /// How far a station guard ranges from its post, past the station's hull.
 const GUARD_RADIUS: f32 = 8_000.0;
 
-/// How much busier a faction's capital is than its other systems.
-const CAPITAL_SHARE: f32 = 1.4;
 
 /// The fleets a system holds that aren't its owner's: patrols from the
 /// factions it borders (neighbours meet at border systems), and the boss
@@ -2428,13 +2440,14 @@ mod population_tests {
         ensure_system_population(&mut sim, &galaxy, system.id);
         assert_eq!(refill_system(&mut sim, &galaxy, system, None, &mut rng), None, "a full system was sent more");
 
-        // All but two of the navy's fleets are lost.
+        // All but one of the navy's fleets are lost.
         let theirs: Vec<u32> = sim.fleets.iter().filter(|f| f.faction == AiShipType::TerranHegemony).map(|f| f.id).collect();
-        for id in theirs.iter().skip(2) {
+        for id in theirs.iter().skip(1) {
             sim.remove_fleet(*id);
         }
         let left = sim.ships.iter().filter(|s| s.faction == AiShipType::TerranHegemony).count();
-        assert!((left as f32) < owner_target(system) as f32 * REFILL_BELOW, "{left} of {} left: not a loss to test with", owner_target(system));
+        let target = owner_target(system, crate::celestial::territory::depth_of(&galaxy, system.id));
+        assert!((left as f32) < target as f32 * REFILL_BELOW, "{left} of {target} left: not a loss to test with");
         let (fleets, ships) = (sim.fleets.len(), sim.ships.len());
         // Sitting on every way in: nothing comes.
         let on_the_jump = jump_in_point(&galaxy, system, Some(AiShipType::TerranHegemony), &mut rng);
@@ -2442,7 +2455,7 @@ mod population_tests {
         assert_eq!(sim.fleets.len(), fleets);
 
         let what = refill_system(&mut sim, &galaxy, system, None, &mut rng);
-        assert!(what.is_some(), "nothing was sent to a system with {left} of {} left", owner_target(system));
+        assert!(what.is_some(), "nothing was sent to a system with {left} of {target} left");
         assert_eq!(sim.fleets.len(), fleets + 1, "one fleet at a time");
         assert!(sim.ships.len() > ships);
         let new = sim.fleets.last().unwrap();
@@ -2550,6 +2563,28 @@ mod population_tests {
                 assert!(keep.is_clear(f.position), "{}: a fleet set down at {} is in something's way", system.name, f.position);
             }
         }
+    }
+
+    /// Deep is harder: a faction's capital holds more ships than its border
+    /// systems, and only its capital and interior hold capital ships.
+    #[test]
+    fn a_capital_outnumbers_and_outguns_the_border() {
+        use crate::celestial::territory::{depth_of, Depth};
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut tried = 0;
+        for capital in galaxy.systems.iter().filter(|s| s.capital) {
+            let faction = capital.faction.unwrap();
+            let Some(border) = galaxy.systems.iter().find(|s| s.faction == Some(faction) && depth_of(&galaxy, s.id) == Depth::Border) else { continue };
+            tried += 1;
+            let (mut deep, mut edge) = (WorldSimulation::default(), WorldSimulation::default());
+            ensure_system_population(&mut deep, &galaxy, capital.id);
+            ensure_system_population(&mut edge, &galaxy, border.id);
+            let own = |sim: &WorldSimulation| sim.ships.iter().filter(|s| s.faction == faction || Some(s.faction) == faction.ally()).count();
+            assert!(own(&deep) > own(&edge), "{faction:?}: capital {} ships, border {}", own(&deep), own(&edge));
+            let capitals = |sim: &WorldSimulation| sim.ships.iter().filter(|s| s.faction == faction && super::super::fleet::role_of(s.faction, s.class) == super::super::roster::ClassRole::Capital).count();
+            assert_eq!(capitals(&edge), 0, "{faction:?}: a capital ship on the border");
+        }
+        assert!(tried >= 3, "{tried}");
     }
 
     /// A capital keeps a home fleet: a battle group (a capital ship and its

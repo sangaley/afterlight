@@ -4022,6 +4022,7 @@ fn get_docking_services(
             cost: 0, // Shown per-choice in the description
             available: true,
         },
+        drive_refit_service(fuel_state, station_idx),
         DockingService {
             name: "Undock",
             description: "Return to exploring".to_string(),
@@ -4029,6 +4030,27 @@ fn get_docking_services(
             available: true,
         },
     ]
+}
+
+/// The jump drive refit row: only a shipyard does the work, two refits in all.
+fn drive_refit_row(fuel_state: &FuelState, station_idx: usize) -> (String, u32, bool) {
+    use crate::celestial::warp::{DRIVE_REACH, DRIVE_REFIT_COST};
+    let shipyard = crate::world::station_types::station_type(station_idx) == crate::world::station_types::StationType::Shipyard;
+    let level = fuel_state.drive as usize;
+    match DRIVE_REFIT_COST.get(level) {
+        Some(&cost) if shipyard => (
+            format!("Longer jumps: reach {:.1} -> {:.1}", DRIVE_REACH[level] / 1_000_000.0, DRIVE_REACH[level + 1] / 1_000_000.0),
+            cost,
+            true,
+        ),
+        Some(_) => ("Only a shipyard can refit the jump drive".to_string(), 0, false),
+        None => ("The jump drive is refitted as far as it goes".to_string(), 0, false),
+    }
+}
+
+fn drive_refit_service(fuel_state: &FuelState, station_idx: usize) -> DockingService {
+    let (description, cost, available) = drive_refit_row(fuel_state, station_idx);
+    DockingService { name: "Refit Jump Drive", description, cost, available }
 }
 
 fn spawn_docking_menu(
@@ -4525,7 +4547,7 @@ fn docking_menu_input(
     let far = distance_price_multiplier_for(station_idx, &galaxy) * market.service_multiplier();
     let discounts = crate::world::station_types::service_discounts_at(station_idx, &galaxy);
 
-    let service_count = 9usize;
+    let service_count = 10usize;
     let old_idx = selection.0;
     let mut changed = false;
 
@@ -4979,6 +5001,35 @@ fn docking_menu_input(
                 }
             }
             8 => {
+                // Refit the jump drive, at a shipyard.
+                let (_, cost, available) = drive_refit_row(&fuel_state, station_idx);
+                if !available {
+                    notifications.write(ShowNotification {
+                        message: drive_refit_row(&fuel_state, station_idx).0,
+                        notification_type: NotificationType::Info,
+                        duration: 3.0,
+                    });
+                } else if currency.credits < cost {
+                    notifications.write(ShowNotification {
+                        message: format!("The refit costs {cost} credits."),
+                        notification_type: NotificationType::Warning,
+                        duration: 3.0,
+                    });
+                } else {
+                    currency.credits -= cost;
+                    fuel_state.drive += 1;
+                    changed = true;
+                    notifications.write(ShowNotification {
+                        message: format!(
+                            "Jump drive refitted: it reaches {:.1} now.",
+                            crate::celestial::warp::DRIVE_REACH[fuel_state.drive as usize] / 1_000_000.0
+                        ),
+                        notification_type: NotificationType::Success,
+                        duration: 4.0,
+                    });
+                }
+            }
+            9 => {
                 // Undock
                 next_state.set(GameState::Exploring);
                 notifications.write(ShowNotification {
@@ -5053,6 +5104,10 @@ fn docking_menu_input(
             (total_module_damage * MODULE_REPAIR_RATE) as u32
         }, module_query.iter().any(|m| m.health < m.max_health)),
         ("Buy Goods", buy_row(&inventory, station_idx, selection.1, &market).0, 0, true),
+        {
+            let (desc, cost, available) = drive_refit_row(&fuel_state, station_idx);
+            ("Refit Jump Drive", desc, cost, available)
+        },
         ("Undock", "Return to exploring".to_string(), 0, true),
     ];
 

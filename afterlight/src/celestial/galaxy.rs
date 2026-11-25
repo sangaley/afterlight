@@ -322,6 +322,9 @@ pub fn generate_galaxy_on_enter(
     info!("Galaxy generated: {} systems, seed={}", galaxy_map.systems.len(), galaxy_map.galaxy_seed);
 }
 
+/// How many of the nearest stars your sensors find by themselves.
+pub const PASSIVE_NEIGHBOURS: usize = 3;
+
 /// Bevy system wrapper for passive_proximity_discovery — runs continuously
 /// while Exploring, not gated behind any player action.
 pub fn passive_proximity_discovery_system(
@@ -330,8 +333,18 @@ pub fn passive_proximity_discovery_system(
 ) {
     // Near the dark the sensors see less (narrative::news::sensor_reach).
     let near = streaming.loaded_system.and_then(|id| crate::narrative::front::hops_from_dark(&galaxy_map, id));
-    let reach = SENSOR_RANGE * crate::narrative::news::sensor_reach(near);
-    passive_proximity_discovery(&mut galaxy_map, streaming.current_galaxy_pos, reach);
+    // Your nearest few neighbours show up by themselves. It was every star
+    // within 2 million units, which from Haven was a good part of the map.
+    let count = ((PASSIVE_NEIGHBOURS as f32) * crate::narrative::news::sensor_reach(near)).round().max(1.0) as usize;
+    let near_ids = nearest_neighbors_to_pos(&galaxy_map, streaming.current_galaxy_pos, streaming.loaded_system, count);
+    let unknown = galaxy_map.systems.iter().any(|s| near_ids.contains(&s.id) && s.discovery == SystemDiscovery::Unknown);
+    if unknown {
+        for system in galaxy_map.systems.iter_mut().filter(|s| near_ids.contains(&s.id)) {
+            if system.discovery == SystemDiscovery::Unknown {
+                system.discovery = SystemDiscovery::Located;
+            }
+        }
+    }
 }
 
 /// Distance a system's faction population cluster sits away from the star

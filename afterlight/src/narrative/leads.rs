@@ -211,6 +211,8 @@ fn apply_log_effects(
             Lead(_) | Warning(_) | Story(_) => {
                 let Some(id) = marks(&galaxy, title) else { continue };
                 if let Some(sys) = galaxy.systems.iter_mut().find(|s| s.id == id) {
+                    // A log that names a place says whose it is.
+                    sys.heard.known = true;
                     if sys.discovery == SystemDiscovery::Unknown {
                         sys.discovery = SystemDiscovery::Located;
                     }

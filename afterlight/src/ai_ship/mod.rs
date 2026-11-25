@@ -86,6 +86,10 @@ impl Plugin for AiShipPlugin {
                 .run_if(in_state(crate::states::GameState::Exploring)),
         );
         // Your standing sends hunters, escorts and war fleets.
+        app.init_resource::<standing_spawns::Alarm>().add_systems(
+            Update,
+            standing_spawns::raise_alarm.run_if(in_state(crate::states::GameState::Exploring)),
+        );
         app.init_resource::<standing_spawns::StandingSpawns>().add_systems(
             Update,
             (
