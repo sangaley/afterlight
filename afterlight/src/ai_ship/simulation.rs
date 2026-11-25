@@ -1325,8 +1325,11 @@ pub fn tick_world_simulation(
         }
     }
 
-    // Phase 2: Off-screen fights, weighed by each side's strength.
-    super::fleet::resolve_battles(&mut sim.ships, &is_active_system, dt);
+    // Phase 2: Off-screen fights, weighed by each side's strength. Not in a
+    // harbour: the two trading houses are at war, both call at Haven, and
+    // in five minutes there they had sunk 23 of each other's 38 hulls.
+    let harbour = |id: u32| galaxy.as_deref().and_then(|g| g.systems.iter().find(|s| s.id == id)).is_some_and(safe_harbour);
+    super::fleet::resolve_battles(&mut sim.ships, |id| is_active_system(id) && !harbour(id), dt);
 
     // A harbour is kept clear of everyone but traders: the patrols and
     // raiders that wandered in before it was one, the strays filed under it.
