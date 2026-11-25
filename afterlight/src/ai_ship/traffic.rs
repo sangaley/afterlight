@@ -143,6 +143,30 @@ impl Stop {
         first
     }
 
+    /// Whether a trader coming from `from` can keep the berth it was given.
+    ///
+    /// The berth for a bearing is not a smooth thing: a degree to one side
+    /// an arm lies that way and the berth is out past its tip, a degree to
+    /// the other it doesn't and the berth is close in. Worked out afresh
+    /// every second from where the ship had got to, it jumped 7 km back and
+    /// forth as a trader came up the edge of an arm. A berth that is still a
+    /// good one, still on its side of the station, is kept.
+    pub fn keeps(&self, berth: Vec2, from: Vec2) -> bool {
+        let off = berth - self.pos;
+        let dist = off.length();
+        // Something that moves takes its berths with it.
+        if self.vel.length() > 1.0 || dist < 1.0 {
+            return false;
+        }
+        let near_side = off.dot(from - self.pos) > 0.0;
+        let in_reach = dist <= self.radius + 2.0 * BERTH_MARGIN;
+        let off_the_hull = self.shape.iter().all(|(c, r)| off.distance(*c) >= r + BERTH_CORRIDOR)
+            && (!self.shape.is_empty() || dist >= self.radius + BERTH_MARGIN - 1.0);
+        let keep = crate::world::raft::LANE_HALF_WIDTH + LANE_CLEAR;
+        let out_of_the_lane = !self.lane || off.x <= 0.0 || off.y.abs() >= keep - 1.0;
+        near_side && in_reach && off_the_hull && out_of_the_lane && self.is_open(berth)
+    }
+
     /// Whether a berth at `at` is clear of every star and planet nearby.
     fn is_open(&self, at: Vec2) -> bool {
         self.avoid.iter().all(|(c, r)| at.distance(*c) >= r + BERTH_MARGIN)
@@ -314,7 +338,9 @@ pub fn run_traffic(
         // Stations ride their planets: keep aiming at where it is now.
         if here && run.dwell <= 0.0 && run.leaving.is_none() {
             if let Some(stop) = stops.iter().find(|s| s.name == run.bound_for) {
-                fleet.destination = stop.berth(position);
+                if !stop.keeps(fleet.destination, position) {
+                    fleet.destination = stop.berth(position);
+                }
             }
         }
         if gave_up.contains(&fleet.id) && run.dwell <= 0.0 {
@@ -524,6 +550,44 @@ mod tests {
                 assert!(gap >= BERTH_CORRIDOR - 1.0, "bearing {i}: {gap:.0} u off a part of the hull");
             }
         }
+    }
+
+    /// Coming up the edge of an arm, the berth it was given is the berth it
+    /// keeps: it doesn't jump between out-past-the-tip and close-in as the
+    /// bearing wavers.
+    #[test]
+    fn a_berth_once_given_is_kept_while_it_is_still_good() {
+        // A hub, and one big thing moored 12 km north of it.
+        let s = Stop {
+            name: "Raft".into(),
+            pos: Vec2::new(5_000.0, -3_000.0),
+            radius: 14_000.0,
+            shape: vec![(Vec2::ZERO, 2_000.0), (Vec2::new(0.0, 12_000.0), 1_500.0)],
+            lane: true,
+            avoid: Vec::new(),
+            vel: Vec2::ZERO,
+        };
+        // A degree either side of where it comes into the strip the berth
+        // keeps clear: out past it, or close in by the hub.
+        let from = |deg: f32| s.pos + Vec2::from_angle((90.0 - deg).to_radians()) * 60_000.0;
+        // (West of north, away from the lane, which has rules of its own.)
+        let (clear, inside) = (from(-15.5), from(-13.5));
+        let (a, b) = (s.berth(clear), s.berth(inside));
+        assert!(a.distance(b) > 5_000.0, "the two bearings give berths {:.0} apart; no jump to test", a.distance(b));
+        // Whichever it had, it keeps, from either bearing.
+        for berth in [a, b] {
+            assert!(s.keeps(berth, clear) && s.keeps(berth, inside), "lost a good berth at {}", berth - s.pos);
+        }
+        // Not one on the far side of the station, in the lane, in the hull,
+        // or nowhere near.
+        assert!(!s.keeps(a, s.pos + Vec2::new(0.0, -60_000.0)));
+        assert!(!s.keeps(s.pos + Vec2::new(14_000.0, 500.0), s.pos + Vec2::new(60_000.0, 500.0)));
+        assert!(!s.keeps(s.pos + Vec2::new(0.0, 9_500.0), clear));
+        assert!(!s.keeps(s.pos + Vec2::new(0.0, 90_000.0), clear));
+        assert!(!s.keeps(s.pos, clear));
+        // A starport moves: its berths are worked out afresh.
+        let port = Stop { vel: Vec2::new(150.0, 0.0), ..s.clone() };
+        assert!(!port.keeps(a, clear));
     }
 
     #[test]

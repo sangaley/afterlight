@@ -215,6 +215,20 @@ pub struct Blocker {
 
 /// Room kept between a hull and whatever it is steering round.
 const STEER_SKIN: f32 = 60.0;
+/// How much of a hull's reach it keeps clear to either side as it steers.
+///
+/// A hull's reach is half its length, nose to tail, and it flies nose
+/// first: it is nothing like that wide. Steering as if it were a ball of
+/// that radius, a freighter 3.7 km long counted every part of a station
+/// within 3.7 km as already too close, was pushed away from the ones on
+/// both sides of it at once, and hung where it was between two arms it had
+/// kilometres of room to leave by.
+const HULL_SHARE: f32 = 0.6;
+
+/// The room a hull of reach `own_radius` keeps from the middle of `b`.
+fn room_for(own_radius: f32, b: &Blocker) -> f32 {
+    b.radius + own_radius * HULL_SHARE + STEER_SKIN
+}
 
 /// How far ahead a ship doing `speed` looks for things in its way: about two
 /// and a half seconds of flying, and never past where it's going.
@@ -276,7 +290,7 @@ pub fn collider_blockers(transform: &Transform, collider: &Collider, mid: Vec2, 
 fn sight(pos: Vec2, desired: Vec2, own_radius: f32, b: &Blocker) -> (f32, Vec2, f32) {
     let rel = b.center - pos;
     let along = rel.dot(desired);
-    (along, rel - desired * along, b.radius + own_radius + STEER_SKIN)
+    (along, rel - desired * along, room_for(own_radius, b))
 }
 
 /// Whether a ship at `pos` flying along `desired` for `look` would come
@@ -356,7 +370,7 @@ pub fn bend_around(pos: Vec2, desired: Vec2, look: f32, own_radius: f32, blocker
     // Already closer than it should be to something: straight out from it.
     for b in &group {
         let rel = b.center - pos;
-        let room = b.radius + own_radius + STEER_SKIN;
+        let room = room_for(own_radius, b);
         if rel.length_squared() < room * room {
             out += (-rel).normalize_or(away);
         }
@@ -974,7 +988,7 @@ mod steering_tests {
                 hint = side;
             }
             pos += dir * 400.0 / 60.0;
-            assert!(pos.distance(rocks[0].center) > 500.0 + 200.0 - 1.0, "flew into it at frame {frame}");
+            assert!(pos.distance(rocks[0].center) > 500.0 + 200.0 * HULL_SHARE - 1.0, "flew into it at frame {frame}");
         }
         assert!(pos.x > 3_500.0, "never got past: at {pos}");
     }

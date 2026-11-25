@@ -660,11 +660,43 @@ pub fn ai_ship_movement_system(
                 // own way: a leader, a ship alone, or one a long way off its
                 // slot. Steering by what is 3 km ahead meets a star 150 km
                 // across at its surface and grinds round it.
-                let picks_its_way = dist > ROUTE_MIN && member.is_none_or(|m| m.leader || to_slot > 6_000.0);
+                let mut progress = nav.progress;
+                // Waiting for a slot it couldn't reach to move (see below).
+                if progress.hold.is_some_and(|was| !settle || destination.distance(was) > 2_000.0) {
+                    progress.hold = None;
+                }
+                // A station it stalled against on its way somewhere else is
+                // gone round whole, like a planet, until it is past it. Not
+                // one it is bound for somewhere inside.
+                let around = progress
+                    .around
+                    .and_then(|e| terrain.get(e).ok())
+                    .map(|(tf, c)| (crate::ship::collision::world_point(tf, c.bound_center), c.bound_radius))
+                    .filter(|(center, reach)| destination.distance(*center) > reach + own_radius);
+                if around.is_none() {
+                    progress.around = None;
+                }
+                let picks_its_way = around.is_some() || dist > ROUTE_MIN && member.is_none_or(|m| m.leader || to_slot > 6_000.0);
                 let (want, route_side) = if picks_its_way {
                     let formation = member.filter(|m| m.leader).and_then(|m| fleet_reach.get(&m.fleet)).copied().unwrap_or(0.0);
                     let pad = own_radius.max(formation) + ROUTE_PAD;
-                    let (aim, side) = super::nav::route_aim(pos, destination, pad, big_things, nav.route_side);
+                    let with_station: Vec<super::nav::NavBody>;
+                    let bodies: &[super::nav::NavBody] = match around {
+                        Some((center, radius)) => {
+                            with_station = big_things
+                                .iter()
+                                .copied()
+                                .chain([super::nav::NavBody { center, radius, vel: Vec2::ZERO, solid: true }])
+                                .collect();
+                            &with_station
+                        }
+                        None => big_things,
+                    };
+                    let (aim, side) = super::nav::route_aim(pos, destination, pad, bodies, nav.route_side);
+                    // Past it: the way on is open and it is outside its reach.
+                    if around.is_some_and(|(center, radius)| side == 0.0 && pos.distance(center) > radius + pad) {
+                        progress.around = None;
+                    }
                     if side != 0.0 && super::nav::trace() && (time.elapsed_secs() % 10.0) < dt {
                         info!(
                             "NAV via {:?} {:?} at {:.0},{:.0}: making for {:.0},{:.0} on the way to {:.0},{:.0}, keeping {:.0} clear",
@@ -678,7 +710,6 @@ pub fn ai_ship_movement_system(
                 nav.route_side = route_side;
                 // Stalled more than once: along whatever is in the way for a
                 // while, to find the end of it, instead of straight at it.
-                let mut progress = nav.progress;
                 let want = if progress.sidestep != 0.0 {
                     let side = progress.sidestep.signum();
                     let left = progress.sidestep.abs() - dt;
@@ -734,18 +765,55 @@ pub fn ai_ship_movement_system(
                 // a hull, circling a point it can't reach. The first time it
                 // backs out and comes at it again; after that whoever sent it
                 // is told (`blocked`), and backs it out again meanwhile.
-                // An escort easing onto its slot isn't; one a long way off it is.
-                let trying = *behavior != AiShipBehavior::Engaging && dist > if settle { 3_000.0 } else { STUCK_NEAR };
+                // An escort easing onto its slot isn't; one a long way off it
+                // is. A ship running away has no point to get to: the point
+                // it runs for runs ahead of it.
+                let going_somewhere = !matches!(
+                    behavior,
+                    AiShipBehavior::Engaging | AiShipBehavior::Fleeing | AiShipBehavior::EvadingCreature
+                );
+                // Nor is an escort that has given its slot up for now.
+                let trying = going_somewhere && progress.hold.is_none() && dist > if settle { 3_000.0 } else { STUCK_NEAR };
                 // A slot moves with its leader: an escort keeping pace with a
                 // leader that is under way gets no nearer and is not stuck.
                 // For one following, as for one on a planned way round
                 // something, moving is headway; only standing still isn't.
-                let moving_counts = route_side != 0.0 || settle;
+                // So it is for one going round a station it stalled at: the
+                // first of that is straight back out, away from its point.
+                let moving_counts = route_side != 0.0 || settle || progress.around.is_some();
                 if super::nav::stuck_update(&mut progress, pos, destination, dist, moving_counts, trying, dt) {
                     progress.backing = super::nav::BACK_OUT_S;
-                    progress.sidestep = super::nav::sidestep_for(progress.strikes);
-                    if progress.strikes >= 2 {
-                        nav.blocked = true;
+                    // Up against a station it is only passing: its rows of
+                    // moored ships are a wall with no way through that
+                    // steering part by part will find. Round the whole of it.
+                    let station = collider_grid.candidates(pos, 1.0).find(|e| {
+                        terrain.get(*e).is_ok_and(|(tf, c)| {
+                            let center = crate::ship::collision::world_point(tf, c.bound_center);
+                            c.circles.len() > 1
+                                && c.bound_radius > 1_500.0
+                                && center.distance(pos) < c.bound_radius + look + own_radius
+                                && destination.distance(center) > c.bound_radius + own_radius
+                        })
+                    });
+                    match station {
+                        // An escort whose slot it can't get to -- the far side
+                        // of a station's arm from its leader's berth -- waits
+                        // where it is, rather than worrying at the hull until
+                        // the convoy leaves.
+                        _ if settle => {
+                            progress.hold = Some(destination);
+                            progress.backing = 0.0;
+                        }
+                        Some(station) => {
+                            progress.around = Some(station);
+                            progress.sidestep = 0.0;
+                        }
+                        None => {
+                            progress.sidestep = super::nav::sidestep_for(progress.strikes);
+                            if progress.strikes >= 2 {
+                                nav.blocked = true;
+                            }
+                        }
                     }
                     if super::nav::trace() {
                         let nearest = in_the_way
@@ -753,9 +821,9 @@ pub fn ai_ship_movement_system(
                             .map(|b| (b.center.distance(pos) - b.radius, b.radius))
                             .min_by(|a, b| a.0.total_cmp(&b.0));
                         info!(
-                            "NAV stuck {:?} {:?} (reach {:.0}) at {:.0},{:.0} for {:.0},{:.0}, {:.1} km off, strike {}; {} things in the way, nearest {:?} (gap, size); passing {}, routing {}",
+                            "NAV stuck {:?} {:?} (reach {:.0}) at {:.0},{:.0} for {:.0},{:.0}, {:.1} km off, strike {}; {} things in the way, nearest {:?} (gap, size); passing {}, routing {}; going round a station: {}",
                             _entity, ship_type, own_radius, pos.x, pos.y, destination.x, destination.y, dist / 1000.0, progress.strikes,
-                            in_the_way.len(), nearest.map(|(g, r)| (g.round(), r.round())), side, route_side
+                            in_the_way.len(), nearest.map(|(g, r)| (g.round(), r.round())), side, route_side, progress.around.is_some()
                         );
                     }
                 }
@@ -774,6 +842,7 @@ pub fn ai_ship_movement_system(
 
                 // Gradually accelerate toward desired velocity
                 let arrive = arrive_factor(dist, max_speed, settle, *behavior == AiShipBehavior::Engaging);
+                let arrive = if nav.progress.hold.is_some() { 0.0 } else { arrive };
                 let side = Vec2::new(-direction.y, direction.x);
                 let desired_vel = direction * max_speed * arrive + side * max_speed * weave * 0.7;
                 velocity.0 = velocity.0.lerp(desired_vel, vel_blend);

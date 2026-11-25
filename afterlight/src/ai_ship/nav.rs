@@ -301,6 +301,21 @@ fn route_leg(from: Vec2, to: Vec2, pad: f32, bodies: &[NavBody], side_hint: f32,
         let touch = from + heading * run;
         let side = if dir.perp_dot(heading) >= 0.0 { 1.0 } else { -1.0 };
         let mut cost = run + touch.distance(to);
+        // Not between two bodies with no room between them: this way to
+        // the touching point runs into another one.
+        // ...or the other one stands against this one on that side, so the
+        // way on round it is shut a little further along.
+        let shut = bodies.iter().any(|other| {
+            if !other.solid || *other == body {
+                return false;
+            }
+            let across = dir.perp_dot(other.center - body.center) * side;
+            let against = across > 0.0 && other.center.distance(body.center) < other.radius + pad + room;
+            against || crate::ship::collision::segment_meets_circle(from, heading, run.max(1.0), other.center, other.radius + pad).is_some()
+        });
+        if shut {
+            cost *= 3.0;
+        }
         // Behind something that is moving, not across its bows.
         if body.vel.length() > 20.0 && (touch - body.center).dot(body.vel) < 0.0 {
             cost *= 0.85;
@@ -434,6 +449,12 @@ pub struct NavProgress {
     /// Seconds left of working along whatever it is against instead of
     /// making straight for its point; the sign is the side, + for left.
     pub sidestep: f32,
+    /// A station it stalled against on its way somewhere else: it goes
+    /// round the whole of it, as it would a planet, until it is past.
+    pub around: Option<Entity>,
+    /// An escort that couldn't get to its slot waits where it is until the
+    /// slot has moved from here: where the slot was when it gave up.
+    pub hold: Option<Vec2>,
 }
 
 /// Seconds without headway before a ship counts as stuck.
@@ -473,7 +494,7 @@ pub fn stuck_update(p: &mut NavProgress, at: Vec2, goal: Vec2, to_go: f32, on_de
     if !trying || goal.distance(p.goal) > SAME_POINT {
         // Somewhere new to go, or nowhere: start again.
         let strikes = if trying && goal.distance(p.goal) <= SAME_POINT { p.strikes } else { 0 };
-        *p = NavProgress { goal, best: to_go, anchor: at, since: 0.0, strikes, struck_at: to_go, backing: p.backing, sidestep: p.sidestep };
+        *p = NavProgress { goal, best: to_go, anchor: at, since: 0.0, strikes, struck_at: to_go, backing: p.backing, sidestep: p.sidestep, around: p.around, hold: p.hold };
         return false;
     }
     p.goal = goal;
@@ -650,6 +671,26 @@ mod nav_tests {
         assert!(furthest_east < 40_000.0, "went east to x = {furthest_east:.0}, the long way round");
         let flown: f32 = track.windows(2).map(|w| w[0].distance(w[1])).sum();
         assert!(flown < from.distance(to) * 1.3, "{flown:.0} for a {:.0} crossing", from.distance(to));
+    }
+
+    /// Haven and its star have no room between them. Round Haven, then,
+    /// on the side the star isn't.
+    #[test]
+    fn between_two_bodies_with_no_gap_it_goes_round_the_outside() {
+        let sun = star(31_000.0, -68_400.0, 40_000.0);
+        // Haven as something to go round: a ship that has stalled against it.
+        let haven = star(-20_450.0, -50.0, 45_000.0);
+        let (from, to) = (Vec2::new(-110_000.0, -20_000.0), Vec2::new(60_000.0, 10_000.0));
+        // The straight line passes south of Haven's middle, so the south
+        // side is the nearer one -- and the star shuts it.
+        let (aim, side) = route_aim(from, to, 2_500.0, &[sun, haven], 0.0);
+        assert!(side != 0.0 && aim.y > from.y, "made for {aim}: between Haven and its star");
+        let track = fly(from, to, 2_500.0, &[sun, haven]);
+        assert!(track.last().unwrap().distance(to) < 600.0, "never arrived: at {}", track.last().unwrap());
+        for body in [sun, haven] {
+            let nearest = track.iter().map(|p| p.distance(body.center)).fold(f32::MAX, f32::min);
+            assert!(nearest >= body.radius + 2_500.0 - 1.0, "{nearest:.0} from the middle of a body of {:.0}", body.radius);
+        }
     }
 
     #[test]
