@@ -37,7 +37,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::image::ImageSampler;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use std::sync::Arc;
 
@@ -659,6 +659,13 @@ impl Picture {
         // The smaller copies follow the picture in the same data.
         image.data = Some(data);
         image.texture_descriptor.mip_level_count = levels;
+        // Not COPY_DST: given a new picture the size of the last, Bevy keeps
+        // the old texture and writes only its full-size level into it
+        // (GpuImage::prepare_asset). The smaller copies -- all that's drawn
+        // zoomed out -- kept the first picture, so a ship shot to pieces still
+        // looked whole from out there. Without COPY_DST it makes a new texture,
+        // every level uploaded (wgpu adds the flag it needs for that itself).
+        image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC;
         image.sampler = ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
             mag_filter: bevy::image::ImageFilterMode::Linear,
             min_filter: bevy::image::ImageFilterMode::Linear,
@@ -1382,6 +1389,19 @@ mod tests {
     }
 
     /// The complaint: zoomed out, a hit has to show.
+    #[test]
+    fn a_new_picture_never_reuses_the_old_texture() {
+        // Bevy reuses a texture of the same size only when it may be copied
+        // into, and then writes the top level alone: the zoomed-out levels
+        // would keep the old picture.
+        let mut canvas = Canvas::over(Rect::new(0.0, 0.0, 400.0, 300.0)).unwrap();
+        canvas.rim();
+        let image = canvas.finish().image();
+        assert!(image.texture_descriptor.mip_level_count > 1);
+        assert!(!image.texture_descriptor.usage.contains(TextureUsages::COPY_DST));
+        assert!(image.texture_descriptor.usage.contains(TextureUsages::TEXTURE_BINDING));
+    }
+
     #[test]
     fn a_hit_shows_in_the_picture() {
         let mut app = app(20.0);
