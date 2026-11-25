@@ -173,7 +173,7 @@ pub fn terrain_segment_hit(
 
 /// How far along a segment (`from`, unit `dir`, length `len`) it first meets
 /// a circle; 0 if it starts inside.
-fn segment_meets_circle(from: Vec2, dir: Vec2, len: f32, center: Vec2, radius: f32) -> Option<f32> {
+pub(crate) fn segment_meets_circle(from: Vec2, dir: Vec2, len: f32, center: Vec2, radius: f32) -> Option<f32> {
     let m = from - center;
     let b = m.dot(dir);
     let c = m.length_squared() - radius * radius;

@@ -211,6 +211,9 @@ pub struct AiShipNav {
     /// 0 with nothing in the way (movement owns it). Kept from frame to
     /// frame so it goes round one side instead of dithering between two.
     pub pass_side: f32,
+    /// Which side it is going round a star, planet or station on its way
+    /// (ai_ship::nav::route_aim), the same way; 0 when the way is open.
+    pub route_side: f32,
 }
 
 impl Default for AiShipNav {
@@ -224,6 +227,7 @@ impl Default for AiShipNav {
             face: None,
             steer: None,
             pass_side: 0.0,
+            route_side: 0.0,
         }
     }
 }

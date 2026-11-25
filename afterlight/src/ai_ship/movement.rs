@@ -163,6 +163,12 @@ fn along_the_line(push: Vec2, toward: Vec2) -> Vec2 {
 /// Within this of its point, a ship stops aiming its nose at the point.
 const NEAR: f32 = 1_200.0;
 
+/// Nearer its point than this, a ship doesn't plan a way round anything.
+const ROUTE_MIN: f32 = 3_000.0;
+/// Room a planned way keeps from a star, a planet or a station, past the
+/// ship's own size.
+const ROUTE_PAD: f32 = 400.0;
+
 /// Another ship under way: where it is, how big, where it's going, and
 /// whose it is.
 #[derive(Clone, Copy)]
@@ -257,8 +263,11 @@ pub fn ai_ship_movement_system(
     minds: Query<&super::awareness::Awareness>,
     trading: Res<super::traffic::TradingFleets>,
     blocks: super::Blocks,
+    // The star, the planets and the stations, for a way round them.
+    nav_bodies: Option<Res<super::nav::NavBodies>>,
 ) {
     let dt = time.delta_secs();
+    let big_things: &[super::nav::NavBody] = nav_bodies.as_deref().map_or(&[], |b| b.loaded.as_slice());
     let player_obstacle = player.single().ok().map(|(tf, c)| {
         (crate::ship::collision::world_point(tf, c.bound_center), c.bound_radius)
     });
@@ -279,8 +288,15 @@ pub fn ai_ship_movement_system(
     // to the collision to shove them apart.
     let mut fixed: Vec<crate::ship::collision::Blocker> = Vec::new();
     let mut movers: Vec<Mover> = Vec::new();
+    // How far each fleet's formation reaches from its leader: the leader
+    // plans a way round things wide enough for all of it.
+    let mut fleet_reach: bevy::platform::collections::HashMap<u32, f32> = Default::default();
     for (e, tf, velocity, behavior, _, state, _, _, collider, member, ..) in ai_ships.iter() {
         let Some(c) = collider else { continue };
+        if let Some(m) = member {
+            let reach = fleet_reach.entry(m.fleet).or_insert(0.0);
+            *reach = reach.max(m.slot.length() + c.bound_radius);
+        }
         if *behavior == AiShipBehavior::Dead || state.is_destroyed || c.mass.is_infinite() {
             crate::ship::collision::collider_blockers(tf, c, tf.translation.truncate(), 1.0e9, &mut fixed);
         } else {
@@ -635,7 +651,20 @@ pub fn ai_ship_movement_system(
             } else if dist > 5.0 {
                 // Bend the heading around whatever is in the way: terrain,
                 // wrecks and anchored stations, and other ships under way.
-                let want = to_dest / dist;
+                // A way round the big things first -- the star, a planet, a
+                // station it is only passing -- for a ship that picks its
+                // own way: a leader, a ship alone, or one a long way off its
+                // slot. Steering by what is 3 km ahead meets a star 150 km
+                // across at its surface and grinds round it.
+                let picks_its_way = dist > ROUTE_MIN && member.is_none_or(|m| m.leader || to_slot > 6_000.0);
+                let (want, route_side) = if picks_its_way {
+                    let formation = member.filter(|m| m.leader).and_then(|m| fleet_reach.get(&m.fleet)).copied().unwrap_or(0.0);
+                    let (aim, side) = super::nav::route_aim(pos, destination, own_radius.max(formation) + ROUTE_PAD, big_things, nav.route_side);
+                    (Vec2::from_angle(wobble_angle).rotate(aim - pos).normalize_or(to_dest / dist), side)
+                } else {
+                    (to_dest / dist, 0.0)
+                };
+                nav.route_side = route_side;
                 let speed = velocity.0.length().max(max_speed * 0.5);
                 let look = crate::ship::collision::look_ahead(speed, own_radius, dist);
                 in_the_way.clear();

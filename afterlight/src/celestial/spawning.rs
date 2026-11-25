@@ -102,6 +102,15 @@ pub struct PlanetRoll {
 }
 
 impl PlanetRoll {
+    /// Where the planet is from its star at galaxy time `t`: the sum
+    /// `orbits::update_orbital_positions` does for the spawned planet, so
+    /// anything planning round it agrees with where it is drawn.
+    pub fn offset_at(&self, t: f32) -> Vec2 {
+        let direction = if self.clockwise { -1.0 } else { 1.0 };
+        let angle = self.phase + std::f32::consts::TAU / self.period * t * direction;
+        Vec2::from_angle(angle) * super::orbits::orbit_radius(self.orbit_distance, self.eccentricity, angle)
+    }
+
     /// The tube this planet sweeps round its star.
     pub fn path(&self) -> super::orbits::PlanetPath {
         super::orbits::PlanetPath {

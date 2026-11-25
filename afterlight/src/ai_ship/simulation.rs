@@ -638,6 +638,10 @@ pub fn system_ship_count(template_count: usize, danger_tier: f32) -> usize {
 
 /// Close enough to call it arrived, and to pick the next leg.
 const ARRIVE_RADIUS: f32 = 450.0;
+/// Room a ship flying alone off screen keeps from a star or a planet.
+const LONE_PAD: f32 = 1_500.0;
+/// The same for a fleet, past the reach of its formation.
+const FLEET_PAD: f32 = 1_500.0;
 
 /// Where a ship goes next.
 ///
@@ -738,6 +742,7 @@ pub fn tick_world_simulation(
     stations: Res<crate::world::home_base::SystemStations>,
     faction_stations: Res<crate::diplomacy::stations::FactionStations>,
     player: Query<&Transform, With<Ship>>,
+    nav_bodies: Option<Res<super::nav::NavBodies>>,
 ) {
     sim.tick_timer.tick(time.delta());
     if !sim.tick_timer.just_finished() {
@@ -775,6 +780,15 @@ pub fn tick_world_simulation(
         .map(|s| s.fleet)
         .collect();
 
+    // The star, planets and stations of each running system, to go round.
+    let bodies_of = |system: u32| nav_bodies.as_deref().map_or(&[][..], |b| b.of(system));
+    // How far each fleet's formation reaches from its middle.
+    let mut fleet_reach: std::collections::HashMap<u32, f32> = Default::default();
+    for ship in sim.ships.iter().filter(|s| s.fleet != 0) {
+        let reach = fleet_reach.entry(ship.fleet).or_insert(0.0);
+        *reach = reach.max(ship.slot.length());
+    }
+
     // Phase 1: Move off-screen ships that fly alone.
     for ship in sim.ships.iter_mut() {
         if ship.spawned || ship.behavior == SimBehavior::Dead || !is_active_system(ship.system_id) {
@@ -790,18 +804,16 @@ pub fn tick_world_simulation(
         // one tick in ten. Net displacement over a minute was close to zero,
         // which is why the map read as dots that "barely move". A ship now
         // holds a course for somewhere, and the somewhere is chosen below.
-        let to_dest = ship.destination - ship.position;
-        let remaining = to_dest.length();
-        if remaining <= ARRIVE_RADIUS {
-            ship.destination = next_waypoint(&mut rng, ship.home_zone, ship.patrol_radius, &anchors);
-        } else {
-            // Turn toward the bearing rather than snapping to it, so a course
-            // change reads as a turn.
-            let want = to_dest / remaining * ship.cruise;
-            ship.velocity = (ship.velocity * 0.75 + want * 0.25).clamp_length_max(ship.cruise);
+        let bodies = bodies_of(ship.system_id);
+        let remaining = ship.destination.distance(ship.position);
+        // Arrived -- or the point is somewhere a planet has got to.
+        if remaining <= ARRIVE_RADIUS || super::nav::in_a_body(ship.destination, LONE_PAD, bodies) {
+            let next = next_waypoint(&mut rng, ship.home_zone, ship.patrol_radius, &anchors);
+            ship.destination = super::nav::push_clear(next, LONE_PAD, bodies);
         }
-
-        ship.position += ship.velocity * dt;
+        // Turn toward the way there rather than snapping to it, so a course
+        // change reads as a turn; round a star or a planet, not through it.
+        super::nav::sim_step(&mut ship.position, &mut ship.velocity, ship.destination, ship.cruise, LONE_PAD, bodies, dt);
         ship.fuel = (ship.fuel - 0.001 * dt).max(0.0);
 
         // The leash still applies: a destination outside the territory, or a
@@ -850,6 +862,8 @@ pub fn tick_world_simulation(
                 FleetKind::Convoy if fleet.route.len() >= 2 => {
                     // The near end of the run is the station's berth, off its hull.
                     let berth = at + (fleet.route[1] - at).normalize_or(Vec2::X) * (ring + 4_000.0);
+                    // The station sits by its planet: not a berth inside it.
+                    let berth = super::nav::push_clear(berth, FLEET_PAD, bodies_of(fleet.system_id));
                     if fleet.leg == 0 {
                         fleet.destination = berth;
                     }
@@ -859,19 +873,22 @@ pub fn tick_world_simulation(
             }
         }
 
-        let to_dest = fleet.destination - fleet.position;
-        let remaining = to_dest.length();
+        let bodies = bodies_of(fleet.system_id);
+        let pad = fleet_reach.get(&fleet.id).copied().unwrap_or(0.0) + FLEET_PAD;
+        let remaining = fleet.destination.distance(fleet.position);
         let trading = fleet.trade.is_some();
         if trading && remaining <= ARRIVE_RADIUS {
             // ai_ship::traffic decides where a trader goes from here.
             fleet.velocity = Vec2::ZERO;
-        } else if remaining <= ARRIVE_RADIUS {
-            fleet.destination = next_fleet_waypoint(&mut rng, fleet, &anchors, harbour);
+            fleet.position = super::nav::push_clear(fleet.position, pad, bodies);
         } else {
-            let want = to_dest / remaining * fleet.cruise;
-            fleet.velocity = (fleet.velocity * 0.75 + want * 0.25).clamp_length_max(fleet.cruise);
+            // Arrived -- or its point is somewhere a planet has got to.
+            if !trading && (remaining <= ARRIVE_RADIUS || super::nav::in_a_body(fleet.destination, pad, bodies)) {
+                let next = next_fleet_waypoint(&mut rng, fleet, &anchors, harbour);
+                fleet.destination = super::nav::push_clear(next, pad, bodies);
+            }
+            super::nav::sim_step(&mut fleet.position, &mut fleet.velocity, fleet.destination, fleet.cruise, pad, bodies, dt);
         }
-        fleet.position += fleet.velocity * dt;
         if fleet.velocity.length() > 1.0 {
             fleet.heading = fleet.velocity.to_angle();
         }
@@ -1397,19 +1414,26 @@ pub fn hold_guard_posts(
     sim: Res<WorldSimulation>,
     stations: Res<crate::diplomacy::stations::FactionStations>,
     mut leaders: Query<(&mut AiShipNav, &super::fleet::FleetMember)>,
+    nav_bodies: Option<Res<super::nav::NavBodies>>,
 ) {
     let now = time.elapsed_secs();
     if now < *next {
         return;
     }
     *next = now + 1.0;
+    let bodies: &[super::nav::NavBody] = nav_bodies.as_deref().map_or(&[], |b| b.loaded.as_slice());
     for (mut nav, member) in leaders.iter_mut().filter(|(_, m)| m.leader) {
         let Some(fleet) = sim.fleet(member.fleet) else { continue };
         if fleet.kind != super::fleet::FleetKind::StationGuard || fleet.trade.is_some() {
             continue;
         }
         let Some((at, ring)) = stations.harbour(fleet.system_id) else { continue };
-        let want = guard_circuit(at, ring, fleet.patrol_radius, fleet.id);
+        // The station sits by its planet, and some of the way round it is
+        // planet: those corners are taken at its surface.
+        let want: Vec<Vec2> = guard_circuit(at, ring, fleet.patrol_radius, fleet.id)
+            .into_iter()
+            .map(|corner| super::nav::push_clear(corner, FLEET_PAD + 1_000.0, bodies))
+            .collect();
         let stale = nav.waypoints.len() != want.len() || nav.waypoints.iter().zip(&want).any(|(a, b)| a.distance(*b) > GUARD_DRIFT);
         if !stale {
             continue;

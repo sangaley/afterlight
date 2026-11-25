@@ -95,6 +95,11 @@ pub struct Stop {
     pub shape: Vec<(Vec2, f32)>,
     /// Whether you dock along a lane running east from it (a Raft station).
     pub lane: bool,
+    /// Stars and planets near it, as (centre, radius): no berth inside one.
+    /// A starport sits a few km off its planet's surface.
+    pub avoid: Vec<(Vec2, f32)>,
+    /// How it is moving: a starport rides its planet.
+    pub vel: Vec2,
 }
 
 /// Half the width of the strip a trader's berth keeps clear of hull.
@@ -121,6 +126,30 @@ impl Stop {
     /// steering round the station pushed the ship sideways for good.
     pub fn berth(&self, from: Vec2) -> Vec2 {
         let dir = (from - self.pos).normalize_or(Vec2::NEG_X);
+        let first = self.berth_on(dir);
+        if self.is_open(first) {
+            return first;
+        }
+        // The planet is that way: the nearest bearing either side that isn't.
+        for step in 1..=9 {
+            for sign in [1.0, -1.0] {
+                let turned = Vec2::from_angle(sign * step as f32 * 20.0_f32.to_radians()).rotate(dir);
+                let at = self.berth_on(turned);
+                if self.is_open(at) {
+                    return at;
+                }
+            }
+        }
+        first
+    }
+
+    /// Whether a berth at `at` is clear of every star and planet nearby.
+    fn is_open(&self, at: Vec2) -> bool {
+        self.avoid.iter().all(|(c, r)| at.distance(*c) >= r + BERTH_MARGIN)
+    }
+
+    /// The berth on the bearing `dir` from its middle.
+    fn berth_on(&self, dir: Vec2) -> Vec2 {
         let off = dir * (self.reach(dir) + BERTH_MARGIN);
         let keep = crate::world::raft::LANE_HALF_WIDTH + LANE_CLEAR;
         if !self.lane || off.x <= 0.0 || off.y.abs() >= keep {
@@ -211,6 +240,7 @@ pub fn run_traffic(
     mut trading: ResMut<TradingFleets>,
     mut leaders: Query<(&Transform, &crate::components::Velocity, &mut AiShipNav, &super::fleet::FleetMember)>,
     hulls: Query<(&crate::world::home_base::Station, &Transform, &crate::ship::collision::Collider)>,
+    nav_bodies: Option<Res<super::nav::NavBodies>>,
 ) {
     if crate::demo::skip_ai_ship_spawn() && std::env::var("AFTERLIGHT_TRAFFIC").is_err() {
         return;
@@ -236,13 +266,17 @@ pub fn run_traffic(
                 .find(|(station, ..)| station.index == s.index)
                 .map(|(_, tf, c)| c.circles.iter().map(|(at, r)| ((tf.rotation * at.extend(0.0)).truncate(), *r)).collect())
                 .unwrap_or_default();
-            Stop { name: s.name.clone(), pos: s.pos, radius: crate::world::home_base::station_extent(s.index), shape, lane: true }
+            Stop { name: s.name.clone(), pos: s.pos, radius: crate::world::home_base::station_extent(s.index), shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO }
         })
         .collect();
     if let Some((at, ring)) = ports.harbour(loaded) {
         let owner = galaxy.systems.iter().find(|s| s.id == loaded).and_then(|s| s.faction);
         let name = owner.map_or("the starport".to_string(), |f| format!("{} starport", faction_display_name(f)));
-        stops.push(Stop { name, pos: at, radius: ring, shape: Vec::new(), lane: false });
+        // The planet it sits by, and how fast the two of them are going.
+        let bodies = nav_bodies.as_deref().map_or(&[][..], |b| b.loaded.as_slice());
+        let avoid = bodies.iter().filter(|b| b.solid && b.center.distance(at) < ring + b.radius + 30_000.0).map(|b| (b.center, b.radius)).collect();
+        let vel = bodies.iter().find(|b| !b.solid && b.center.distance(at) < 1_000.0).map_or(Vec2::ZERO, |b| b.vel);
+        stops.push(Stop { name, pos: at, radius: ring, shape: Vec::new(), lane: false, avoid, vel });
     }
 
     let sim: &mut WorldSimulation = &mut sim;
@@ -277,6 +311,15 @@ pub fn run_traffic(
             run.dwell -= TICK_S;
             fleet.velocity = Vec2::ZERO;
             fleet.destination = position;
+            // In port at something that moves: stay with it. A starport and
+            // its planet go 150 u/s, and a trader left where it stopped was
+            // a few km behind in a minute, or under the planet.
+            if let Some(stop) = stops.iter().find(|s| here && s.name == run.last_stop && s.vel.length() > 1.0) {
+                fleet.destination = stop.berth(position);
+                if !is_live {
+                    fleet.position = fleet.destination;
+                }
+            }
         } else if position.distance(fleet.destination) <= ARRIVE {
             match run.leaving {
                 // Going out of a system is out of your sight: one still on
@@ -422,7 +465,7 @@ mod tests {
     use super::*;
 
     fn stop(name: &str, x: f32) -> Stop {
-        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0, shape: Vec::new(), lane: false }
+        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0, shape: Vec::new(), lane: false, avoid: Vec::new(), vel: Vec2::ZERO }
     }
 
     #[test]
@@ -454,7 +497,7 @@ mod tests {
                 d += 1_000.0;
             }
         }
-        Stop { name: "Raft".into(), pos: Vec2::new(5_000.0, -3_000.0), radius: 19_000.0, shape, lane: true }
+        Stop { name: "Raft".into(), pos: Vec2::new(5_000.0, -3_000.0), radius: 19_000.0, shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO }
     }
 
     #[test]
@@ -514,6 +557,22 @@ mod tests {
             }
         }
         assert!(checked > 60, "{checked}");
+    }
+
+    /// A starport sits a few km off its planet: whichever way a trader
+    /// comes from, its berth is not in the planet.
+    #[test]
+    fn no_berth_is_inside_the_planet_the_station_sits_by() {
+        let planet = (Vec2::new(-40_000.0, 0.0), 25_000.0);
+        let port = Stop { name: "port".into(), pos: Vec2::ZERO, radius: 12_000.0, shape: Vec::new(), lane: false, avoid: vec![planet], vel: Vec2::ZERO };
+        for i in 0..64 {
+            let from = Vec2::from_angle(std::f32::consts::TAU * i as f32 / 64.0) * 200_000.0;
+            let berth = port.berth(from);
+            assert!(berth.distance(planet.0) >= planet.1 + BERTH_MARGIN - 1.0, "bearing {i}: berth {:.0} from the planet's middle", berth.distance(planet.0));
+            assert!(berth.length() >= 12_000.0 + BERTH_MARGIN - 1.0);
+        }
+        // From the far side it stays on the bearing it came in on.
+        assert!(port.berth(Vec2::new(200_000.0, 0.0)).y.abs() < 1.0);
     }
 
     #[test]

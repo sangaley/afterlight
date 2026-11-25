@@ -93,6 +93,7 @@ impl Plugin for AiShipPlugin {
                 standing_spawns::allies_defend_player,
                 traffic::run_traffic,
                 simulation::hold_guard_posts,
+                nav::refresh_nav_bodies,
             )
                 .run_if(in_state(crate::states::GameState::Exploring)),
         );
@@ -103,6 +104,7 @@ impl Plugin for AiShipPlugin {
             .init_resource::<tractor::PlayerDrive>()
             .init_resource::<ecm::Ecm>()
             .init_resource::<traffic::TradingFleets>()
+            .init_resource::<nav::NavBodies>()
             .register_required_components::<AiShip, awareness::Awareness>()
             .init_resource::<scavenger::ScavengerWaves>()
             // Ordered after the galaxy layout exists (CelestialPlugin) —
