@@ -1159,10 +1159,14 @@ pub fn ai_brain_system(
         }
 
         // Advance waypoints when near current one
+        // ...or when it can't be got to (movement says so: `blocked`): a
+        // corner of a patrol that lies inside a rock is skipped, not circled.
         if let Some(dest) = nav.destination.filter(|_| formation_point.is_none()) {
-            if pos.distance(dest) < 80.0 && !nav.waypoints.is_empty() {
+            let reached = pos.distance(dest) < 80.0;
+            if (reached || nav.blocked) && nav.waypoints.len() > 1 || reached && !nav.waypoints.is_empty() {
                 nav.current_waypoint = (nav.current_waypoint + 1) % nav.waypoints.len();
                 nav.destination = nav.waypoints.get(nav.current_waypoint).copied();
+                nav.blocked = false;
             }
         }
     }

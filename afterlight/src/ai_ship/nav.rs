@@ -66,9 +66,10 @@ pub fn nav_census(
     }
     census.next = now + CENSUS_S;
 
-    let (mut live, mut inside, mut stalled_n, mut detouring) = (0, 0, 0, 0);
+    let (mut live, mut inside, mut stalled_n, mut detouring, mut stuck) = (0, 0, 0, 0, 0);
     let mut seen: bevy::platform::collections::HashMap<Entity, (Vec2, f32)> = Default::default();
     let mut examples: Vec<String> = Vec::new();
+    let mut going: Vec<String> = Vec::new();
     for (entity, transform, behavior, nav, state, faction, collider) in ships.iter() {
         if *behavior == AiShipBehavior::Dead || state.is_destroyed {
             continue;
@@ -76,6 +77,9 @@ pub fn nav_census(
         live += 1;
         if nav.route_side != 0.0 {
             detouring += 1;
+        }
+        if nav.progress.strikes > 0 {
+            stuck += 1;
         }
         let at = collider.map_or(transform.translation.truncate(), |c| world_point(transform, c.bound_center));
         let in_something = grid
@@ -96,6 +100,15 @@ pub fn nav_census(
         );
         let Some(point) = nav.destination.filter(|_| travelling) else { continue };
         let to_go = point.distance(at);
+        // A few of them in full, to follow one across a run of lines.
+        if going.len() < 4 && to_go > STILL_GOING {
+            let round = match nav.route_side {
+                s if s > 0.0 => ", going round to the left",
+                s if s < 0.0 => ", going round to the right",
+                _ => "",
+            };
+            going.push(format!("{entity:?} {faction:?} at {:.0},{:.0}, {:.1} km to go{round}", at.x, at.y, to_go / 1000.0));
+        }
         if let Some((was_point, was_to_go)) = census.last.get(&entity) {
             if stalled(*was_to_go, to_go, was_point.distance(point)) {
                 stalled_n += 1;
@@ -107,7 +120,10 @@ pub fn nav_census(
         seen.insert(entity, (point, to_go));
     }
     census.last = seen;
-    info!("NAV live={live} detouring={detouring} inside={inside} stalled={stalled_n} {examples:?}");
+    info!("NAV live={live} detouring={detouring} stuck={stuck} inside={inside} stalled={stalled_n} {examples:?}");
+    if !going.is_empty() {
+        info!("NAV going {going:?}");
+    }
 }
 
 // ============================================================================
@@ -391,6 +407,80 @@ pub fn sim_step(pos: &mut Vec2, vel: &mut Vec2, dest: Vec2, cruise: f32, pad: f3
     *pos = push_clear(*pos + *vel * dt, pad, bodies);
 }
 
+// ============================================================================
+// STUCK
+// ============================================================================
+
+/// How a ship is getting on toward the point it has been given.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NavProgress {
+    /// The point, and the nearest it has been to it.
+    pub goal: Vec2,
+    pub best: f32,
+    /// Where it was when it last made headway, and how long ago.
+    pub anchor: Vec2,
+    pub since: f32,
+    /// How many times running it has stalled on this point.
+    pub strikes: u8,
+    /// How far it had to go at the last stall.
+    pub struck_at: f32,
+    /// Seconds left of backing straight out of whatever it is against.
+    pub backing: f32,
+}
+
+/// Seconds without headway before a ship counts as stuck.
+pub const STUCK_S: f32 = 6.0;
+/// Getting this much nearer its point is headway.
+const HEADWAY: f32 = 150.0;
+/// ...and so, on a planned way round something, is moving this far: the
+/// first of the way round a star goes across the line to the point, not
+/// toward it.
+const DETOUR_HEADWAY: f32 = 600.0;
+/// This much nearer than where it last stalled, and the stalls are forgotten.
+const RECOVERED: f32 = 1_500.0;
+/// Seconds a stuck ship backs away from what it is against.
+pub const BACK_OUT_S: f32 = 3.0;
+
+/// Keep track of a ship's headway; true on the frame it has gone `STUCK_S`
+/// without any. `to_go` is how far it is from `goal`, `on_detour` whether
+/// it is on a planned way round something, `trying` whether it is meant to
+/// be going there at all (not holding a slot, not fighting, not nearly there).
+///
+/// Stuck is not the same as slow or still: it is told to go somewhere and
+/// is not getting there. Pinned against a hull, or circling a point inside
+/// one, or shoved back as fast as it comes on.
+pub fn stuck_update(p: &mut NavProgress, at: Vec2, goal: Vec2, to_go: f32, on_detour: bool, trying: bool, dt: f32) -> bool {
+    if !trying || goal.distance(p.goal) > SAME_POINT {
+        // Somewhere new to go, or nowhere: start again.
+        let strikes = if trying && goal.distance(p.goal) <= SAME_POINT { p.strikes } else { 0 };
+        *p = NavProgress { goal, best: to_go, anchor: at, since: 0.0, strikes, struck_at: to_go, backing: p.backing };
+        return false;
+    }
+    p.goal = goal;
+    if to_go < p.best - HEADWAY {
+        p.best = to_go;
+        p.anchor = at;
+        p.since = 0.0;
+        if p.struck_at - to_go > RECOVERED {
+            p.strikes = 0;
+        }
+    } else if on_detour && at.distance(p.anchor) > DETOUR_HEADWAY {
+        p.anchor = at;
+        p.since = 0.0;
+    } else {
+        p.since += dt;
+    }
+    if p.since < STUCK_S {
+        return false;
+    }
+    p.since = 0.0;
+    p.best = to_go;
+    p.anchor = at;
+    p.struck_at = to_go;
+    p.strikes = p.strikes.saturating_add(1);
+    true
+}
+
 #[cfg(test)]
 mod nav_tests {
     use super::*;
@@ -602,5 +692,76 @@ mod nav_tests {
         if !roll.planets.is_empty() {
             assert!(later[1].center.distance(bodies[1].center) > 100.0);
         }
+    }
+
+    /// Run `stuck_update` at 60 frames a second over a track; the frames it fired on.
+    fn stalls(track: impl Iterator<Item = (Vec2, bool)>, goal: Vec2, trying: bool) -> (Vec<usize>, NavProgress) {
+        let mut p = NavProgress::default();
+        let mut fired = Vec::new();
+        for (frame, (at, on_detour)) in track.enumerate() {
+            if stuck_update(&mut p, at, goal, at.distance(goal), on_detour, trying, 1.0 / 60.0) {
+                fired.push(frame);
+            }
+        }
+        (fired, p)
+    }
+
+    #[test]
+    fn a_ship_pinned_for_six_seconds_is_stuck() {
+        let goal = Vec2::new(20_000.0, 0.0);
+        // Jiggling against a hull, going nowhere.
+        let (fired, p) = stalls((0..800).map(|f| (Vec2::new((f % 7) as f32 * 3.0, 0.0), false)), goal, true);
+        assert_eq!(fired.len(), 2, "{fired:?}");
+        assert!(fired[0] >= 355 && fired[0] <= 365, "first at frame {}", fired[0]);
+        assert_eq!(p.strikes, 2);
+    }
+
+    #[test]
+    fn a_ship_circling_its_point_is_stuck_however_fast_it_goes() {
+        let goal = Vec2::ZERO;
+        // Round and round 5 km out at 700 u/s: the baseline's trader.
+        let (fired, _) = stalls((0..800).map(|f| (Vec2::from_angle(f as f32 * 700.0 / 60.0 / 5_000.0) * 5_000.0, false)), goal, true);
+        assert!(!fired.is_empty());
+    }
+
+    #[test]
+    fn a_ship_getting_there_is_not_stuck_and_neither_is_one_not_trying() {
+        let goal = Vec2::new(60_000.0, 0.0);
+        // Closing at 100 u/s: slow, but headway.
+        assert!(stalls((0..2_000).map(|f| (Vec2::new(f as f32 * 100.0 / 60.0, 0.0), false)), goal, true).0.is_empty());
+        // Sitting on its formation slot.
+        assert!(stalls((0..2_000).map(|_| (Vec2::ZERO, false)), goal, false).0.is_empty());
+    }
+
+    /// The first of the way round a star goes across the line to the point:
+    /// no nearer for a long while, and not stuck.
+    #[test]
+    fn a_ship_on_its_way_round_a_star_is_not_stuck() {
+        let goal = Vec2::new(160_000.0, 0.0);
+        let arc = |f: usize| Vec2::from_angle(std::f32::consts::PI - f as f32 * 300.0 / 60.0 / 150_000.0) * 150_000.0;
+        assert!(stalls((0..3_000).map(|f| (arc(f), true)), goal, true).0.is_empty());
+        // The same track with no plan behind it would be a ship going round
+        // in circles.
+        assert!(!stalls((0..3_000).map(|f| (arc(f), false)), goal, true).0.is_empty());
+    }
+
+    #[test]
+    fn a_new_point_or_real_headway_forgets_the_stalls() {
+        let mut p = NavProgress::default();
+        let goal = Vec2::new(30_000.0, 0.0);
+        for _ in 0..400 {
+            stuck_update(&mut p, Vec2::ZERO, goal, 30_000.0, false, true, 1.0 / 60.0);
+        }
+        assert_eq!(p.strikes, 1);
+        // Free again and 2 km nearer: forgotten.
+        stuck_update(&mut p, Vec2::new(2_000.0, 0.0), goal, 28_000.0, false, true, 1.0 / 60.0);
+        assert_eq!(p.strikes, 0);
+        for _ in 0..400 {
+            stuck_update(&mut p, Vec2::new(2_000.0, 0.0), goal, 28_000.0, false, true, 1.0 / 60.0);
+        }
+        assert_eq!(p.strikes, 1);
+        // Sent somewhere else.
+        stuck_update(&mut p, Vec2::new(2_000.0, 0.0), Vec2::new(0.0, 90_000.0), 90_000.0, false, true, 1.0 / 60.0);
+        assert_eq!(p.strikes, 0);
     }
 }

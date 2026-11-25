@@ -294,6 +294,16 @@ pub fn run_traffic(
         }
     }
 
+    // A trader on screen that can't get to its point (movement says so)
+    // stops where it has got to: its fleet's point becomes where it is.
+    let mut gave_up: std::collections::HashSet<u32> = Default::default();
+    for (_, _, mut nav, member) in leaders.iter_mut().filter(|(.., m)| m.leader) {
+        if nav.blocked && sim.fleet(member.fleet).is_some_and(|f| f.trade.is_some()) {
+            nav.blocked = false;
+            gave_up.insert(member.fleet);
+        }
+    }
+
     let mut jumps: Vec<(u32, u32, Vec2)> = Vec::new();
     for fleet in sim.fleets.iter_mut().filter(|f| f.trade.is_some() && active(f.system_id) && manned.contains(&f.id)) {
         let here = fleet.system_id == loaded;
@@ -306,6 +316,9 @@ pub fn run_traffic(
             if let Some(stop) = stops.iter().find(|s| s.name == run.bound_for) {
                 fleet.destination = stop.berth(position);
             }
+        }
+        if gave_up.contains(&fleet.id) && run.dwell <= 0.0 {
+            fleet.destination = position;
         }
         if run.dwell > 0.0 {
             run.dwell -= TICK_S;

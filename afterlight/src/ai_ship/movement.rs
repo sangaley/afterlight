@@ -163,6 +163,10 @@ fn along_the_line(push: Vec2, toward: Vec2) -> Vec2 {
 /// Within this of its point, a ship stops aiming its nose at the point.
 const NEAR: f32 = 1_200.0;
 
+/// Nearer its point than this, a ship isn't watched for being stuck: the
+/// last of the way in is slow on purpose.
+const STUCK_NEAR: f32 = 1_500.0;
+
 /// Nearer its point than this, a ship doesn't plan a way round anything.
 const ROUTE_MIN: f32 = 3_000.0;
 /// Room a planned way keeps from a star, a planet or a station, past the
@@ -696,6 +700,37 @@ pub fn ai_ship_movement_system(
                 in_the_way.retain(|b| b.center.distance(destination) > b.radius + own_radius);
                 let (direction, side) = crate::ship::collision::bend_around(pos, want, look, own_radius, &in_the_way, nav.pass_side);
                 nav.pass_side = side;
+
+                // Told to go somewhere and not getting there: pinned against
+                // a hull, circling a point it can't reach. The first time it
+                // backs out and comes at it again; after that whoever sent it
+                // is told (`blocked`), and backs it out again meanwhile.
+                let trying = !settle && *behavior != AiShipBehavior::Engaging && dist > STUCK_NEAR;
+                let mut progress = nav.progress;
+                if super::nav::stuck_update(&mut progress, pos, destination, dist, route_side != 0.0, trying, dt) {
+                    progress.backing = super::nav::BACK_OUT_S;
+                    if progress.strikes >= 2 {
+                        nav.blocked = true;
+                    }
+                    if super::nav::trace() {
+                        info!(
+                            "NAV stuck {:?} {:?} at {:.0},{:.0} for {:.0},{:.0}, {:.1} km off, strike {}",
+                            _entity, ship_type, pos.x, pos.y, destination.x, destination.y, dist / 1000.0, progress.strikes
+                        );
+                    }
+                }
+                // Backing out: straight away from the nearest thing in the
+                // way, or back the way it came.
+                let direction = if progress.backing > 0.0 {
+                    progress.backing -= dt;
+                    in_the_way
+                        .iter()
+                        .min_by(|a, b| (a.center.distance(pos) - a.radius).total_cmp(&(b.center.distance(pos) - b.radius)))
+                        .map_or(-want, |b| (pos - b.center).normalize_or(-want))
+                } else {
+                    direction
+                };
+                nav.progress = progress;
                 // Not while fighting you: a ship engaging holds its own
                 // standoff, and a rammer means to hit.
                 let direction = match player_obstacle {

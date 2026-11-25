@@ -214,6 +214,12 @@ pub struct AiShipNav {
     /// Which side it is going round a star, planet or station on its way
     /// (ai_ship::nav::route_aim), the same way; 0 when the way is open.
     pub route_side: f32,
+    /// How it is getting on toward its point (movement owns it).
+    pub progress: super::nav::NavProgress,
+    /// It can't get to its point: whoever gave it the point should give it
+    /// another (the brain moves on to the next waypoint, a trader stops
+    /// where it is). Set by movement, cleared by whoever acts on it.
+    pub blocked: bool,
 }
 
 impl Default for AiShipNav {
@@ -228,6 +234,8 @@ impl Default for AiShipNav {
             steer: None,
             pass_side: 0.0,
             route_side: 0.0,
+            progress: Default::default(),
+            blocked: false,
         }
     }
 }
