@@ -23,6 +23,7 @@ mod roster_classes;
 pub mod fleet;
 pub mod standing_spawns;
 pub mod preview;
+pub mod nav;
 
 use bevy::prelude::*;
 
@@ -68,6 +69,11 @@ pub struct AiShipPlugin;
 impl Plugin for AiShipPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Last, clear_ships_left_by_load);
+        // AFTERLIGHT_NAV_TRACE: who is stuck, and who is inside something.
+        app.add_systems(
+            Update,
+            nav::nav_census.run_if(nav::trace).run_if(in_state(crate::states::GameState::Exploring)),
+        );
         // A system changing hands moves its fleets (celestial::territory).
         app.add_systems(Update, simulation::fleets_change_hands);
         // Far ships drawn as pictures of their designs, until they materialise.
