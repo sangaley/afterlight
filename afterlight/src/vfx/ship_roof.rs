@@ -2388,12 +2388,16 @@ pub fn hide_wreckage_under_roof(
 /// Out where the far pictures (far_art) stand in, it moves in steps: every
 /// edge's shade and cast shadow changes as a ship turns, and each change
 /// repainted the whole picture, several times a second for every ship on a
-/// turn. That was 40% of a frame beside a big fleet.
+/// turn. That was 40% of a frame beside a big fleet. In 12-degree steps a
+/// ship steering or spun by a hit still crossed one every few frames, and
+/// your own picture was repainted whole ~10 times a second without end: a
+/// block shot off waited behind those repaints to leave the picture. From
+/// this far out an eighth of a turn is as fine as the light needs to be.
 pub fn shading_heading(turn: Quat, zoom: f32) -> Quat {
     if super::far_art::art_alpha(zoom) <= 0.0 {
         return turn;
     }
-    let step = std::f32::consts::PI / 15.0;
+    let step = std::f32::consts::FRAC_PI_4;
     let angle = turn.to_euler(EulerRot::ZYX).0;
     Quat::from_rotation_z((angle / step).round() * step)
 }
@@ -2735,7 +2739,7 @@ mod tests {
         assert_eq!(super::shading_heading(a, close), a);
         assert_eq!(super::shading_heading(a, far), super::shading_heading(b, far));
         let snapped = super::shading_heading(bevy::math::Quat::from_rotation_z(1.0), far).to_euler(bevy::math::EulerRot::ZYX).0;
-        assert!((snapped - 1.0).abs() <= std::f32::consts::PI / 30.0 + 1e-4);
+        assert!((snapped - 1.0).abs() <= std::f32::consts::FRAC_PI_8 + 1e-4);
     }
 
     #[test]

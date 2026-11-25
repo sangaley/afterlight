@@ -146,6 +146,10 @@ impl Plugin for VfxPlugin {
                 Update,
                 (far_art::attach_far_art, far_art::bake_far_art, far_art::show_far_art)
                     .chain()
+                    // After the roof is laid for this frame's losses, so the
+                    // picture is patched the frame a block goes.
+                    .after(ship_roof::hide_wreckage_under_roof)
+                    .after(ship_roof::update_ai_ship_roofs)
                     .run_if(in_state(GameState::Exploring)),
             )
             .add_systems(OnExit(GameState::Exploring), far_art::clear_far_art)

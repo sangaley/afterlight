@@ -77,6 +77,10 @@ const RIM: LinearRgba = LinearRgba { red: 0.004, green: 0.005, blue: 0.009, alph
 const REFRESH_S: f32 = 3.0;
 /// Soonest a changed ship is looked over again, so a hit shows this soon.
 const PATCH_S: f32 = 0.1;
+/// Your own ship: looked over again this soon, first in line, and patched on
+/// the spot. Handed to the painter it waited behind every other ship's
+/// picture, and a block shot off stayed in the picture for a moment too long.
+const OWN_PATCH_S: f32 = 1.0 / 30.0;
 /// Sprites looked over a frame: a big fleet takes a few frames to get round.
 const SPRITES_PER_FRAME: usize = 8000;
 /// The side of a square of picture painted over at once, in blocks. Wide
@@ -118,6 +122,9 @@ pub struct FarArt {
     /// The painter at work on it, and the blocks to stop drawing once the
     /// picture that shows them is in.
     job: Option<(Task<Baked>, Vec<Entity>)>,
+    /// A patch on the spot found it needs painting whole: the painter does
+    /// that, next look.
+    whole_due: bool,
 }
 
 /// What one sprite in a picture looks like, near enough: too small a change
@@ -366,14 +373,20 @@ fn paint_job(job: Job) -> Baked {
         let gone: Vec<&PaintKey> = was.keys().filter(|k| !now.contains_key(*k)).collect();
         let by_place: HashMap<([i32; 2], AssetId<Image>), &PaintKey> = gone.iter().map(|k| ((k.at, k.source), *k)).collect();
         let (mut fresh, mut tint, mut other) = (0, 0, 0);
+        let mut sample = String::new();
         for k in now.keys().filter(|k| !was.contains_key(*k)) {
             match by_place.get(&(k.at, k.source)) {
                 None => fresh += 1,
-                Some(o) if o.tint != k.tint => tint += 1,
+                Some(o) if o.tint != k.tint => {
+                    if tint < 3 {
+                        sample += &format!(" [{:?} z{} {:?}->{:?} burn {}->{}]", k.at, k.z, o.tint, k.tint, o.burn, k.burn);
+                    }
+                    tint += 1
+                }
                 Some(_) => other += 1,
             }
         }
-        format!("{} squares, room {room}; of {} sprites {} gone, {fresh} new, {tint} recoloured, {other} otherwise changed", squares.len(), now.len(), gone.len())
+        format!("{} squares, room {room}; of {} sprites {} gone, {fresh} new, {tint} recoloured, {other} otherwise changed{sample}", squares.len(), now.len(), gone.len())
     });
 
     // Painting nearly all of it a square at a time is slower than once.
@@ -753,7 +766,7 @@ pub fn attach_far_art(
                 ChildOf(owner),
             ))
             .id();
-        commands.entity(owner).try_insert(FarArt { sprite, image, seen_at: f32::NEG_INFINITY, dirty: true, picture: None, painted: HashMap::default(), repaints: 0, shown: false, job: None });
+        commands.entity(owner).try_insert(FarArt { sprite, image, seen_at: f32::NEG_INFINITY, dirty: true, picture: None, painted: HashMap::default(), repaints: 0, shown: false, job: None, whole_due: false });
     }
 }
 
@@ -856,6 +869,7 @@ pub fn bake_far_art(
     mut was_far: Local<bool>,
     frames: Query<(&Transform, &Children), (With<super::ship_roof::RoofFrame>, Without<FarArtSprite>)>,
     frame_of: Query<&ChildOf, With<super::ship_roof::RoofFrame>>,
+    own: Query<(), With<crate::components::Ship>>,
 ) {
     let alpha = art_alpha(camera.zoom);
     let full = alpha >= 1.0;
@@ -897,12 +911,14 @@ pub fn bake_far_art(
             art.dirty = true;
         }
         let since = now - art.seen_at;
-        let rank = if !art.seen_at.is_finite() {
+        let rank = if art.dirty && since >= OWN_PATCH_S && own.contains(owner) {
             0
-        } else if art.dirty && since >= PATCH_S {
+        } else if !art.seen_at.is_finite() {
             1
-        } else if since >= REFRESH_S {
+        } else if art.dirty && since >= PATCH_S {
             2
+        } else if since >= REFRESH_S {
+            3
         } else {
             continue;
         };
@@ -1014,7 +1030,17 @@ pub fn bake_far_art(
         // Fully out, what gets painted stops drawing once its picture is in.
         let hide: Vec<Entity> = if full { layers.iter().filter(|l| !l.hidden).map(|l| l.block).collect() } else { Vec::new() };
         let job = Job { stamps, picture: art.picture.take(), painted: std::mem::take(&mut art.painted), may_paint_whole: true, trace };
-        if job.stamps.len() > INLINE_SPRITES {
+        // Your own ship's patches are painted here and now; only a whole
+        // picture goes to the painter.
+        let patch_here = job.stamps.len() > INLINE_SPRITES && own.contains(owner) && job.picture.is_some() && !std::mem::take(&mut art.whole_due);
+        if patch_here {
+            let baked = paint_job(Job { may_paint_whole: false, ..job });
+            if matches!(baked.what, Painted::Waiting) {
+                art.whole_due = true;
+                art.seen_at = f32::NEG_INFINITY;
+            }
+            take_in(owner, art, baked, hide, full, camera.zoom, &mut commands, &mut sprites, &mut images);
+        } else if job.stamps.len() > INLINE_SPRITES {
             art.job = Some((AsyncComputeTaskPool::get().spawn(async move { paint_job(job) }), hide));
         } else {
             // One whole picture painted on the spot a frame: a wing of
@@ -1289,6 +1315,42 @@ mod tests {
 
     fn repaints(app: &App, ship: Entity) -> u32 {
         app.world().get::<FarArt>(ship).unwrap().repaints
+    }
+
+    /// Your own big ship's picture shows a lost block the frame it goes,
+    /// not after waiting its turn with the painter.
+    #[test]
+    fn your_big_ship_shows_a_hit_the_same_frame() {
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let mut app = app(20.0);
+        let s = ship(&mut app);
+        let mut hit = None;
+        for x in 0..24 {
+            for y in 0..24 {
+                let h = hull(&mut app, s, IVec2::new(x, y));
+                if (x, y) == (5, 5) {
+                    hit = Some(h);
+                }
+            }
+        }
+        // The first picture is the painter's: wait for it.
+        for _ in 0..400 {
+            app.update();
+            if app.world().get::<FarArt>(s).is_some_and(|a| a.shown && a.job.is_none()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let art = app.world().get::<FarArt>(s).unwrap();
+        assert!(art.shown && art.job.is_none(), "never painted");
+        let before = pixel(&app, s, IVec2::new(5, 5));
+
+        app.world_mut().get_mut::<HullSegment>(hit.unwrap()).unwrap().health = 20.0;
+        look(&mut app, s);
+
+        assert!(app.world().get::<FarArt>(s).unwrap().job.is_none(), "handed to the painter");
+        let after = pixel(&app, s, IVec2::new(5, 5));
+        assert!(after[2] < before[2], "not in the picture this frame: {before:?} to {after:?}");
     }
 
     /// The complaint: zoomed out, a hit has to show.
