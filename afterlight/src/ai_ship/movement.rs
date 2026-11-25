@@ -163,6 +163,34 @@ fn along_the_line(push: Vec2, toward: Vec2) -> Vec2 {
 /// Within this of its point, a ship stops aiming its nose at the point.
 const NEAR: f32 = 1_200.0;
 
+/// Another ship under way: where it is, how big, where it's going, and
+/// whose it is.
+#[derive(Clone, Copy)]
+struct Mover {
+    entity: Entity,
+    center: Vec2,
+    radius: f32,
+    velocity: Vec2,
+    fleet: u32,
+}
+
+/// Whether a hull of radius `mine` steers round one of radius `theirs`
+/// that is crossing its path. The smaller gives way to the larger, and two
+/// of about a size both do; a big ship holds its course past small ones,
+/// which have the room to turn that it hasn't.
+pub(crate) fn gives_way(mine: f32, theirs: f32) -> bool {
+    mine <= theirs * 1.15
+}
+
+/// When two things come closest, within `horizon` seconds: `rel_pos` is
+/// where the other is from here and `rel_vel` how it moves relative to us.
+/// Returns the time, and where it is from here then.
+pub(crate) fn closest_approach(rel_pos: Vec2, rel_vel: Vec2, horizon: f32) -> (f32, Vec2) {
+    let speed_sq = rel_vel.length_squared();
+    let t = if speed_sq < 1.0 { 0.0 } else { (-rel_pos.dot(rel_vel) / speed_sq).clamp(0.0, horizon.max(0.0)) };
+    (t, rel_pos + rel_vel * t)
+}
+
 fn wrap(a: f32) -> f32 {
     (a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
 }
@@ -243,6 +271,29 @@ pub fn ai_ship_movement_system(
             Some((e, crate::ship::collision::world_point(tf, c.bound_center), c.bound_radius))
         })
         .collect();
+
+    // What a ship on its way steers round besides terrain: wrecks and
+    // anchored stations (which stay put), and the other ships under way.
+    // An AI hull isn't terrain to the steering, so a trader flew straight
+    // into a wreck, a starport's gun platform or another convoy, and left it
+    // to the collision to shove them apart.
+    let mut fixed: Vec<crate::ship::collision::Blocker> = Vec::new();
+    let mut movers: Vec<Mover> = Vec::new();
+    for (e, tf, velocity, behavior, _, state, _, _, collider, member, ..) in ai_ships.iter() {
+        let Some(c) = collider else { continue };
+        if *behavior == AiShipBehavior::Dead || state.is_destroyed || c.mass.is_infinite() {
+            crate::ship::collision::collider_blockers(tf, c, tf.translation.truncate(), 1.0e9, &mut fixed);
+        } else {
+            movers.push(Mover {
+                entity: e,
+                center: crate::ship::collision::world_point(tf, c.bound_center),
+                radius: c.bound_radius,
+                velocity: velocity.0,
+                fleet: member.map_or(0, |m| m.fleet),
+            });
+        }
+    }
+    let mut in_the_way: Vec<crate::ship::collision::Blocker> = Vec::new();
 
     // Each ship's reach: its longest gun or beam, wherever it stands --
     // built guns are on turrets, a level below the ship, and a ship that
@@ -558,7 +609,23 @@ pub fn ai_ship_movement_system(
                 // heap of overlapping hulls. Now it spreads along its line.
                 let own_center = collider.map_or(pos, |c| crate::ship::collision::world_point(&transform, c.bound_center));
                 let spread = along_the_line(keep_clear(_entity, own_center, own_radius, &ai_hulls), direction) * max_speed * 0.5;
-                velocity.0 = velocity.0.lerp(radial + sway + spread, vel_blend);
+                // Backing off, swaying or working round a target, it still
+                // doesn't back into a rock, a station or a wreck: this branch
+                // had no steering at all.
+                let mut wanted = radial + sway + spread;
+                let pace = wanted.length();
+                if pace > 20.0 {
+                    let heading = wanted / pace;
+                    let look = crate::ship::collision::look_ahead(pace, own_radius, f32::MAX);
+                    in_the_way.clear();
+                    crate::ship::collision::terrain_blockers(&collider_grid, &terrain, pos, heading, look, own_radius, &mut in_the_way);
+                    let near = look + own_radius + 200.0;
+                    in_the_way.extend(fixed.iter().filter(|b| b.center.distance(pos) < near + b.radius));
+                    let (bent, side) = crate::ship::collision::bend_around(pos, heading, look, own_radius, &in_the_way, nav.pass_side);
+                    nav.pass_side = side;
+                    wanted = bent * pace;
+                }
+                velocity.0 = velocity.0.lerp(wanted, vel_blend);
 
                 // Face the player — you're fine with this, and it reads natural
                 // for a ship holding station and trading fire.
@@ -566,15 +633,40 @@ pub fn ai_ship_movement_system(
                 nav.steer = Some(target_angle);
                 transform.rotation = turn_toward(transform.rotation, target_angle, turn_blend, turn_rate, dt);
             } else if dist > 5.0 {
-                // Bend the heading around any terrain blocking the way.
-                let direction = crate::ship::collision::steer_around(
-                    &collider_grid,
-                    &terrain,
-                    pos,
-                    to_dest / dist,
-                    dist,
-                    own_radius,
-                );
+                // Bend the heading around whatever is in the way: terrain,
+                // wrecks and anchored stations, and other ships under way.
+                let want = to_dest / dist;
+                let speed = velocity.0.length().max(max_speed * 0.5);
+                let look = crate::ship::collision::look_ahead(speed, own_radius, dist);
+                in_the_way.clear();
+                crate::ship::collision::terrain_blockers(&collider_grid, &terrain, pos, want, look, own_radius, &mut in_the_way);
+                let near = look + own_radius + 200.0;
+                in_the_way.extend(fixed.iter().filter(|b| b.center.distance(pos) < near + b.radius));
+                // Other ships, where they will be when it gets to them. Not
+                // its own fleet (formation flying keeps them apart), not in
+                // a fight (it holds its range, and a rammer means to hit),
+                // and not on the last of the way in: a berth or a slot is
+                // somewhere other ships are meant to be.
+                if *behavior != AiShipBehavior::Engaging && dist > look {
+                    let own_fleet = member.map_or(0, |m| m.fleet);
+                    let horizon = look / speed.max(1.0);
+                    for m in movers.iter() {
+                        if m.entity == _entity || (own_fleet != 0 && m.fleet == own_fleet) || !gives_way(own_radius, m.radius) {
+                            continue;
+                        }
+                        let rel = m.center - pos;
+                        if rel.length() > 2.0 * look + m.radius + own_radius {
+                            continue;
+                        }
+                        let (t, _) = closest_approach(rel, m.velocity - want * speed, horizon);
+                        in_the_way.push(crate::ship::collision::Blocker { center: m.center + m.velocity * t, radius: m.radius });
+                    }
+                }
+                // Whatever it is making for is not in its way: a scavenger's
+                // point is the wreck itself, and a berth is beside a hull.
+                in_the_way.retain(|b| b.center.distance(destination) > b.radius + own_radius);
+                let (direction, side) = crate::ship::collision::bend_around(pos, want, look, own_radius, &in_the_way, nav.pass_side);
+                nav.pass_side = side;
                 // Not while fighting you: a ship engaging holds its own
                 // standoff, and a rammer means to hit.
                 let direction = match player_obstacle {
@@ -857,5 +949,37 @@ mod fighting_band_tests {
         let (_, brawl) = fighting_band(AiShipType::BrokenChoir).unwrap();
         assert!(brawl <= 9_000.0);
         assert!(fighting_band(AiShipType::RecursiveKingdom).is_none());
+    }
+}
+
+#[cfg(test)]
+mod avoidance_tests {
+    use super::*;
+
+    #[test]
+    fn the_smaller_ship_gives_way_and_the_bigger_holds_its_course() {
+        // A raider and a freighter.
+        assert!(gives_way(300.0, 900.0));
+        assert!(!gives_way(900.0, 300.0));
+        // Two of a size: both turn, each away from the other.
+        assert!(gives_way(500.0, 500.0) && gives_way(520.0, 500.0) && gives_way(500.0, 520.0));
+    }
+
+    #[test]
+    fn ships_on_crossing_courses_are_judged_where_they_will_meet() {
+        // It is 2 km ahead and 2 km to the left, crossing to the right at
+        // the speed we go forward: we meet in the middle.
+        let (t, at) = closest_approach(Vec2::new(2_000.0, 2_000.0), Vec2::new(-400.0, -400.0), 10.0);
+        assert!((t - 5.0).abs() < 0.01, "{t}");
+        assert!(at.length() < 1.0, "{at}");
+        // Going away: closest now.
+        let (t, at) = closest_approach(Vec2::new(2_000.0, 0.0), Vec2::new(300.0, 0.0), 10.0);
+        assert_eq!(t, 0.0);
+        assert_eq!(at, Vec2::new(2_000.0, 0.0));
+        // Too far off to matter yet: judged at the end of what it looks ahead.
+        let (t, _) = closest_approach(Vec2::new(40_000.0, 0.0), Vec2::new(-400.0, 0.0), 6.0);
+        assert_eq!(t, 6.0);
+        // Neither moving relative to the other.
+        assert_eq!(closest_approach(Vec2::new(500.0, 0.0), Vec2::ZERO, 6.0).0, 0.0);
     }
 }

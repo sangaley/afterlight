@@ -207,6 +207,10 @@ pub struct AiShipNav {
     pub face: Option<f32>,
     /// The heading the ship is steering for, smoothed (movement owns it).
     pub steer: Option<f32>,
+    /// Which side it is passing whatever is in its way: +1 left, -1 right,
+    /// 0 with nothing in the way (movement owns it). Kept from frame to
+    /// frame so it goes round one side instead of dithering between two.
+    pub pass_side: f32,
 }
 
 impl Default for AiShipNav {
@@ -219,6 +223,7 @@ impl Default for AiShipNav {
             throttle: 0.0,
             face: None,
             steer: None,
+            pass_side: 0.0,
         }
     }
 }

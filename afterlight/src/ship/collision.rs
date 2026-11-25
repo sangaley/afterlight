@@ -206,9 +206,170 @@ pub fn hull_reach(circles: &[(Vec2, f32)], dir: Vec2, half_width: f32) -> Option
         .reduce(f32::max)
 }
 
-/// Bends a desired travel direction to slide around blocking terrain — the
-/// same "swing around, don't clip through" trick the EVA crew use, scaled up.
-/// Returns the (unit) direction to actually fly.
+/// Something round in a ship's way.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Blocker {
+    pub center: Vec2,
+    pub radius: f32,
+}
+
+/// Room kept between a hull and whatever it is steering round.
+const STEER_SKIN: f32 = 60.0;
+
+/// How far ahead a ship doing `speed` looks for things in its way: about two
+/// and a half seconds of flying, and never past where it's going.
+///
+/// It was a flat 2,200 u whatever the speed. At harbour speed that is six
+/// seconds of warning, which swung traders wide of things they were nowhere
+/// near; at 1,100 u/s it is two, which is less than a big hull needs to turn.
+pub fn look_ahead(speed: f32, own_radius: f32, travel: f32) -> f32 {
+    ((speed * 2.5).clamp(900.0, 3_500.0) + own_radius).min(travel)
+}
+
+/// The solid things near the line from `pos` along `desired` for `look`,
+/// added to `out`.
+///
+/// Something big made of several parts -- a station with arms -- gives its
+/// parts, not its bounding circle: the circle round a Raft is tens of
+/// kilometres of mostly open space, and steering round that kept ships out
+/// of the places between its arms that they had been told to go to.
+pub fn terrain_blockers(
+    grid: &ColliderGrid,
+    terrain: &Query<(&Transform, &Collider), TerrainFilter>,
+    pos: Vec2,
+    desired: Vec2,
+    look: f32,
+    own_radius: f32,
+    out: &mut Vec<Blocker>,
+) {
+    let mid = pos + desired * (look * 0.5);
+    let reach = look * 0.5 + own_radius + STEER_SKIN;
+    for entity in grid.candidates(mid, look * 0.5) {
+        let Ok((transform, collider)) = terrain.get(entity) else { continue };
+        collider_blockers(transform, collider, mid, reach, out);
+    }
+}
+
+/// One collider's share of `terrain_blockers`: its bounding circle, or its
+/// parts when it is big and has more than one. Only what comes within
+/// `reach` of `mid`.
+pub fn collider_blockers(transform: &Transform, collider: &Collider, mid: Vec2, reach: f32, out: &mut Vec<Blocker>) {
+    let center = world_point(transform, collider.bound_center);
+    if center.distance_squared(mid) >= (reach + collider.bound_radius).powi(2) {
+        return;
+    }
+    if collider.bound_radius <= HUGE_RADIUS || collider.circles.len() < 2 {
+        out.push(Blocker { center, radius: collider.bound_radius });
+        return;
+    }
+    for (c, r) in &collider.circles {
+        let center = world_point(transform, *c);
+        if center.distance_squared(mid) < (reach + r).powi(2) {
+            out.push(Blocker { center, radius: *r });
+        }
+    }
+}
+
+/// A blocker with the room `own_radius` needs round it, as seen from `pos`
+/// flying along `desired`: (how far along, how far to the side and which
+/// way, the room to keep).
+fn sight(pos: Vec2, desired: Vec2, own_radius: f32, b: &Blocker) -> (f32, Vec2, f32) {
+    let rel = b.center - pos;
+    let along = rel.dot(desired);
+    (along, rel - desired * along, b.radius + own_radius + STEER_SKIN)
+}
+
+/// Whether a ship at `pos` flying along `desired` for `look` would come
+/// closer to `b` than it should, or already has.
+fn threatens(pos: Vec2, desired: Vec2, look: f32, own_radius: f32, b: &Blocker) -> bool {
+    let (along, lateral, clearance) = sight(pos, desired, own_radius, b);
+    let inside = (b.center - pos).length_squared() < clearance * clearance;
+    inside || (along >= 0.0 && along <= look + clearance && lateral.length() < clearance)
+}
+
+/// `desired`, bent to slide round whatever of `blockers` is in the way --
+/// the same "swing around, don't clip through" trick the EVA crew use,
+/// scaled up. Returns the (unit) direction to fly and the side it went:
+/// +1 left of `desired`, -1 right, 0 for straight on.
+///
+/// Things too close together to fly between are rounded as one. Taken one
+/// at a time, two rocks side by side each sent the ship toward the other.
+///
+/// `side_hint` is the side it went last time (0 for none). Something dead
+/// ahead, or nearly, is passed on that side again: the nearest side changes
+/// as the ship swings, and a ship that follows it wags its nose instead of
+/// going round.
+pub fn bend_around(pos: Vec2, desired: Vec2, look: f32, own_radius: f32, blockers: &[Blocker], side_hint: f32) -> (Vec2, f32) {
+    if look < 1.0 {
+        return (desired, 0.0);
+    }
+    let threats: Vec<Blocker> = blockers.iter().copied().filter(|b| threatens(pos, desired, look, own_radius, b)).collect();
+    // The first one it would come to.
+    let Some(first) = threats.iter().copied().min_by(|a, b| {
+        sight(pos, desired, own_radius, a).0.total_cmp(&sight(pos, desired, own_radius, b).0)
+    }) else {
+        return (desired, 0.0);
+    };
+    // ...and everything in the way that it couldn't get between and that.
+    let gap = 2.0 * (own_radius + STEER_SKIN);
+    let mut group = vec![first];
+    let mut rest: Vec<Blocker> = threats.into_iter().filter(|b| *b != first).collect();
+    loop {
+        let before = group.len();
+        rest.retain(|b| {
+            let joins = group.iter().any(|g| g.center.distance(b.center) - g.radius - b.radius < gap);
+            if joins {
+                group.push(*b);
+            }
+            !joins
+        });
+        if group.len() == before {
+            break;
+        }
+    }
+    let whole = enclosing(&group);
+
+    let (along, lateral, clearance) = sight(pos, desired, own_radius, &whole);
+    let left = desired.perp();
+    // Away from its middle. Dead ahead, or close to it, the side it took
+    // before; with no side taken yet, the left.
+    let natural = if lateral.dot(left) > 0.0 { -1.0 } else { 1.0 };
+    let side = if side_hint != 0.0 && lateral.length() < clearance * 0.3 {
+        side_hint.signum()
+    } else if lateral.length() < 1.0 {
+        1.0
+    } else {
+        natural
+    };
+    let away = left * side;
+    let need = ((clearance - lateral.length()) / clearance).clamp(0.0, 1.0);
+    let urgency = (1.0 - along / look).clamp(0.2, 1.0);
+    let mut out = desired + away * (need * (0.6 + 1.4 * urgency));
+    // Already closer than it should be to something: straight out from it.
+    for b in &group {
+        let rel = b.center - pos;
+        let room = b.radius + own_radius + STEER_SKIN;
+        if rel.length_squared() < room * room {
+            out += (-rel).normalize_or(away);
+        }
+    }
+    (out.try_normalize().unwrap_or(desired), side)
+}
+
+/// One circle round all of `group`.
+fn enclosing(group: &[Blocker]) -> Blocker {
+    if group.len() == 1 {
+        return group[0];
+    }
+    let weight: f32 = group.iter().map(|b| b.radius).sum();
+    let center = group.iter().map(|b| b.center * b.radius).sum::<Vec2>() / weight.max(1.0);
+    let radius = group.iter().map(|b| b.center.distance(center) + b.radius).fold(0.0, f32::max);
+    Blocker { center, radius }
+}
+
+/// Bends a desired travel direction to slide around blocking terrain.
+/// Returns the (unit) direction to actually fly. For a ship that keeps no
+/// memory of which side it went; `bend_around` is the whole of it.
 pub fn steer_around(
     grid: &ColliderGrid,
     terrain: &Query<(&Transform, &Collider), TerrainFilter>,
@@ -218,36 +379,9 @@ pub fn steer_around(
     own_radius: f32,
 ) -> Vec2 {
     let look = travel.min(2200.0);
-    if look < 1.0 {
-        return desired;
-    }
-    // Nearest obstacle whose clearance the look-ahead corridor violates.
-    let mut best: Option<(f32, Vec2, f32)> = None; // (t_along, center, clearance)
-    for entity in grid.candidates(pos + desired * (look * 0.5), look * 0.5) {
-        let Ok((transform, collider)) = terrain.get(entity) else { continue };
-        let center = world_point(transform, collider.bound_center);
-        let clearance = collider.bound_radius + own_radius + 60.0;
-        let rel = center - pos;
-        let t_along = rel.dot(desired);
-        if t_along < 0.0 || t_along > look + clearance {
-            continue;
-        }
-        let lateral = rel - desired * t_along;
-        if lateral.length() < clearance && best.map(|(bt, ..)| t_along < bt).unwrap_or(true) {
-            best = Some((t_along, center, clearance));
-        }
-    }
-    let Some((t_along, center, clearance)) = best else { return desired };
-
-    let rel = center - pos;
-    let lateral = rel - desired * rel.dot(desired);
-    // Slide away from the obstacle's center; dead-ahead picks a side.
-    let away = lateral.try_normalize().map(|l| -l).unwrap_or(desired.perp());
-    let need = ((clearance - lateral.length()) / clearance).clamp(0.0, 1.0);
-    let urgency = (1.0 - t_along / look).clamp(0.2, 1.0);
-    (desired + away * (need * (0.6 + 1.4 * urgency)))
-        .try_normalize()
-        .unwrap_or(desired)
+    let mut blockers = Vec::new();
+    terrain_blockers(grid, terrain, pos, desired, look, own_radius, &mut blockers);
+    bend_around(pos, desired, look, own_radius, &blockers, 0.0).0
 }
 
 /// `desired`, bent around one round obstacle (a ship) the same way
@@ -769,6 +903,99 @@ mod steering_tests {
         let ne = Vec2::new(1.0, 1.0).normalize();
         assert!(hull_reach(&shape, ne, 100.0).unwrap() < hull_reach(&shape, ne, 1_500.0).unwrap());
         assert!(hull_reach(&[], Vec2::X, 100.0).is_none());
+    }
+
+    fn rock(x: f32, y: f32, radius: f32) -> Blocker {
+        Blocker { center: Vec2::new(x, y), radius }
+    }
+
+    #[test]
+    fn nothing_in_the_way_is_flown_straight_at() {
+        // One behind, one well off to the side, one past where it looks.
+        let rocks = [rock(-800.0, 0.0, 200.0), rock(1_000.0, 900.0, 200.0), rock(6_000.0, 0.0, 200.0)];
+        let (dir, side) = bend_around(Vec2::ZERO, Vec2::X, 2_000.0, 150.0, &rocks, 0.0);
+        assert_eq!(dir, Vec2::X);
+        assert_eq!(side, 0.0);
+    }
+
+    #[test]
+    fn a_rock_ahead_is_passed_on_the_side_it_is_not() {
+        // A little to the left of the line: go right.
+        let (dir, side) = bend_around(Vec2::ZERO, Vec2::X, 2_000.0, 150.0, &[rock(1_000.0, 250.0, 300.0)], 0.0);
+        assert!(dir.y < -0.1, "{dir}");
+        assert_eq!(side, -1.0);
+        let (dir, side) = bend_around(Vec2::ZERO, Vec2::X, 2_000.0, 150.0, &[rock(1_000.0, -250.0, 300.0)], 0.0);
+        assert!(dir.y > 0.1, "{dir}");
+        assert_eq!(side, 1.0);
+    }
+
+    /// The station's bounding circle is mostly open space: a ship between
+    /// two of its arms, with nothing ahead, is not steered at all.
+    #[test]
+    fn a_ship_inside_a_stations_bound_but_clear_of_its_parts_flies_straight() {
+        let mut circles = vec![(Vec2::ZERO, 2_000.0)];
+        for dir in [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y] {
+            circles.extend((1..=12).map(|i| (dir * (2_000.0 + i as f32 * 1_000.0), 600.0)));
+        }
+        let station = Collider::circles(circles, f32::INFINITY);
+        assert!(station.bound_radius > 14_000.0);
+        // North-east of the hub, between the east and north arms, flying
+        // further out between them.
+        let pos = Vec2::new(6_000.0, 6_000.0);
+        let desired = Vec2::new(1.0, 1.0).normalize();
+        let mut blockers = Vec::new();
+        collider_blockers(&Transform::default(), &station, pos + desired * 1_000.0, 1_000.0 + 300.0 + STEER_SKIN, &mut blockers);
+        let (dir, _) = bend_around(pos, desired, 2_000.0, 300.0, &blockers, 0.0);
+        assert!(dir.dot(desired) > 0.999, "bent to {dir} with nothing in the way");
+        // The old way, round the bound: it is inside it, so always pushed.
+        let whole = [Blocker { center: Vec2::ZERO, radius: station.bound_radius }];
+        assert!(bend_around(pos, desired, 2_000.0, 300.0, &whole, 0.0).0.dot(desired) < 0.99);
+    }
+
+    #[test]
+    fn two_rocks_too_close_to_thread_are_rounded_as_one() {
+        // 500 u of gap between them, dead ahead; the hull is 600 across.
+        let rocks = [rock(1_500.0, 450.0, 200.0), rock(1_500.0, -450.0, 200.0)];
+        let (dir, side) = bend_around(Vec2::ZERO, Vec2::X, 2_500.0, 300.0, &rocks, 0.0);
+        assert!(side != 0.0);
+        // Round the outside of whichever it chose, not at the gap.
+        assert!(dir.y.abs() > 0.3, "{dir}: making for the gap");
+        // Far enough apart, it goes between: each is off the line.
+        let wide = [rock(1_500.0, 1_200.0, 200.0), rock(1_500.0, -1_200.0, 200.0)];
+        assert_eq!(bend_around(Vec2::ZERO, Vec2::X, 2_500.0, 300.0, &wide, 0.0).0, Vec2::X);
+    }
+
+    /// Flown for four seconds at something dead ahead, a ship goes round one
+    /// side of it and stays on that side.
+    #[test]
+    fn dead_ahead_keeps_the_side_it_picked() {
+        let rocks = [rock(3_000.0, 0.0, 500.0)];
+        let goal = Vec2::new(8_000.0, 0.0);
+        let (mut pos, mut hint, mut first) = (Vec2::ZERO, 0.0, 0.0);
+        for frame in 0..600 {
+            let to = goal - pos;
+            if to.length() < 300.0 {
+                break;
+            }
+            let (dir, side) = bend_around(pos, to.normalize(), look_ahead(400.0, 200.0, to.length()), 200.0, &rocks, hint);
+            if side != 0.0 {
+                if first == 0.0 {
+                    first = side;
+                }
+                assert_eq!(side, first, "changed sides at frame {frame}, at {pos}");
+                hint = side;
+            }
+            pos += dir * 400.0 / 60.0;
+            assert!(pos.distance(rocks[0].center) > 500.0 + 200.0 - 1.0, "flew into it at frame {frame}");
+        }
+        assert!(pos.x > 3_500.0, "never got past: at {pos}");
+    }
+
+    #[test]
+    fn a_faster_ship_looks_further_but_never_past_its_point() {
+        assert!(look_ahead(1_100.0, 300.0, 1.0e6) > look_ahead(350.0, 300.0, 1.0e6));
+        assert!(look_ahead(350.0, 300.0, 1.0e6) < 2_200.0, "harbour speed looks no further than it used to");
+        assert_eq!(look_ahead(1_100.0, 300.0, 400.0), 400.0);
     }
 }
 
