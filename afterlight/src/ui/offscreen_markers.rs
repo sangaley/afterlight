@@ -124,6 +124,7 @@ pub fn update_offscreen_markers(
         Res<crate::celestial::resources::SystemStreamingManager>,
         Query<(Entity, &Transform, &LogEntry)>,
         Query<(Entity, &Transform, &crate::narrative::summit::StoryTarget)>,
+        Query<(Entity, &Transform, &crate::narrative::summit::StoryBeacon)>,
     ),
     ui_scale: Res<bevy::ui::UiScale>,
 ) {
@@ -165,7 +166,16 @@ pub fn update_offscreen_markers(
 
     // The next expedition record, when it lies in this system: an amber
     // marker at any range, and over the derelict itself once it's in view.
-    let (expedition, streaming, carriers, story) = &trail;
+    let (expedition, streaming, carriers, story, beacons) = &trail;
+    // Other things of the story's to find here (the wreck of the Meridian).
+    for (entity, tf, beacon) in beacons.iter() {
+        let pos = tf.translation.truncate();
+        let world = pos - cam;
+        let offset = Vec2::new(world.x, -world.y) / scale;
+        let (centre, bearing) = edge_point(offset, screen, INSETS)
+            .unwrap_or((screen / 2.0 + offset - Vec2::new(0.0, 36.0), std::f32::consts::FRAC_PI_2));
+        wanted.insert(entity, (centre, bearing, STORY_COLOR, format!("{} {}", beacon.0, super::format_range_km(pos.distance(home)))));
+    }
     // The story's goal, when it is somewhere in this system
     // (narrative::summit::place_story_target): at any range, and over the
     // thing itself once it's in view. It comes before the records: one goal.

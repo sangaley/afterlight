@@ -330,6 +330,12 @@ fn update_objective(
 #[derive(Component)]
 pub struct StoryTarget(pub String);
 
+/// Something else of the story's worth finding in this system, with the
+/// word the edge-of-screen marker shows for it: the wreck of the Meridian
+/// (narrative::beats). Marked the same way as the goal, beside it.
+#[derive(Component)]
+pub struct StoryBeacon(pub String);
+
 /// Keep the story's target where the goal is: the system's starport for
 /// someone to see or cargo to hand over, the middle of a fleet to be found.
 fn place_story_target(
@@ -652,6 +658,8 @@ fn old_ones_hail(
     let Some(who) = sys.haunt.or(sys.faction).filter(|f| !contacts.story.heard_last_one.contains(f)) else { return };
     let Some(line) = the_last_one(who) else { return };
     contacts.story.heard_last_one.push(who);
+    // It counts as something happening, for the beats' spacing.
+    super::beats::note(&mut contacts.story);
     notes.write(crate::events::ShowNotification {
         message: line.to_string(),
         notification_type: crate::events::NotificationType::Warning,
@@ -679,6 +687,13 @@ fn pin_from_env(mut contacts: ResMut<Contacts>, mut standing: ResMut<FactionStan
     contacts.summit = SummitProgress { hailed: true, commissioned: true, done: n, ended: n >= last_step() };
     // Steps skipped this way were deals, and her first jobs are behind you.
     contacts.story.ways = vec![false; n as usize];
+    // And Marlow has had his say about all of it already.
+    let mut said = vec!["hail", "commission"];
+    if n > 0 {
+        said.push("errands_done");
+    }
+    said.extend(["piece_1", "piece_2", "piece_3", "piece_4"].into_iter().take(n as usize));
+    contacts.story.beats_fired.extend(said.into_iter().map(|m| format!("marlow:{m}")));
     if n > 0 {
         contacts.story.errands = ERRANDS;
         contacts.story.errands_given = ERRANDS + 1;
@@ -1102,6 +1117,43 @@ mod tests {
         }
         let eternal = the_last_one(AiShipType::EternalHegemony).unwrap();
         assert!(eternal.is_ascii() && eternal.contains("last one"));
+    }
+
+    /// The old ones say it once a run, to a ship that has the minutes, and a
+    /// new run hears it again: who has said it is part of the run, not of the
+    /// program that happens to still be open.
+    #[test]
+    fn a_new_run_hears_the_last_one_again() {
+        use crate::celestial::resources::SystemStreamingManager;
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let princes = capital_of(&galaxy, AiShipType::MerchantPrinces).unwrap().0;
+        let mut app = App::new();
+        app.add_message::<crate::events::ShowNotification>()
+            .insert_resource(galaxy)
+            .insert_resource(SystemStreamingManager::default())
+            .insert_resource(Contacts { summit: SummitProgress { hailed: true, commissioned: true, done: 1, ended: false }, ..default() })
+            .add_systems(Update, old_ones_hail);
+        let said = |app: &mut App| app.world_mut().resource_mut::<Messages<crate::events::ShowNotification>>().drain().count();
+        let arrive = |app: &mut App, system: Option<u32>| {
+            app.world_mut().resource_mut::<SystemStreamingManager>().loaded_system = system;
+            app.update();
+        };
+        arrive(&mut app, Some(princes));
+        assert_eq!(said(&mut app), 1, "the Princes didn't say it");
+        assert_eq!(app.world().resource::<Contacts>().story.heard_last_one, vec![AiShipType::MerchantPrinces]);
+        // Leaving and coming back: said is said.
+        arrive(&mut app, None);
+        arrive(&mut app, Some(princes));
+        assert_eq!(said(&mut app), 0, "said twice in one run");
+        // It survives a save...
+        let saved = serde_json::to_string(app.world().resource::<Contacts>()).unwrap();
+        let back: Contacts = serde_json::from_str(&saved).unwrap();
+        assert_eq!(back.story.heard_last_one, vec![AiShipType::MerchantPrinces]);
+        // ...and a new run starts with nobody having said anything.
+        app.insert_resource(Contacts { summit: SummitProgress { hailed: true, commissioned: true, done: 1, ended: false }, ..default() });
+        arrive(&mut app, None);
+        arrive(&mut app, Some(princes));
+        assert_eq!(said(&mut app), 1, "a new run didn't hear it");
     }
 
     /// No scar until the black box (step 2); after it, wider every step.

@@ -1,6 +1,7 @@
 //! Narrative layer: what the game is about, told through what it already
 //! simulates rather than through cutscenes.
 
+pub mod beats;
 pub mod logs;
 pub mod marlow;
 pub mod news;
@@ -173,6 +174,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(expedition::ExpeditionPlugin);
         app.add_plugins(summit::SummitPlugin);
         app.add_plugins(marlow::MarlowPlugin);
+        app.add_plugins(beats::BeatsPlugin);
         app.add_plugins(leads::LeadsPlugin);
         app.add_plugins(front::FrontPlugin);
         app.add_plugins(ward::WardPlugin);
