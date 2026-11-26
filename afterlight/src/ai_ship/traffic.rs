@@ -521,8 +521,10 @@ pub fn run_traffic(
                 }
             }
         }
-        // Time to go: another stop, or out.
-        if run.dwell <= 0.0 && run.bound_for.is_empty() && run.leaving.is_none() {
+        // Time to go: another stop, or out -- once its ships are out of their
+        // berths. Choosing in the same tick its stay ran out, it counted an
+        // empty hold (the haulers still moored) and never loaded anything.
+        if run.dwell <= 0.0 && run.bound_for.is_empty() && run.leaving.is_none() && !moored_of.contains_key(&fleet.id) {
             let Some(from) = galaxy.systems.iter().find(|s| s.id == fleet.system_id) else { continue };
             let leave = (rng.gen::<f32>() < LEAVE_CHANCE)
                 .then(|| streaming.warm_systems.iter().copied().chain([loaded]).filter(|s| *s != fleet.system_id).collect::<Vec<u32>>())
@@ -545,6 +547,12 @@ pub fn run_traffic(
                 let deal = origin
                     .filter(|_| rng.gen::<f32>() > 0.1 && hold > 0.0)
                     .and_then(|o| crate::world::economy::choose_run(&market.stock, o, &candidates, &pledged, hold, &mut rng).map(|d| (o, d)));
+                if crate::world::economy::econ_trace() {
+                    info!(
+                        "ECON {} leaves {:?} (port {:?}), hold {:.0}, {} places to go: {:?}",
+                        trader_name(fleet.id, fleet.faction), run.last_stop, origin, hold, candidates.len(), deal.map(|(_, d)| d)
+                    );
+                }
                 let chosen = deal.and_then(|(o, (dest, item, units))| {
                     stops.iter().find(|s| s.port.map(crate::world::economy::port_index) == Some(dest)).map(|s| (s, o, dest, item, units))
                 });

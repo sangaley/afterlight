@@ -470,3 +470,4 @@ mod economy_tests {
         }
     }
 }
+
