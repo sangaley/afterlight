@@ -318,7 +318,7 @@ fn sync_faction_stations(
 
 /// Ride the planet. Runs after everything that moves ships, so nothing a
 /// station's brain or a collision decides can carry it off.
-fn hold_anchored(
+pub(crate) fn hold_anchored(
     planets: Query<&Transform, (With<Planet>, Without<StationAnchor>)>,
     mut anchored: Query<(&StationAnchor, &mut Transform, Option<&mut Velocity>), Without<Planet>>,
 ) {
@@ -343,10 +343,35 @@ fn in_docking_reach(core: &Transform, anchor: &StationAnchor, ship: Vec2) -> boo
 }
 
 /// F near a faction station: dock on your standing's terms, or be refused.
+/// The terms a faction starport gave you, held until a flown approach brings
+/// you to its berth (world::docking).
+#[derive(Resource, Default)]
+pub struct PendingDock(pub Option<DockTerms>);
+
+/// Brought to a starport's berth by the docking run: docked.
+fn finish_starport_docking(
+    mut docking: ResMut<crate::world::docking::Docking>,
+    mut pending: ResMut<PendingDock>,
+    mut market: ResMut<MarketEvents>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if !docking.arrived_starport {
+        return;
+    }
+    docking.arrived_starport = false;
+    if let Some(terms) = pending.0.take() {
+        market.dock_terms = Some(terms);
+        next_state.set(GameState::Docked);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn faction_station_docking(
     mut press: ResMut<InteractPress>,
-    player: Query<&Transform, With<Ship>>,
-    cores: Query<(&Transform, &StationAnchor, &AiShipType, &AiShipState), With<StationCore>>,
+    player: Query<(&Transform, Option<&Collider>, Option<&crate::components::ShipPhysics>), With<Ship>>,
+    cores: Query<(Entity, &Transform, &StationAnchor, &AiShipType, &AiShipState), With<StationCore>>,
+    flying: (ResMut<crate::world::docking::Docking>, Res<crate::ui::menu_buttons::GameSettings>, ResMut<PendingDock>, Res<FactionStations>),
+    planets: Query<(&Transform, &CelestialBody), With<Planet>>,
     standing: Res<FactionStanding>,
     mut market: ResMut<MarketEvents>,
     mut notifications: MessageWriter<ShowNotification>,
@@ -355,12 +380,18 @@ fn faction_station_docking(
     where_: (Res<GalaxyMap>, Res<SystemStreamingManager>),
 ) {
     let (galaxy, streaming) = where_;
-    let Ok(player) = player.single() else { return };
+    let (mut docking, settings, mut pending, ports) = flying;
+    let Ok((player, collider, physics)) = player.single() else { return };
     let pos = player.translation.truncate();
-    let near = cores.iter().find(|(tf, anchor, _, state)| {
+    // Already flying in to it, or just brought to its berth: an F pressed
+    // that frame started a second run, left frozen behind the dock menu.
+    if docking.arrived_starport || docking.run.as_ref().is_some_and(|r| r.anchor.is_some()) {
+        return;
+    }
+    let near = cores.iter().find(|(_, tf, anchor, _, state)| {
         !state.is_destroyed && in_docking_reach(tf, anchor, pos)
     });
-    let Some((_, _, &faction, _)) = near else {
+    let Some((core, core_tf, _, &faction, _)) = near else {
         *prompted = false;
         return;
     };
@@ -402,7 +433,25 @@ fn faction_station_docking(
         });
         return;
     };
-    market.dock_terms = Some(DockTerms { faction: Some(faction), name: name.clone(), standing: tier.label(), buy, sell });
+    let terms = DockTerms { faction: Some(faction), name: name.clone(), standing: tier.label(), buy, sell };
+    // Flown in to the berth at the end of the city's east arm, as at Haven,
+    // when the planet isn't across the way in.
+    let here = core_tf.translation.truncate();
+    let ship_radius = collider.map_or(1_200.0, |c| c.bound_center.length() + c.bound_radius);
+    let tip = station_plan(faction).map(|p| crate::world::starport_raft::berth_tip(faction, p.key));
+    let extent = streaming.loaded_system.and_then(|id| ports.harbour(id)).map_or(20_000.0, |(_, ring)| ring);
+    let bodies: Vec<(Vec2, f32)> = planets.iter().map(|(t, b)| (t.translation.truncate(), b.radius)).collect();
+    if let Some(tip) = tip.filter(|tip| crate::world::docking::starport_lane_clear(pos, here, *tip, extent, ship_radius, &bodies)) {
+        let angle = physics.map_or(0.0, |p| p.rotation);
+        if crate::world::docking::begin_docking_at(&mut docking, &settings, core, name.clone(), here, tip, extent, pos, angle, ship_radius) {
+            info!("STARPORT docking at {name}: flown in to the east arm's berth");
+            pending.0 = Some(terms);
+            return;
+        }
+    } else if tip.is_some() {
+        info!("STARPORT docking at {name}: the planet is across the way in, docking at once");
+    }
+    market.dock_terms = Some(terms);
     notifications.write(ShowNotification {
         message: format!("Docking at {name}..."),
         notification_type: NotificationType::Info,
@@ -773,6 +822,8 @@ impl Plugin for FactionStationPlugin {
                     .run_if(in_state(GameState::Exploring)),
             )
             .add_systems(PostUpdate, hold_anchored.before(bevy::transform::TransformSystems::Propagate))
+            .init_resource::<PendingDock>()
+            .add_systems(Update, finish_starport_docking.before(faction_station_docking).run_if(in_state(GameState::Exploring)))
             .add_systems(Update, standing_from_trade.run_if(in_state(GameState::Docked)))
             // Cleared on the way back out to space, not on leaving the dock:
             // pausing while docked leaves and re-enters Docked, and the

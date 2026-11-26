@@ -1735,6 +1735,7 @@ fn fly_to_station(
     cores: Query<(&GlobalTransform, &crate::diplomacy::stations::StationAnchor), With<crate::diplomacy::stations::StationCore>>,
     mut last_f: Local<f32>,
     mut last_log: Local<f32>,
+    docking: Res<crate::world::docking::Docking>,
 ) {
     // What to hold this frame; everything else of ours is let go, so a held
     // key stays one press rather than a fresh one every frame.
@@ -1748,7 +1749,8 @@ fn fly_to_station(
             }
         }
     };
-    if *state.get() != GameState::Exploring {
+    // The docking run is flying it now: hands off (F would skip it).
+    if *state.get() != GameState::Exploring || docking.run.is_some() {
         apply(&mut keyboard, &want_keys);
         return;
     }

@@ -23,6 +23,12 @@ const SHIPS: usize = 14;
 /// How far the berth arm runs past the starport's hull, in blocks.
 const BERTH_ARM: f32 = 110.0;
 
+/// How far east of the starport's middle the city's berth arm ends, in
+/// world units: where a ship docking there ties up, past its tip.
+pub fn berth_tip(owner: AiShipType, key: &'static str) -> f32 {
+    (GivenHub::from_cells(&hull_cells(owner, key)).reach[0] + BERTH_ARM) * CELL
+}
+
 /// The starport's hull as built, as cells about its middle.
 fn hull_cells(owner: AiShipType, key: &'static str) -> Vec<IVec2> {
     crate::ai_ship::spawner::built_design(owner, Some(key)).hull_cells.iter().map(|c| c.grid_pos).collect()

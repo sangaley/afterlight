@@ -152,6 +152,15 @@ pub enum Leg {
 #[derive(Clone, Debug)]
 pub struct Run {
     pub station: usize,
+    /// A station that moves (a faction starport, riding its planet): the
+    /// whole run is flown relative to it. Everything below is where it was
+    /// when the run began (`origin`); each frame it is carried along by how
+    /// far the station has gone since.
+    pub anchor: Option<Entity>,
+    pub origin: Vec2,
+    /// Its name, for the traffic notes, where it isn't one of the system's
+    /// stations.
+    pub name: String,
     pub leg: Leg,
     /// Seconds into this leg, and into the whole run.
     pub t: f32,
@@ -199,6 +208,9 @@ impl Run {
     fn new(station: usize, leg: Leg, at: Vec2, angle: f32, berth: Vec2, station_pos: Vec2, extent: f32, tip: Vec2, ship_edge: f32, short: bool) -> Self {
         Self {
             station,
+            anchor: None,
+            origin: Vec2::ZERO,
+            name: String::new(),
             leg,
             t: 0.0,
             clock: 0.0,
@@ -386,6 +398,8 @@ pub struct Docking {
     pub arrived: Option<usize>,
     /// Moored here (set on docking, taken on launch).
     pub moored_at: Option<usize>,
+    /// Arrived at a faction starport: diplomacy::stations finishes docking.
+    pub arrived_starport: bool,
 }
 
 impl Docking {
@@ -489,6 +503,50 @@ pub fn transit_path(from: Vec2, gate: Vec2, station: Vec2, extent: f32) -> [Vec2
 
 /// Start docking at `station`'s berth. Returns false if it's Instant.
 #[allow(clippy::too_many_arguments)]
+/// Fly the ship in to the berth at the end of a faction starport's east arm.
+/// The starport rides its planet, so the run is flown relative to `anchor`
+/// (the starport), from where it is now (`station_pos`). `tip` is how far
+/// east of its middle the berth arm ends; `extent` how far all of it, gun
+/// platforms included, reaches. False if docking is set to Instant.
+#[allow(clippy::too_many_arguments)]
+pub fn begin_docking_at(
+    docking: &mut Docking,
+    settings: &crate::ui::menu_buttons::GameSettings,
+    anchor: Entity,
+    name: String,
+    station_pos: Vec2,
+    tip: f32,
+    extent: f32,
+    from: Vec2,
+    from_angle: f32,
+    ship_radius: f32,
+) -> bool {
+    if style(settings) == 2 || docking.busy() {
+        return false;
+    }
+    let berth = berth_position(station_pos, tip, ship_radius);
+    let mut run = Run::new(usize::MAX, Leg::Brake, from, from_angle, berth, station_pos, extent, station_pos + Vec2::X * tip, ship_radius * 0.8, style(settings) == 1);
+    run.anchor = Some(anchor);
+    run.origin = station_pos;
+    run.name = name;
+    run.note = Some(("berth called  -  east arm", "hands off  -  F skips"));
+    docking.run = Some(run);
+    true
+}
+
+/// Whether the way in to a starport's berth is clear of the planet it sits
+/// by: the lane east from the berth, and the swing round to it from `from`.
+/// The starport sits on its planet's night side, so for part of every orbit
+/// the planet is across the lane, and the ship would be flown through it.
+pub fn starport_lane_clear(from: Vec2, station_pos: Vec2, tip: f32, extent: f32, ship_radius: f32, planets: &[(Vec2, f32)]) -> bool {
+    let berth = berth_position(station_pos, tip, ship_radius);
+    let gate = berth + Vec2::X * GATE;
+    let path = transit_path(from, gate, station_pos, extent);
+    let mut points: Vec<Vec2> = (0..=48).map(|i| bezier(&path, i as f32 / 48.0)).collect();
+    points.extend((0..=24).map(|i| berth.lerp(gate + Vec2::X * 7_000.0, i as f32 / 24.0)));
+    planets.iter().all(|(c, r)| points.iter().all(|p| p.distance(*c) > r + ship_radius + 1_500.0))
+}
+
 pub fn begin_docking(
     docking: &mut Docking,
     settings: &crate::ui::menu_buttons::GameSettings,
@@ -525,6 +583,8 @@ pub fn begin_docking(
 #[derive(Component)]
 pub struct LaneLight {
     pub order: usize,
+    /// Which side of the lane: +1 north, -1 south.
+    pub side: f32,
 }
 
 #[derive(Component)]
@@ -544,13 +604,25 @@ pub fn run_docking(
     stations: Res<SystemStations>,
     art: Option<Res<super::raft_art::RaftArt>>,
     mut ship: Query<(&mut Transform, &mut Velocity, &mut ShipPhysics), With<Ship>>,
-    mut lane: Query<(Entity, &LaneLight, &mut Sprite), Without<PlayerWalkway>>,
+    mut lane: Query<(Entity, &LaneLight, &mut Sprite, &mut Transform), (Without<PlayerWalkway>, Without<Ship>)>,
     mut walkway: Query<(Entity, &mut Sprite, &mut Transform), (With<PlayerWalkway>, Without<Ship>, Without<LaneLight>)>,
     notes: Query<Entity, With<TrafficNote>>,
+    anchors: Query<&Transform, (With<crate::diplomacy::stations::StationAnchor>, Without<Ship>, Without<LaneLight>, Without<PlayerWalkway>)>,
 ) {
     let Some(run) = docking.run.as_mut() else { return };
     let Ok((mut tf, mut vel, mut physics)) = ship.single_mut() else { return };
-    let Some(site) = stations.sites.iter().find(|s| s.index == run.station).cloned() else {
+    // A starport: where it is now, against where it was when the run began.
+    let anchored = run.anchor.map(|a| anchors.get(a).ok().map(|t| t.translation.truncate()));
+    let shift = match anchored {
+        Some(Some(now)) => now - run.origin,
+        _ => Vec2::ZERO,
+    };
+    let site_name = match anchored {
+        Some(Some(_)) => Some(run.name.clone()),
+        Some(None) => None,
+        None => stations.sites.iter().find(|s| s.index == run.station).map(|s| s.name.clone()),
+    };
+    let Some(site_name) = site_name else {
         // The station's gone (a jump mid-sequence): drop the sequence and
         // everything it put up, so nothing is left hanging on screen.
         docking.run = None;
@@ -568,7 +640,7 @@ pub fn run_docking(
     // The ship's own motion, picked up where it was.
     if !run.started {
         run.started = true;
-        run.pos = tf.translation.truncate();
+        run.pos = tf.translation.truncate() - shift;
         run.angle = physics.rotation;
         run.vel = if run.docking_in() { vel.0 } else { Vec2::ZERO };
     }
@@ -584,12 +656,12 @@ pub fn run_docking(
     if lane.is_empty() && matches!(run.leg, Leg::Brake | Leg::Transit | Leg::Hold | Leg::Final) && step == Step::Going {
         if let Some(art) = &art {
             for i in 0..8 {
-                let x = run.berth.x + GATE * (1.0 - i as f32 / 8.0);
+                let x = run.berth.x + GATE * (1.0 - i as f32 / 8.0) + shift.x;
                 for side in [-1.0f32, 1.0] {
                     commands.spawn((
                         Sprite { image: art.glow.clone(), color: Color::srgba(1.0, 0.85, 0.45, 0.0), custom_size: Some(Vec2::splat(700.0)), ..default() },
-                        Transform::from_xyz(x, run.berth.y + side * 2_200.0, 0.2),
-                        LaneLight { order: i },
+                        Transform::from_xyz(x, run.berth.y + side * 2_200.0 + shift.y, 0.2),
+                        LaneLight { order: i, side },
                     ));
                 }
             }
@@ -599,7 +671,7 @@ pub fn run_docking(
         if let Some(art) = &art {
             commands.spawn((
                 Sprite { image: art.tube.clone(), custom_size: Some(Vec2::new(1.0, 260.0)), color: Color::NONE, ..default() },
-                Transform::from_xyz(run.tip.x, run.tip.y, 0.25),
+                Transform::from_xyz(run.tip.x + shift.x, run.tip.y + shift.y, 0.25),
                 PlayerWalkway,
             ));
         }
@@ -608,11 +680,11 @@ pub fn run_docking(
         for e in &notes {
             commands.entity(e).despawn();
         }
-        spawn_note(&mut commands, &site.name, line, keys);
+        spawn_note(&mut commands, &site_name, line, keys);
     }
 
-    tf.translation.x = run.pos.x;
-    tf.translation.y = run.pos.y;
+    tf.translation.x = run.pos.x + shift.x;
+    tf.translation.y = run.pos.y + shift.y;
     tf.rotation = Quat::from_rotation_z(run.angle);
     physics.rotation = run.angle;
     physics.angular_velocity = 0.0;
@@ -622,9 +694,12 @@ pub fn run_docking(
 
     // The lane lights chase in toward the berth while it comes in.
     let lit = matches!(run.leg, Leg::Brake | Leg::Transit | Leg::Hold | Leg::Final);
-    for (_, light, mut sprite) in &mut lane {
+    for (_, light, mut sprite, mut ltf) in &mut lane {
         let on = if lit { (((run.clock * 6.0 - light.order as f32) * 0.7).sin() * 0.5 + 0.5).powi(2) } else { 0.0 };
         sprite.color = Color::srgba(1.0, 0.85, 0.45, 0.25 + on * 0.75);
+        // Carried along with a station that moves.
+        ltf.translation.x = run.berth.x + GATE * (1.0 - light.order as f32 / 8.0) + shift.x;
+        ltf.translation.y = run.berth.y + light.side * 2_200.0 + shift.y;
     }
     // The walkway reaches from the berth tip to the ship's near side.
     let berth = run.berth;
@@ -633,8 +708,8 @@ pub fn run_docking(
         let l = (reach * run.walk).max(1.0);
         sprite.custom_size = Some(Vec2::new(l, 260.0));
         sprite.color = if run.walk > 0.0 { Color::WHITE } else { Color::NONE };
-        wtf.translation.x = run.tip.x + l * 0.5;
-        wtf.translation.y = run.tip.y;
+        wtf.translation.x = run.tip.x + l * 0.5 + shift.x;
+        wtf.translation.y = run.tip.y + shift.y;
     }
 
     if step == Step::Going {
@@ -644,17 +719,21 @@ pub fn run_docking(
     let speed = run.speed;
     if step == Step::Docked {
         // Put it on the berth exactly, walkway out.
-        tf.translation.x = berth.x;
-        tf.translation.y = berth.y;
+        tf.translation.x = berth.x + shift.x;
+        tf.translation.y = berth.y + shift.y;
         tf.rotation = Quat::IDENTITY;
         physics.rotation = 0.0;
         physics.throttle = 0.0;
         for (_, mut sprite, mut wtf) in &mut walkway {
             sprite.custom_size = Some(Vec2::new(reach, 260.0));
             sprite.color = Color::WHITE;
-            wtf.translation.x = run.tip.x + reach * 0.5;
+            wtf.translation.x = run.tip.x + reach * 0.5 + shift.x;
         }
-        docking.arrived = Some(station);
+        if run.anchor.is_some() {
+            docking.arrived_starport = true;
+        } else {
+            docking.arrived = Some(station);
+        }
     } else {
         // Clear: the walkway's gone, and the ship is handed back moving.
         for (e, ..) in &walkway {
@@ -765,6 +844,8 @@ impl Plugin for DockingPlugin {
                 PostUpdate,
                 run_docking
                     .before(bevy::transform::TransformSystems::Propagate)
+                    // A starport has been moved with its planet first.
+                    .after(crate::diplomacy::stations::hold_anchored)
                     .run_if(in_state(GameState::Exploring)),
             );
     }
@@ -773,6 +854,54 @@ impl Plugin for DockingPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A run at a station that moves is flown in the station's own frame:
+    /// stepped the same as one at a station that stands still, and carried
+    /// along by how far the station has gone. The berth stays the berth.
+    #[test]
+    fn a_run_at_a_moving_starport_ends_on_its_berth() {
+        let tip = 14_000.0;
+        let station = Vec2::new(200_000.0, -40_000.0);
+        let mut docking = Docking::default();
+        let settings = crate::ui::menu_buttons::GameSettings::default();
+        let from = station + Vec2::new(30_000.0, 8_000.0);
+        assert!(begin_docking_at(&mut docking, &settings, Entity::PLACEHOLDER, "Port".into(), station, tip, 22_000.0, from, 0.0, 1_200.0));
+        let mut run = docking.run.clone().unwrap();
+        assert_eq!(run.origin, station);
+        run.started = true;
+        // The station goes 150 u/s north-east the whole while.
+        let v = Vec2::new(106.0, 106.0);
+        let dt = 1.0 / 60.0;
+        let mut t = 0.0;
+        let mut step = Step::Going;
+        let mut last = run.pos;
+        while step == Step::Going && t < 600.0 {
+            step = run.advance(dt);
+            t += dt;
+            let shift = v * t;
+            let on_screen = run.pos + shift;
+            // Never through the station's middle.
+            assert!(on_screen.distance(station + shift) > tip * 0.5, "flown through the starport at {t:.1} s");
+            assert!(run.pos.distance(last) < 200.0, "jumped {} in one frame", run.pos.distance(last));
+            last = run.pos;
+        }
+        assert_eq!(step, Step::Docked, "never docked in {t:.0} s");
+        assert_eq!(run.berth, berth_position(station, tip, 1_200.0));
+        // Where it ends up on screen is the berth, carried along.
+        assert!((run.pos - run.berth).length() < 1.0);
+    }
+
+    /// The lane is shut when the planet the starport sits by lies across it.
+    #[test]
+    fn a_planet_across_the_lane_shuts_it() {
+        let station = Vec2::ZERO;
+        let (tip, extent) = (14_000.0, 22_000.0);
+        let from = Vec2::new(60_000.0, 5_000.0);
+        // The planet behind the station: the lane east is clear.
+        assert!(starport_lane_clear(from, station, tip, extent, 1_200.0, &[(Vec2::new(-60_000.0, 0.0), 30_000.0)]));
+        // The planet east of it: the lane runs into it.
+        assert!(!starport_lane_clear(from, station, tip, extent, 1_200.0, &[(Vec2::new(55_000.0, 0.0), 25_000.0)]));
+    }
 
     const DT: f32 = 1.0 / 60.0;
 
