@@ -467,7 +467,11 @@ pub fn run_traffic(
                             moored = true;
                         } else if run.waited < ROADS_WAIT {
                             run.waited += TICK_S;
+                            // Holding where it is: every fleet queuing for the
+                            // same port made for the same point by the lane,
+                            // and their ships jostled there and stalled.
                             fleet.velocity = Vec2::ZERO;
+                            fleet.destination = position;
                             if port_trace() && run.waited <= TICK_S {
                                 info!("PORT {} waits outside {} ({there} of {} berths taken)", trader_name(fleet.id, fleet.faction), run.bound_for, port_berths(port));
                             }
