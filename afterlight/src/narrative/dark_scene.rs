@@ -79,9 +79,12 @@ fn measure(
     galaxy: Res<GalaxyMap>,
     streaming: Res<SystemStreamingManager>,
     mut view: ResMut<DarkView>,
+    site: Option<Res<super::site::AtSite>>,
 ) {
     let here = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id));
-    view.level = ease(view.level, target_level(here), time.delta_secs());
+    // The summit site is as dark as any taken system (narrative::site).
+    let target = if site.is_some_and(|s| s.0) { 1.0 } else { target_level(here) };
+    view.level = ease(view.level, target, time.delta_secs());
 }
 
 // ---------------------------------------------------------------------------

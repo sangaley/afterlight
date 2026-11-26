@@ -1,5 +1,5 @@
 {
- "_note": "The Summit Record story chain (narrative::summit). Drafted 2026-11-03; edit any line freely. {capital} is replaced by the system the line points at (the next step's capital, or the Silence's for the hail). {price} is the deal's price in credits. gist is the one bold line a player who skips the card still sees (also flashed on the HUD); keep it under ten words. Plain ASCII only: the game font has no em-dash or curly quotes. Steps 5-7 are not written yet; the demo stops after the last step listed here (or earlier, see DEMO_LAST_STEP in summit.rs).",
+ "_note": "The Summit Record story chain (narrative::summit). Drafted 2026-11-03; edit any line freely. {capital} is replaced by the system the line points at (the next step's capital, or the Silence's for the hail). {price} is the deal's price in credits. gist is the one bold line a player who skips the card still sees (also flashed on the HUD); keep it under ten words. Plain ASCII only: the game font has no em-dash or curly quotes. Steps 5-7 are not written yet; the demo stops after the last step listed here (or earlier, see DEMO_LAST_STEP in summit.rs). After the last step the Abbess asks for the pieces to be carried to the summit site, and the demo's closing sequence plays there: those words are in data/ending.json.",
  "hail": {
   "title": "THE SILENCE",
   "text": "A carrier wave from the Silence. For a long while, nothing on it.\n\nThen one voice, very close to the microphone:\n\n\"We can hear you from here. Most ships are one voice. You are not.\n\nCome to {capital}, and ask for the Abbess. Come slowly. We will wait.\"",
@@ -73,11 +73,7 @@
    "piece_title": "SUMMIT RECORD 4 of 7: the specimen",
    "gist": "It grows near crowds. You are a crowd.",
    "piece": "Preserve specimen log.\n\nThe sample grows when ships pass near it. It grows faster when those ships are talking to each other. In an empty system it does not grow at all.\n\nWe kept it alone for sixty years and it did not move. We carried it past one convoy and it grew a hand's width in an hour.\n\nIt feeds on connection. The summit was eleven delegations, all talking at once.",
-   "abbess": "Crowds feed it. Being alone starves it. And you, ship, are not alone in there. I counted the voices in you once. I stopped at a billion.\n\nThe rest of the record lies further out, with the Gilded Throne and with Hegemony Command. Rest first. You have come a long way for one voice."
+   "abbess": "Crowds feed it. Being alone starves it. And you, ship, are not alone in there. I counted the voices in you once. I stopped at a billion.\n\nThe rest of the record lies further out, with the Gilded Throne and with Hegemony Command. You have come a long way for one voice."
   }
- ],
- "demo_end": {
-  "title": "THE SUMMIT RECORD",
-  "text": "Four pieces of seven.\n\nThe rest of the record lies further out than this demo goes.\n\nThank you for playing. The galaxy keeps running: fly, work and fight in it as long as you like."
- }
+ ]
 }

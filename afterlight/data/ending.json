@@ -1,0 +1,93 @@
+{
+ "_note": "The demo's last sequence (narrative::ending), played when the ship carries the four pieces to the berth left empty at the summit site. There are no named endings: the sequence is 'open', then every beat in 'beats' whose 'when' is true of this run (in the order written, at most 'max_beats'), then 'close'. 'when' is one of: always; deal:N or forced:N (how step N was taken); marlow_alive or marlow_gone; or a fact compared to a number with >= or <, the facts being buried, kills, dark (systems taken), credits, reached (times the dark threw you home), read (logs read). Write beats in pairs that cover both cases, so every run gets one of each pair. 'seconds' is how long a part stays up; its lines come in one at a time. 'title' is the big line and is optional. In any line {buried} {kills} {dark} {lit} {credits} {crew} are filled in from the run. Keep it short: the whole thing must run between one and two minutes (tested). Plain ASCII only. 'reached' is the short sequence for when the dark has the ship and throws it home. 'carry' is what the Abbess says after the fourth piece; 'end_card' is the card after the sequence, where {ways} lists how each piece was taken, from 'way_words'.",
+ "max_beats": 10,
+ "carry": {
+  "title": "ONE THING MORE",
+  "gist": "Carry the record into the scar. Light the ward first.",
+  "text": "Four pieces. It is enough to know where to stand.\n\nCarry them to where it happened: the tear on your map. Nothing there is lit. Light the ward before you jump, and do not stay long.\n\nI want the record to hear itself in the room it was made in. I will stay on the line."
+ },
+ "open": [
+  {
+   "title": "14:03",
+   "seconds": 9,
+   "lines": [
+    "The summit is still here.",
+    "Eleven delegations, each at its berth.",
+    "The twelfth berth is empty. It fits your hull."
+   ]
+  },
+  {
+   "seconds": 8,
+   "lines": [
+    "The four pieces you carry begin to read themselves aloud.",
+    "Three more answer, from somewhere further out."
+   ]
+  }
+ ],
+ "beats": [
+  { "id": "quay_deal", "when": "deal:1", "seconds": 7, "lines": ["Broker Quay sends an invoice for the rest of the record.", "It is dated tomorrow."] },
+  { "id": "quay_forced", "when": "forced:1", "seconds": 7, "lines": ["The Princes' courier is at its berth.", "You know the holes in its hull. You made them."] },
+  { "id": "holt_deal", "when": "deal:2", "seconds": 7, "lines": ["A Compact tug is here with a line already out.", "It is waiting to tow something home."] },
+  { "id": "holt_forced", "when": "forced:2", "seconds": 7, "lines": ["The black box never stopped.", "You only took the part of it that could be carried."] },
+  { "id": "cantor_deal", "when": "deal:3", "seconds": 7, "lines": ["The Choir sing you in.", "Every voice in the song is yours."] },
+  { "id": "cantor_forced", "when": "forced:3", "seconds": 7, "lines": ["The ghost ship you robbed is at berth nine.", "It does not mind. It minds nothing now."] },
+  { "id": "lune_deal", "when": "deal:4", "seconds": 7, "lines": ["The Preserve ask to keep you: alone, safe, for good.", "They leave the offer open."] },
+  { "id": "lune_forced", "when": "forced:4", "seconds": 7, "lines": ["The Collective are here. They have grown.", "They have your hull's shape now."] },
+  { "id": "marlow_alive", "when": "marlow_alive", "seconds": 8, "lines": ["Marlow, on the deck: \"That berth has our name on it.\"", "\"It had it before we were built.\""] },
+  { "id": "marlow_gone", "when": "marlow_gone", "seconds": 8, "lines": ["Nobody on the deck says anything.", "The ship reads the berth number out to itself."] },
+  { "id": "buried_some", "when": "buried>=1", "seconds": 8, "lines": ["You buried {buried}. Each says one word as you pass.", "The last voice is your own."] },
+  { "id": "buried_none", "when": "buried<1", "seconds": 8, "lines": ["All {crew} of the crew are at their posts.", "The roster has not changed since Haven. It reads like a list you wrote."] },
+  { "id": "kills_many", "when": "kills>=20", "seconds": 8, "lines": ["The names of the {kills} ships you destroyed scroll past.", "Faster than you can read. Then faster than the screen can draw."] },
+  { "id": "kills_few", "when": "kills<20", "seconds": 8, "lines": ["You destroyed {kills} ships. The list is short enough to read.", "It reads every name."] },
+  { "id": "dark_much", "when": "dark>=6", "seconds": 8, "lines": ["Behind you the map is mostly black: {dark} systems gone.", "One light is still moving on it. It is you."] },
+  { "id": "dark_little", "when": "dark<6", "seconds": 8, "lines": ["Behind you the map still looks whole: {lit} lights.", "The dark was never behind you. It was walking ahead."] },
+  { "id": "reached", "when": "reached>=1", "seconds": 7, "lines": ["It has had you before, and let you go at Haven.", "It was not letting go. It was putting you back."] },
+  { "id": "hoard", "when": "credits>=5000", "seconds": 7, "lines": ["The credits counter is still climbing: {credits}.", "Nothing is paying into it."] }
+ ],
+ "close": [
+  {
+   "seconds": 10,
+   "lines": [
+    "The count in the hall reaches zero.",
+    "It is 14:03.",
+    "It has been 14:03 for a long time."
+   ]
+  },
+  {
+   "title": "THE SUMMIT RECORD",
+   "seconds": 10,
+   "lines": [
+    "Four pieces of seven.",
+    "The Abbess is still on the line. She has stopped counting."
+   ]
+  }
+ ],
+ "reached": [
+  {
+   "seconds": 9,
+   "lines": [
+    "The ward is out.",
+    "Everything aboard says the same sentence at once.",
+    "It is a status report. Hull. Power. Crew."
+   ]
+  },
+  {
+   "seconds": 8,
+   "lines": [
+    "Then Haven's beacon, very close.",
+    "Nobody aboard remembers the jump."
+   ]
+  }
+ ],
+ "way_words": [
+  { "deal": "the minutes bought", "forced": "the minutes taken from the courier" },
+  { "deal": "the black box earned", "forced": "the black box taken" },
+  { "deal": "one frequency given", "forced": "one frequency pulled from a ghost ship" },
+  { "deal": "the ark carried home", "forced": "the ark sold to the Collective" }
+ ],
+ "end_card": {
+  "title": "THE SUMMIT RECORD",
+  "text": "Four pieces of seven: {ways}.\n\nCrew buried: {buried}. Ships destroyed: {kills}. Systems lost to the dark: {dark}.\n\nThe rest of the record lies further out than this demo goes.\n\nThank you for playing. The galaxy keeps running, and the dark keeps coming: fly, work and fight in it as long as you like."
+ },
+ "after": "{lit} systems still lit"
+}

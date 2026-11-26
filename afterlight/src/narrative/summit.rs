@@ -104,7 +104,6 @@ pub struct SummitData {
     /// Said when she has spoken for you to a faction that shut you out.
     pub spoken_for: String,
     pub steps: Vec<StepDef>,
-    pub demo_end: Card,
 }
 
 /// Every word of the chain, from `data/summit.json`.
@@ -235,6 +234,9 @@ pub struct SummitObjective {
     pub aim: Aim,
     /// A word or two for the marker and the map: who or what is there.
     pub tag: String,
+    /// Where the goal is when it is no system: a point on the galaxy map
+    /// (the summit site, narrative::site).
+    pub place: Option<Vec2>,
 }
 
 /// A name's last word, for a marker with room for one: "Quay", "Cantor".
@@ -257,7 +259,7 @@ fn aim_of(job: &Job) -> Aim {
 pub fn objective(contacts: &Contacts, work: &Jobs, galaxy: &GalaxyMap, standing: &FactionStanding, credits: u32) -> SummitObjective {
     let progress = &contacts.summit;
     let name_of = |id: u32| galaxy.systems.iter().find(|s| s.id == id).map_or("somewhere".to_string(), |s| s.name.clone());
-    let at = |system: Option<u32>, line: String, aim: Aim, tag: &str| SummitObjective { system, line: Some(line), aim, tag: tag.to_string() };
+    let at = |system: Option<u32>, line: String, aim: Aim, tag: &str| SummitObjective { system, line: Some(line), aim, tag: tag.to_string(), place: None };
     if !progress.hailed && !progress.commissioned {
         return SummitObjective::default();
     }
@@ -272,7 +274,16 @@ pub fn objective(contacts: &Contacts, work: &Jobs, galaxy: &GalaxyMap, standing:
         };
     }
     let Some(n) = progress.current() else {
-        return at(None, format!("{head}   the rest lies beyond this demo"), Aim::Nowhere, "");
+        let story = &contacts.story;
+        // The pieces this build has are in hand. First they are carried to
+        // where the summit was; after that, the galaxy and the dark go on.
+        if story.carry && !story.ending_seen {
+            let line = format!("{head}   carry the record into the tear on your map, to the empty berth\nIt is dark there: the warp drive needs a Dark Ward aboard.");
+            return SummitObjective { place: story.site, ..at(None, line, Aim::Nowhere, "the site") };
+        }
+        let lit = galaxy.systems.len().saturating_sub(super::front::taken_count(galaxy));
+        let after = super::ending::data().after.replace("{lit}", &lit.to_string());
+        return at(None, format!("{head}   {after}"), Aim::Nowhere, "");
     };
     if let Some(job) = work.story().filter(|j| j.story.is_some_and(|m| m.step == n)) {
         let system = job.system();
@@ -316,8 +327,14 @@ fn update_objective(
     standing: Res<FactionStanding>,
     currency: Res<Currency>,
     mut obj: ResMut<SummitObjective>,
+    at_site: Option<Res<super::site::AtSite>>,
 ) {
-    let want = objective(&contacts, &work, &galaxy, &standing, currency.credits);
+    let mut want = objective(&contacts, &work, &galaxy, &standing, currency.credits);
+    // There already: the line stops talking about getting there (the empty
+    // berth has its own marker at the edge of the screen).
+    if at_site.is_some_and(|s| s.0) && contacts.story.carry && !contacts.story.ending_seen {
+        want.line = Some(format!("SUMMIT RECORD  {} of {}   bring the ship into the empty berth\nThe ward will not hold for long.", contacts.summit.done, STEPS_IN_ALL));
+    }
     if *obj != want {
         *obj = want;
     }
@@ -554,10 +571,15 @@ fn advance(
             notification_type: crate::events::NotificationType::Success,
             duration: 10.0,
         });
+        // The last piece this build has: she asks for them to be carried to
+        // where the summit was (narrative::site), where the demo closes
+        // (narrative::ending). No goodbye card: there is one more thing to do.
         if contacts.summit.done >= last_step() && !contacts.summit.ended {
             contacts.summit.ended = true;
-            let end = &data().demo_end;
-            queue.push_card("END OF THE DEMO", end.title.clone(), end.text.clone());
+            contacts.story.carry = true;
+            let card = &super::ending::data().carry;
+            queue.push_card("OVER THE COMM", card.title.clone(), card.text.clone());
+            queue.set_gist(&card.title, card.gist.clone());
         }
     }
 }
@@ -698,6 +720,8 @@ fn pin_from_env(mut contacts: ResMut<Contacts>, mut standing: ResMut<FactionStan
         contacts.story.errands = ERRANDS;
         contacts.story.errands_given = ERRANDS + 1;
     }
+    // With the last piece in hand she has asked for them to be carried.
+    contacts.story.carry = n >= last_step();
     // As step 2 would have: the Choir let you dock.
     let choir = standing.value(AiShipType::BrokenChoir);
     if n >= 2 && choir < SPOKEN_FOR {
@@ -745,7 +769,7 @@ mod tests {
     #[test]
     fn the_words_are_plain_ascii() {
         let d = data();
-        let mut all = vec![&d.hail.title, &d.hail.text, &d.commission, &d.demo_end.title, &d.demo_end.text];
+        let mut all = vec![&d.hail.title, &d.hail.text, &d.commission];
         all.extend([&d.errand_fallback.title, &d.errand_fallback.brief, &d.errand_next, &d.errands_done, &d.relay_wait, &d.relay_idle, &d.spoken_for]);
         for e in &d.errands {
             all.extend([&e.title, &e.brief]);
@@ -818,9 +842,24 @@ mod tests {
             assert_eq!(o.aim, Aim::Port, "step {n}: someone to see at a starport");
             c.summit.done = n;
         }
+        // The last piece in hand and nothing asked (a save from before the
+        // site existed, for the frame until it is): the line still says
+        // something, and names how much of the galaxy is left.
         let end = see(&c);
-        assert!(end.line.unwrap().contains("beyond this demo"));
+        assert!(end.line.unwrap().contains("still lit"));
         assert_eq!(end.system, None);
+        // Asked to carry them: the line points into the tear, at the site.
+        c.story.carry = true;
+        c.story.site = Some(Vec2::new(5.0, 6.0));
+        let carry = see(&c);
+        let line = carry.line.unwrap();
+        assert!(line.contains("tear") && line.contains("Dark Ward"), "{line}");
+        assert_eq!((carry.system, carry.place), (None, Some(Vec2::new(5.0, 6.0))));
+        // The record heard: the standing line.
+        c.story.ending_seen = true;
+        let after = see(&c);
+        assert!(after.line.unwrap().contains("still lit"));
+        assert_eq!(after.place, None);
     }
 
     /// Short of the Princes' price, the line says what it costs and what you
@@ -1096,16 +1135,24 @@ mod tests {
         assert_eq!(app.world().resource::<FactionStanding>().tier(AiShipType::BrokenChoir), StandingTier::Friendly);
     }
 
-    /// The last step of the build closes with the end-of-demo card, once.
+    /// The last step of the build doesn't say goodbye: the Abbess asks for
+    /// the pieces to be carried to the site, once, and the line says so.
     #[test]
-    fn the_demo_ends_with_a_card_once() {
+    fn the_last_piece_is_not_the_end() {
         let mut app = story_app(SummitProgress { hailed: true, commissioned: true, done: last_step() - 1, ended: false });
         win(&mut app, last_step(), false);
-        let q = &app.world().resource::<LogQueue>().pending;
-        assert_eq!(q.last().unwrap().0, data().demo_end.title);
-        assert!(app.world().resource::<Contacts>().summit.ended);
+        let carry = &crate::narrative::ending::data().carry;
+        let q = app.world().resource::<LogQueue>().pending.clone();
+        assert_eq!(q.last().unwrap().0, carry.title);
+        assert_eq!(q.iter().filter(|c| c.0 == carry.title).count(), 1);
+        assert!(q.iter().all(|c| !c.1.contains("Thank you for playing")), "the goodbye came before the ending");
+        let c = app.world().resource::<Contacts>();
+        assert!(c.summit.ended && c.story.carry && !c.story.ending_seen);
         let o = app.world().resource::<SummitObjective>();
-        assert!(o.line.as_ref().unwrap().contains("beyond this demo"));
+        assert!(o.line.as_ref().unwrap().contains("carry the record"), "{:?}", o.line);
+        // Reported again, nothing more is said.
+        win(&mut app, last_step(), false);
+        assert_eq!(app.world().resource::<LogQueue>().pending.len(), q.len());
     }
 
     /// Only the old, rich factions call you the last one, in plain words.

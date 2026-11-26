@@ -3132,7 +3132,11 @@ fn spawn_game_over_screen(
     statistics: Res<Statistics>,
     victory_state: Res<VictoryState>,
     death_cause: Res<crate::resources::DeathCause>,
+    run: crate::narrative::ending::Run,
 ) {
+    // The run as the story saw it (narrative::ending): what this screen used
+    // to count was creatures, which are gone, and a depth nobody dives to.
+    let story_lines = crate::narrative::ending::run_lines(&run.facts());
     use theme::*;
 
     let is_victory = victory_state.achieved;
@@ -3185,12 +3189,16 @@ fn spawn_game_over_screen(
             let time_min = (statistics.play_time_seconds / 60.0) as i32;
             let time_sec = (statistics.play_time_seconds % 60.0) as i32;
 
-            let stat_items = [
-                (format!("Max Distance     {}", format_range_km(statistics.max_depth_reached)), ThemeColors::ACCENT_BLUE),
-                (format!("Time Survived    {}:{:02}", time_min, time_sec), ThemeColors::TEXT_PRIMARY),
-                (format!("Creatures Slain  {}", statistics.creatures_killed), ThemeColors::ACCENT_ORANGE),
-                (format!("Crew Lost        {}", statistics.crew_lost), ThemeColors::ACCENT_RED),
-            ];
+            let mut stat_items = vec![(format!("Time Survived     {}:{:02}", time_min, time_sec), ThemeColors::TEXT_PRIMARY)];
+            for (i, line) in story_lines.iter().enumerate() {
+                let color = match i {
+                    0 => ThemeColors::ACCENT_ORANGE,
+                    _ if line.starts_with("    ") => ThemeColors::TEXT_SECONDARY,
+                    _ => ThemeColors::TEXT_PRIMARY,
+                };
+                stat_items.push((line.clone(), color));
+            }
+            stat_items.push((format!("Crew Lost         {}", statistics.crew_lost), ThemeColors::ACCENT_RED));
 
             for (text, color) in stat_items {
                 stats.spawn((Text::new(text), TextFont { font_size: FontSize::Px(ThemeFonts::H3), ..default() }, TextColor(color)));

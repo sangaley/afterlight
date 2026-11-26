@@ -149,6 +149,7 @@ fn watch_the_story(
     dead: Option<Res<crate::crew::burial::DriftingDead>>,
     mirror: Option<Res<super::doppelganger::Doppelganger>>,
     ward: Option<Res<super::ward::WardState>>,
+    playing: Option<Res<super::ending::Playing>>,
     mut moments: MessageWriter<MarlowMoment>,
 ) {
     if !aboard(&contacts) {
@@ -190,7 +191,9 @@ fn watch_the_story(
     if ward.is_some_and(|w| w.failing > 0.0) {
         now.push("ward_failing");
     }
-    if story.reached > 0 {
+    // After the dark's own sequence has played, not under it.
+    let sequence_up = playing.is_some_and(|p| matches!(*p, super::ending::Playing::Assembled { .. }));
+    if story.reached > 0 && !sequence_up {
         now.push("reached");
     }
     for moment in now {

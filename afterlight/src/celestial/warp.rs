@@ -96,6 +96,7 @@ pub fn warp_input_system(
     ward: Option<Res<crate::narrative::ward::WardState>>,
     overheard: Option<ResMut<crate::narrative::news::Overheard>>,
     preload: Option<ResMut<WarpPreload>>,
+    site: Option<Res<crate::narrative::site::SitePlace>>,
 ) {
     // The key starts the charge and it runs on its own from there — no need
     // to hold it through the whole (up to 18s) charge. A second press while
@@ -136,6 +137,17 @@ pub fn warp_input_system(
                     });
                     return;
                 }
+            }
+
+            // The summit site is in the dark as well, though it is open
+            // space: the same rule (narrative::site).
+            if !crate::narrative::site::may_jump(site.as_ref().and_then(|s| s.0), target, ward.as_ref().is_some_and(|w| w.aboard)) {
+                notifications.write(ShowNotification {
+                    message: "The warp drive won't jump into the tear. It needs a Dark Ward aboard.".to_string(),
+                    notification_type: NotificationType::Warning,
+                    duration: 5.0,
+                });
+                return;
             }
 
             let dist = streaming.current_galaxy_pos.distance(target_pos);

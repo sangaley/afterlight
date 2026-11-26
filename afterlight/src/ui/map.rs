@@ -724,13 +724,16 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         hull: world.hull.hull_integrity,
         hold: (world.inventory.current_weight, world.inventory.max_capacity),
         cargo: world.inventory.items.iter().map(|(item, count)| (item.name().to_string(), *count)).collect(),
+        // The tear is where the site is pinned (narrative::site), once it is.
         scar: crate::narrative::summit::scar_radius(world.contacts.summit.done)
-            .map(|r| (crate::narrative::summit::summit_site(&world.galaxy_map), r)),
+            .map(|r| (world.contacts.story.site.unwrap_or_else(|| crate::narrative::summit::summit_site(&world.galaxy_map)), r)),
         story: world
             .objective
             .system
             .and_then(|id| world.galaxy_map.systems.iter().find(|s| s.id == id))
-            .map(|s| (s.galaxy_pos, world.objective.tag.clone())),
+            .map(|s| s.galaxy_pos)
+            .or(world.objective.place)
+            .map(|at| (at, world.objective.tag.clone())),
     }
 }
 
