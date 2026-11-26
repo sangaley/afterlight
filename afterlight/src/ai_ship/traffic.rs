@@ -865,11 +865,16 @@ mod tests {
     }
 }
 
-/// Let go of moored ships nobody is drawing in a berth (`drawn` says who
-/// is): afloat where they are. And take back those a station backed out.
-pub fn let_go(sim: &mut WorldSimulation, drawn: &std::collections::HashSet<u32>) {
-    let released: Vec<(u32, Vec2)> = std::mem::take(&mut sim.released);
+/// Take back the ships a station has backed out of their berths: afloat
+/// where it left them. First thing, before any berth is handed out, or a
+/// ship just backed out is still "moored" and is given a berth again.
+pub fn take_back_released(sim: &mut WorldSimulation) {
+    let mut released: Vec<(u32, Vec2)> = std::mem::take(&mut sim.released);
+    // The picture and its lights both report it.
+    released.sort_by_key(|(id, _)| *id);
+    released.dedup_by_key(|(id, _)| *id);
     for (id, at) in released {
+        sim.cast_off.retain(|c| *c != id);
         if let Some(ship) = sim.ships.iter_mut().find(|s| s.id == id) {
             ship.moored = None;
             ship.position = at;
@@ -880,6 +885,12 @@ pub fn let_go(sim: &mut WorldSimulation, drawn: &std::collections::HashSet<u32>)
         }
         sim.towed.remove(&id);
     }
+}
+
+/// Let go of moored ships whose time is up and that no station is drawing
+/// in a berth (`drawn` says who is): afloat where they are.
+pub fn let_go(sim: &mut WorldSimulation, drawn: &std::collections::HashSet<u32>) {
+    take_back_released(sim);
     let cast: Vec<u32> = std::mem::take(&mut sim.cast_off);
     for id in cast {
         if drawn.contains(&id) {
@@ -950,8 +961,11 @@ mod port_tests {
         let_go(&mut sim, &drawn);
         assert!(sim.ships[0].moored.is_some() && sim.cast_off == vec![ids[0]], "the drawn one was let go before it backed out");
         assert!(sim.ships[1].afloat() && sim.ships[2].afloat());
+        // Reported twice (picture and lights), and still listed to cast off.
         sim.released.push((ids[0], Vec2::new(500.0, 40.0)));
-        let_go(&mut sim, &std::collections::HashSet::new());
+        sim.released.push((ids[0], Vec2::new(500.0, 40.0)));
+        take_back_released(&mut sim);
+        assert!(sim.cast_off.is_empty(), "a ship backed out is still waiting to cast off");
         assert!(sim.ships[0].afloat());
         assert_eq!(sim.ships[0].position, Vec2::new(500.0, 40.0));
     }

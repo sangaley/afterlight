@@ -585,6 +585,7 @@ pub fn berth_visitors(
 ) {
     let sim: &mut crate::ai_ship::components::WorldSimulation = &mut sim;
     sim.released.append(&mut released.0);
+    crate::ai_ship::traffic::take_back_released(sim);
     if art.is_none() {
         let drawn = std::collections::HashSet::new();
         crate::ai_ship::traffic::let_go(sim, &drawn);
@@ -665,7 +666,8 @@ pub fn berth_visitors(
         let waiting: Vec<(u32, AiShipType, Option<&'static str>)> = sim
             .ships
             .iter()
-            .filter(|s| s.moored == Some(port) && !live.visitors.values().any(|v| *v == s.id))
+            // Not one whose time in port is up: it is leaving, not arriving.
+            .filter(|s| s.moored == Some(port) && !sim.cast_off.contains(&s.id) && !live.visitors.values().any(|v| *v == s.id))
             .map(|s| (s.id, s.faction, s.class))
             .collect();
         for (id, faction, class) in waiting {
