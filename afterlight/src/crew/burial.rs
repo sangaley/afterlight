@@ -304,6 +304,8 @@ pub fn advance_burial(
                 // premise outright — and it takes going a long way to hear it.
                 let who = if name_for_line.is_empty() { "A hand".to_string() } else { name_for_line.clone() };
                 let line = match cascade.ring {
+                    // The deck chief gets his own words (narrative::marlow).
+                    _ if name_for_line == crate::crew::names::MARLOW => crate::narrative::marlow::data().burial.clone(),
                     0 => format!("{who} committed to space."),
                     1 => format!("{who} committed to space. The roster is updated."),
                     2 => format!("{who} committed to space. Their station logs are retained."),

@@ -2,6 +2,7 @@
 //! simulates rather than through cutscenes.
 
 pub mod logs;
+pub mod marlow;
 pub mod news;
 pub mod doppelganger;
 pub mod expedition;
@@ -171,6 +172,7 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(interference::InterferencePlugin);
         app.add_plugins(expedition::ExpeditionPlugin);
         app.add_plugins(summit::SummitPlugin);
+        app.add_plugins(marlow::MarlowPlugin);
         app.add_plugins(leads::LeadsPlugin);
         app.add_plugins(front::FrontPlugin);
         app.add_plugins(ward::WardPlugin);
