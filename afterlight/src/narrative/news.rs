@@ -287,6 +287,30 @@ impl Plugin for NewsPlugin {
 mod tests {
     use super::*;
 
+    /// You know the systems you've been to and the ones next to them, and
+    /// what you've heard of; the rest of the stars you've found are dots.
+    #[test]
+    fn you_know_where_you_have_been_and_next_door_and_what_you_heard() {
+        let mut galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        for s in galaxy.systems.iter_mut() {
+            s.discovery = if s.id == 0 { SystemDiscovery::Visited } else { SystemDiscovery::Located };
+        }
+        let known = known_ids(&galaxy);
+        let next_door = crate::celestial::galaxy::nearest_neighbors(&galaxy, 0, crate::celestial::galaxy::PASSIVE_NEIGHBOURS);
+        assert!(known.contains(&0));
+        for id in &next_door {
+            assert!(known.contains(id));
+        }
+        assert_eq!(known.len(), 1 + next_door.len(), "knew more than home and next door");
+        // Heard of at a port: two jumps round.
+        let far = galaxy.systems.iter().map(|s| s.id).find(|id| !known.contains(id)).unwrap();
+        galaxy.systems.iter_mut().find(|s| s.id == far).unwrap().heard.known = true;
+        assert!(known_ids(&galaxy).contains(&far));
+        // An old save has no `known`: it loads as not heard of.
+        let old: Heard = serde_json::from_str(r#"{"dark":0.0,"at":0.0,"taken_at":null,"owner_before":null,"capital_before":false}"#).unwrap();
+        assert!(!old.known);
+    }
+
     fn galaxy() -> GalaxyMap {
         crate::celestial::galaxy::generate_galaxy_map(42)
     }
