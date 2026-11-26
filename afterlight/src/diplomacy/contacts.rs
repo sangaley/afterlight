@@ -53,6 +53,21 @@ pub struct ContactDef {
     pub trusted: String,
     #[serde(default)]
     pub story: bool,
+    /// The kind of work their `offer` line is about (diplomacy::talk): they
+    /// offer it first, and say something else when the work is another kind.
+    #[serde(default)]
+    pub prefers: Option<String>,
+    /// What they say about what you did (diplomacy::talk).
+    #[serde(default)]
+    pub reactive: Vec<Reactive>,
+}
+
+/// A line said when something is true of the story: `when` is read by
+/// diplomacy::talk.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Reactive {
+    pub when: String,
+    pub line: String,
 }
 
 #[derive(Deserialize)]

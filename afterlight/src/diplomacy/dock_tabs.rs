@@ -110,7 +110,15 @@ pub fn dock_tab_keys(
                     contacts.story.errands_given = contacts.story.errands + 1;
                     Some(job)
                 }
-                None => jobs::offer_for(def, contacts.relationship(&def.id), &at, &mut rand::thread_rng()),
+                // Ordinary work, with a word about the story or the dark
+                // when there is one to be said (diplomacy::talk).
+                None => jobs::offer_for(def, contacts.relationship(&def.id), &at, &mut rand::thread_rng()).map(|mut job| {
+                    let scene = super::talk::Scene::at(&contacts, &galaxy, Some(system));
+                    if let Some(more) = super::talk::aside(&job.kind, &scene) {
+                        job.brief = format!("{} {more}", job.brief);
+                    }
+                    job
+                }),
             };
             if let Some(job) = offered {
                 info!("JOB offered by {}: {} ({} cr) - {}", def.name, job.title, job.reward, job.brief);
@@ -220,7 +228,7 @@ pub fn refresh_dock_tabs(
             commands.entity(entity).despawn_related::<Children>();
             let owner = market.dock_terms.as_ref().and_then(|t| t.faction);
             match panel.0 {
-                DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs(), &market.stock),
+                DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs(), &market.stock, &contacts),
                 DockTab::Comm => fill_comm(&mut commands, entity, &galaxy, &contacts, &work, &streaming, owner, state.contact),
                 DockTab::Military => fill_military(&mut commands, entity, &galaxy, &standing, &contacts, &streaming, owner, state.item),
                 DockTab::Market => {}
@@ -429,11 +437,19 @@ fn fill_bar(
     owner: Option<AiShipType>,
     now: f32,
     stock: &crate::world::economy::Stock,
+    contacts: &Contacts,
 ) {
     let system = streaming.loaded_system.unwrap_or(0);
     // The same talk for five minutes at a stretch, not a new crowd every tab.
     let seed = system as u64 * 1_000_003 + (now / 300.0) as u64;
-    let said = rumours(sim, galaxy, war, standing, system, seed, stock);
+    let mut said = rumours(sim, galaxy, war, standing, system, seed, stock);
+    // And one thing they've heard about you, or about the dark, first
+    // (diplomacy::talk): the bar has heard of the Summit Record.
+    if let Some(story) = super::talk::rumour(&super::talk::Scene::at(contacts, galaxy, streaming.loaded_system)) {
+        said.retain(|s| !s.starts_with("A quiet night"));
+        said.insert(0, story);
+        said.truncate(3);
+    }
     let who = patrons(owner);
     commands.entity(panel).with_children(|p| {
         p.spawn(line("WHO'S TALKING", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
@@ -506,7 +522,8 @@ fn fill_comm(
             // Over a relay, while she still has a house, she only tells you
             // to come.
             let waiting = relay && def.id == summit::ABBESS && !contacts.summit.commissioned && !summit::commission_here(relay, galaxy);
-            let said = if waiting { summit::relay_wait(galaxy) } else { contacts::line_for(def, rel, state.map_or(0, |s| s.talks)).to_string() };
+            let scene = super::talk::Scene::at(contacts, galaxy, streaming.loaded_system);
+            let said = if waiting { summit::relay_wait(galaxy) } else { super::talk::quote(def, contacts, work, &scene) };
             row.spawn((
                 Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), padding: UiRect::all(Val::Px(16.0)), flex_grow: 1.0, ..default() },
                 BackgroundColor(ThemeColors::BG_CARD),

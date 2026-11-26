@@ -27,6 +27,7 @@ use crate::states::GameState;
 pub mod contacts;
 pub mod dock_tabs;
 pub mod jobs;
+pub mod talk;
 pub mod signatures;
 pub mod stations;
 pub mod ui;

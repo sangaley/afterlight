@@ -31,6 +31,10 @@ use crate::celestial::resources::{GalaxyMap, SystemStreamingManager};
 use crate::celestial::territory::BorderWar;
 use crate::resources::{Currency, ItemType};
 
+/// How often a contact tries the kind of work their own pitch is about
+/// before any other (`ContactDef::prefers`).
+const OWN_WORK_FIRST: f64 = 0.6;
+
 /// Jobs you can hold at once.
 pub const MAX_ACTIVE: usize = 3;
 /// How long holding the line lasts.
@@ -257,7 +261,7 @@ fn cargo_count(item: ItemType, count: u32) -> String {
 }
 
 /// The kinds of work a contact gives, by their role.
-fn kinds_for(role: ContactRole) -> &'static [&'static str] {
+pub fn kinds_for(role: ContactRole) -> &'static [&'static str] {
     match role {
         ContactRole::Military => &["bounty", "hold"],
         ContactRole::Trade => &["escort", "delivery"],
@@ -323,6 +327,17 @@ pub fn offer_for(def: &ContactDef, relationship: f32, world: &World, rng: &mut i
 
     let mut kinds: Vec<&str> = kinds_for(def.role).to_vec();
     kinds.shuffle(rng);
+    // The work their own pitch is about comes first more often than not,
+    // when there is any to be had: the contact who talks about a battle
+    // group mostly hands you a bounty. Not always, or they would never
+    // offer anything else (an Underworld contact who likes a survey would
+    // never want anything stolen).
+    if let Some(own) = def.prefers.as_deref().filter(|_| rng.gen_bool(OWN_WORK_FIRST)) {
+        if let Some(i) = kinds.iter().position(|k| *k == own) {
+            let k = kinds.remove(i);
+            kinds.insert(0, k);
+        }
+    }
     for kind in kinds {
         match kind {
             "bounty" => {

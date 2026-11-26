@@ -1,0 +1,77 @@
+{
+ "_note": "How the world talks about the story (diplomacy::talk). Four parts. 'role_offer': what a contact says when the work they have for you is not the work their own 'offer' line in contacts.json is about, by their role (Military, Trade, Underworld, Outpost, Abbess) and the kind of job, so the words always match the WORK box under them. 'role_reactive': what a contact with no 'reactive' lines of their own says about the story or the dark, by role; the last line whose 'when' is true is the one said, on every other talk. 'briefs': a sentence added to an ordinary job's brief when its 'when' is true, by kind of job ('any' for all). 'rumours': one of these is told at the bar each visit when its 'when' is true (the last true one wins, so write them in the order the story goes). 'when' is one of: always; after:N (you have N pieces); deal:N or forced:N (how piece N was taken); dealt or robbed (reactive lines only: how you took the piece THIS contact's faction held); dark_within:N (the dark is N jumps or fewer from where you are docked); carry (the Abbess has asked you to take the pieces to the site); heard (the record has played); or a fact compared to a number with >= or <: dark (systems taken), kills, buried. {dark} and {lit} are filled in. Keep every line to one or two short sentences. Plain ASCII only.",
+ "role_offer": {
+  "Military": {
+   "bounty": "There's a fleet near here I want gone. The details are below.",
+   "hold": "One of our systems is slipping. I need guns there, not promises."
+  },
+  "Trade": {
+   "escort": "One of our convoys is running through. See it to its next stop and you'll be paid.",
+   "delivery": "Sealed cargo, one of our stations to another. Don't open it and don't sell it."
+  },
+  "Underworld": {
+   "raid": "There's a convoy that shouldn't arrive. I don't need to know how.",
+   "survey": "I want eyes on a system for a minute. No questions, yours or mine.",
+   "theft": "Someone builds something I'd like to understand. Bring me one."
+  },
+  "Outpost": {
+   "bounty": "There's a fleet out there that's been leaning on us. We'd pay to see it gone.",
+   "delivery": "We've cargo for one of our other stations and nobody to carry it.",
+   "survey": "Go and take a look next door for us. A minute is enough."
+  },
+  "Abbess": {
+   "survey": "Sit a while somewhere quiet for me, and listen."
+  },
+  "any": {
+   "escort": "There are people running from the dark through here. See them out."
+  }
+ },
+ "role_reactive": {
+  "Military": [
+   { "when": "after:1", "line": "A ship carrying the summit minutes is flying about. Command would like to know whose side it is on." },
+   { "when": "after:3", "line": "You sound different on the comm lately. More of you. I've had the watch officers check their headsets." },
+   { "when": "dark_within:2", "line": "The dark is two jumps off and we are told to hold. Nobody has said with what." },
+   { "when": "heard", "line": "Something happened in the tear. Every clock on this station read 14:03 for a minute. Was that you?" }
+  ],
+  "Trade": [
+   { "when": "after:1", "line": "Somebody bought the Princes' summit minutes. Old paper is suddenly worth carrying." },
+   { "when": "after:3", "line": "My clerks say your invoices arrive in more than one hand. I pay them anyway." },
+   { "when": "dark_within:2", "line": "I am moving stock inward while there is still an inward. I suggest you do the same." },
+   { "when": "heard", "line": "The ledgers all closed themselves at 14:03 the other day. I am told it was a fault." }
+  ],
+  "Underworld": [
+   { "when": "after:1", "line": "Everyone is selling copies of the summit minutes this week. Yours are the real ones, I hear." },
+   { "when": "after:3", "line": "People ask me who is on your comm when you call. I tell them it's a bad line." },
+   { "when": "dark_within:2", "line": "People will pay anything for a berth on a ship going the other way. Just so you know." },
+   { "when": "heard", "line": "Whatever you did in the tear, three of my people woke up knowing your call sign. I'd like that explained." }
+  ],
+  "Outpost": [
+   { "when": "after:1", "line": "We heard about the summit minutes. Out here that is somebody else's war." },
+   { "when": "after:3", "line": "The relay picks you up before you arrive now. Several of you." },
+   { "when": "dark_within:2", "line": "The lights went out two jumps from here. We count the ones that are left every night." },
+   { "when": "heard", "line": "The station clock stuck at 14:03 for a minute. Nobody here will say it happened." }
+  ],
+  "Abbess": []
+ },
+ "briefs": [
+  { "kind": "any", "when": "after:2", "line": "Go round the tear, not through it." },
+  { "kind": "any", "when": "after:3", "line": "And keep your comm quiet near crowds. People say it carries." },
+  { "kind": "delivery", "when": "dark_within:2", "line": "They need it before the dark does." },
+  { "kind": "escort", "when": "dark_within:2", "line": "They won't be running that road again." },
+  { "kind": "bounty", "when": "dark_within:2", "line": "With the dark this close, nobody can spare the hulls to do it themselves." },
+  { "kind": "hold", "when": "dark_within:2", "line": "If it falls there is nowhere behind it to fall back to." },
+  { "kind": "survey", "when": "dark_within:2", "line": "Tell us whether its lights are still on." },
+  { "kind": "raid", "when": "dark_within:2", "line": "They are running from the dark. Run faster." }
+ ],
+ "rumours": [
+  { "when": "deal:1", "line": "Somebody bought the Princes' summit minutes and paid in full. Nobody pays the Princes in full." },
+  { "when": "forced:1", "line": "Somebody shot up a Princes courier for a box of old paper. Old paper!" },
+  { "when": "after:2", "line": "The Haulers cut a black box out of the summit wreck. It was still recording, they say." },
+  { "when": "after:3", "line": "There's a ship going round that the Choir sing about. Too many voices on its comm." },
+  { "when": "deal:4", "line": "The Preserve moved their ark, and it got home asleep. Whoever carried it kept away from everyone." },
+  { "when": "forced:4", "line": "The Preserve's ark went to the Collective. The Collective have been very quiet since. Growing, I'd say." },
+  { "when": "dark>=4", "line": "That's {dark} systems gone dark now. I counted. {lit} left." },
+  { "when": "carry", "line": "They say a ship is going into the tear. On purpose. With a ward and everything." },
+  { "when": "heard", "line": "Every clock in the port stopped at 14:03 the other day. Then they all started again. Nobody's fixed anything." }
+ ]
+}

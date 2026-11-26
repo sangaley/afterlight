@@ -1,5 +1,5 @@
 {
- "_note": "Contacts (diplomacy::contacts). Drafted 2026-10-22 from the Capitals and Story Quests Plan's dialogue tab; edit the lines freely. role: Hub | Military | Trade | Underworld | Outpost. story: holds a step of the Summit Record chain (never lost when a capital falls).",
+ "_note": "Contacts (diplomacy::contacts). Drafted 2026-10-22 from the Capitals and Story Quests Plan's dialogue tab; edit the lines freely. role: Hub | Military | Trade | Underworld | Outpost. story: holds a step of the Summit Record chain (never lost when a capital falls). 'prefers' (optional) is the kind of work a contact's 'offer' line is about (bounty, hold, escort, delivery, raid, survey, theft; it must be one their role gives): they offer that first, and when the work on offer is another kind they say their role's line for it from data/talk.json instead. 'reactive' (optional) is what they say, on every other talk, about what you did: a list of {when, line}, the last true one being said; 'when' is as in data/talk.json, where dealt and robbed mean how you took the piece their faction held.",
  "contacts": [
   {
    "id": "TheSilence_the_abbess",
@@ -19,7 +19,8 @@
    "greeting": "... (he hands you a price list)",
    "offer": "Carry this to our sister house. Do not open it. There is nothing in it.",
    "trusted": "We kept you a berth. We kept it quiet.",
-   "story": false
+   "story": false,
+   "prefers": "delivery"
   },
   {
    "id": "TheSilence_sister_stillwater",
@@ -29,7 +30,8 @@
    "greeting": "We do not fight. Others fight near us.",
    "offer": "Something is shooting at our pilgrims. Make it stop. We will not ask how.",
    "trusted": "You are the only violence we have ever been grateful for.",
-   "story": false
+   "story": false,
+   "prefers": "bounty"
   },
   {
    "id": "TheSilence_the_listener",
@@ -39,7 +41,8 @@
    "greeting": "Welcome. Speak softly.",
    "offer": "There is a pilgrim ship missing. Find it, if you can bear to listen to what is left.",
    "trusted": "Come back when it is too loud inside you. It is quiet here.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "MerchantPrinces_broker_anselm_quay",
@@ -49,7 +52,21 @@
    "greeting": "A new customer. Or an old one, in a new hull? I lose track.",
    "offer": "I have something the Silence wants and the Compact wants more. Help me decide who wants it most.",
    "trusted": "I have sold the end of the world four times. Yours is the first I would like to keep.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "dealt",
+     "line": "A pleasure doing business. I have already forgotten your face, as agreed."
+    },
+    {
+     "when": "robbed",
+     "line": "You owe me a courier. I keep accounts, and yours is open."
+    },
+    {
+     "when": "heard",
+     "line": "My clocks all read 14:03 for a minute. I have invoiced you for the minute."
+    }
+   ]
   },
   {
    "id": "MerchantPrinces_contracts_officer_delphine_mott",
@@ -59,7 +76,8 @@
    "greeting": "The Guild does not fight. The Guild pays people who do.",
    "offer": "A Compact tanker is undercutting us on fuel. Discourage it.",
    "trusted": "I wrote your name into three contracts. It is a compliment. Mostly.",
-   "story": false
+   "story": false,
+   "prefers": "bounty"
   },
   {
    "id": "MerchantPrinces_the_auctioneer",
@@ -69,7 +87,8 @@
    "greeting": "Lot forty-seven. Bidding starts with your attention.",
    "offer": "A buyer wants a Throne shield emitter. The Throne does not want to sell. Bridge the gap.",
    "trusted": "I would auction you, if you ever came up. I would bid on you myself.",
-   "story": false
+   "story": false,
+   "prefers": "theft"
   },
   {
    "id": "MerchantPrinces_factor_ilse_brandt",
@@ -79,7 +98,8 @@
    "greeting": "Prices are posted. Discounts are personal.",
    "offer": "Our pedlar is overdue. Find her, or find who has her cargo.",
    "trusted": "For you, the personal price.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "FreeHaulersCompact_dispatcher_maren_holt",
@@ -89,7 +109,21 @@
    "greeting": "You hauling or you blocking the lane?",
    "offer": "We pulled a black box out of a dead station. The Princes want it buried. Get it, and us, home.",
    "trusted": "Union card's yours if you want it. Nobody's ever wanted it. Means something.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "dealt",
+     "line": "Our people got where they were going. The Compact remembers that."
+    },
+    {
+     "when": "robbed",
+     "line": "People have tried, I said. You're the one who managed it. Get off my channel."
+    },
+    {
+     "when": "heard",
+     "line": "The box you carried was still recording the whole time. We could hear it from here."
+    }
+   ]
   },
   {
    "id": "FreeHaulersCompact_shop_steward_teo_varga",
@@ -109,7 +143,8 @@
    "greeting": "Salvage diver. Don't ask what I dive.",
    "offer": "There's a wreck in the deep nobody's claimed, because nobody comes back. I'll split it.",
    "trusted": "I found your ship's name on a hull plate once. Older than you. Didn't want to tell you.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "FreeHaulersCompact_yardmaster_ruth_okafor",
@@ -149,7 +184,8 @@
    "greeting": "I remember being you. No. Being them. Never mind.",
    "offer": "A copy of me went missing in the deep. Bring him back, or bring back what he saw.",
    "trusted": "I am the oldest. I was here first. I am not the first.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "RecursiveKingdom_rex_aged_eight",
@@ -159,7 +195,8 @@
    "greeting": "Are you a person or a copy?",
    "offer": "My big self lost a ship. Can you find it?",
    "trusted": "I think you might be a lot of people too.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "BrokenChoir_the_cantor",
@@ -169,7 +206,21 @@
    "greeting": "We heard you coming. We hear everything coming. Sit.",
    "offer": "There is one frequency in us we cannot bear to play. Hold our border, and we will play it for you.",
    "trusted": "It was your voice. We kept it safe. We did not know whose it was until you came in.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "dealt",
+     "line": "We still sing the frequency you heard. It is in a lower key now. Yours."
+    },
+    {
+     "when": "robbed",
+     "line": "The ghost ship does not mind what you did. We mind for it."
+    },
+    {
+     "when": "heard",
+     "line": "We heard it play out, in the room it was made in. Every one of us sang your part."
+    }
+   ]
   },
   {
    "id": "BrokenChoir_chorister_seven",
@@ -179,7 +230,8 @@
    "greeting": "Seven. There were eleven. Do not ask.",
    "offer": "The Collective is singing on our border. Silence them.",
    "trusted": "You do not flinch when we talk all at once. The others flinch.",
-   "story": false
+   "story": false,
+   "prefers": "hold"
   },
   {
    "id": "BrokenChoir_the_antiphon",
@@ -199,7 +251,8 @@
    "greeting": "Mind the echo.",
    "offer": "A ghost ship of ours is broadcasting. Find out what it is saying.",
    "trusted": "It was saying your name. I thought you should know.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "StellarPreserve_warden_hesper_lune",
@@ -209,7 +262,21 @@
    "greeting": "Careful. Everything here is alive, and some of it is listening.",
    "offer": "I have a specimen that grows faster when it is near other minds. Carry it through the Collective's space. Do not stop.",
    "trusted": "I know what it eats now. I am frightened of you, a little. Come anyway.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "dealt",
+     "line": "The ark is home and asleep. Thank you for keeping away from crowds."
+    },
+    {
+     "when": "robbed",
+     "line": "It was sleeping. You took it to the one place that would wake it."
+    },
+    {
+     "when": "heard",
+     "line": "Our instruments say something in the tear grew by one ship. I hope it was not you."
+    }
+   ]
   },
   {
    "id": "StellarPreserve_ranger_coll_ashby",
@@ -219,7 +286,8 @@
    "greeting": "Engines off near the herds.",
    "offer": "Pirates are culling our herd-ships. Cull them.",
    "trusted": "The herds know your hull. They don't scatter any more.",
-   "story": false
+   "story": false,
+   "prefers": "bounty"
   },
   {
    "id": "StellarPreserve_the_pruner",
@@ -259,7 +327,8 @@
    "greeting": "We are many hulls and one intention.",
    "offer": "A Choir chorus is drowning out our network. End the song.",
    "trusted": "We have grown a place for you in the network. It is warm.",
-   "story": false
+   "story": false,
+   "prefers": "bounty"
   },
   {
    "id": "SynthesisCollective_the_splice",
@@ -289,7 +358,17 @@
    "greeting": "Your consciousness credit score is... concerning.",
    "offer": "A summit delegate defaulted on her own mind. We hold it as collateral. Buy the debt out, or try your luck with the vault.",
    "trusted": "I have revised your rating upward. Do not let it go to your heads. Head.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "after:1",
+     "line": "I hear the minutes have changed hands. Our piece has not, and will not this season."
+    },
+    {
+     "when": "after:4",
+     "line": "Four pieces, and you are standing at my desk. The fifth is collateral. Come back when the debt is called."
+    }
+   ]
   },
   {
    "id": "GildedThrone_under_treasurer_seraphine_ashgrove",
@@ -299,7 +378,8 @@
    "greeting": "Everything has a price. The price is my department.",
    "offer": "Bullion moves at the hour. Make sure it arrives at the hour.",
    "trusted": "You've become an asset. Assets are protected. Congratulations.",
-   "story": false
+   "story": false,
+   "prefers": "escort"
   },
   {
    "id": "GildedThrone_the_liquidator",
@@ -309,7 +389,8 @@
    "greeting": "I buy what the Board pretends it never sold.",
    "offer": "A Hegemony railgun battery would look lovely in our vault. Acquire one.",
    "trusted": "When the Board liquidates you, I'll make sure I get a share.",
-   "story": false
+   "story": false,
+   "prefers": "theft"
   },
   {
    "id": "GildedThrone_concierge_abernathy",
@@ -319,7 +400,8 @@
    "greeting": "Welcome, valued client. Your tier has been noted.",
    "offer": "A shareholder's yacht is overdue. Retrieve it, and discreetly.",
    "trusted": "Platinum tier. We've never had a ship at platinum tier.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "CorpseStars_prelate_morrow_who_is_fading",
@@ -329,7 +411,8 @@
    "greeting": "Everything ends. You are early.",
    "offer": "There is a cache from the universe before. It speaks. Bring us what it says.",
    "trusted": "We have seen this before. The last time, it was also you.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "CorpseStars_ash_captain_tyre",
@@ -339,7 +422,8 @@
    "greeting": "Our hulls get stronger as they break. Do yours?",
    "offer": "Intruders in the deep zone. Send them to the heat death early.",
    "trusted": "When you die, we will hold your office for you.",
-   "story": false
+   "story": false,
+   "prefers": "hold"
   },
   {
    "id": "CorpseStars_reliquarian_sabine",
@@ -359,7 +443,8 @@
    "greeting": "The star is dead. We watch it anyway.",
    "offer": "A procession ship stopped answering. It may be done. Check.",
    "trusted": "Stay a while. It's quieter in a dead system.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   },
   {
    "id": "TerranHegemony_admiral_constance_reyes_hegemony_command",
@@ -369,7 +454,17 @@
    "greeting": "State your hull and your business. Quickly.",
    "offer": "We sent a warning, years ago, to anyone listening. You were listening. Come to Command.",
    "trusted": "The bomb was learning. We thought from us. It was learning from you.",
-   "story": true
+   "story": true,
+   "reactive": [
+    {
+     "when": "after:1",
+     "line": "So the minutes are out. We sent a warning, years ago. I see it reached someone."
+    },
+    {
+     "when": "after:4",
+     "line": "Four of seven. Command holds what it holds until the order comes, and the order has not come."
+    }
+   ]
   },
   {
    "id": "TerranHegemony_captain_idris_vale",
@@ -379,7 +474,8 @@
    "greeting": "You'll fly in formation or you'll fly alone.",
    "offer": "There's a battle group on our border that needs to stop existing.",
    "trusted": "You fly like one of ours. Don't tell anyone I said that.",
-   "story": false
+   "story": false,
+   "prefers": "bounty"
   },
   {
    "id": "TerranHegemony_quartermaster_ottilie_raines",
@@ -389,7 +485,8 @@
    "greeting": "Every convoy I send out, I count back in.",
    "offer": "Escort's thin this run. Pay isn't.",
    "trusted": "I keep a list of who I trust. You're on it. In pencil.",
-   "story": false
+   "story": false,
+   "prefers": "escort"
   },
   {
    "id": "TerranHegemony_archivist_benedek_sorn",
@@ -409,7 +506,8 @@
    "greeting": "Papers. Kidding. Nobody has papers any more.",
    "offer": "Patrol's overdue. Go look, and come back.",
    "trusted": "You came back. People don't, out here.",
-   "story": false
+   "story": false,
+   "prefers": "survey"
   }
  ]
 }
