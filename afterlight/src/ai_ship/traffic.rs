@@ -115,6 +115,47 @@ pub struct Stop {
     pub avoid: Vec<(Vec2, f32)>,
     /// How it is moving: a starport rides its planet.
     pub vel: Vec2,
+    /// Where traders moor here, if they can.
+    pub port: Option<PortId>,
+}
+
+/// How many visiting traders a port berths at once. Haven is the biggest;
+/// the others have a handful of berths kept for visitors, the rest of the
+/// city being its own.
+pub fn port_berths(port: PortId) -> usize {
+    match port {
+        PortId::Station(0) => 8,
+        _ => 5,
+    }
+}
+
+/// Longest a trader waits outside a full port before trying another.
+const ROADS_WAIT: f32 = 180.0;
+
+/// AFTERLIGHT_PORT_OFF=1: traders stop outside and wait, as before berths.
+fn ports_off() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var("AFTERLIGHT_PORT_OFF").ok().as_deref() == Some("1"))
+}
+
+/// AFTERLIGHT_PORT_TRACE=1: a PORT line for every mooring, wait and cast-off.
+pub fn port_trace() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var("AFTERLIGHT_PORT_TRACE").ok().as_deref() == Some("1"))
+}
+
+/// Whether there is room at `port` for `want` more ships, with `in_port` there.
+pub fn room_at(port: PortId, in_port: usize, want: usize) -> bool {
+    want > 0 && in_port + want <= port_berths(port)
+}
+
+/// Which of a fleet's ships moor: its working hulls -- haulers, freighters,
+/// liners -- not its guards, and not one with a price on its head (someone
+/// is coming for it, and it can't hide in a berth).
+pub fn moors(ship: &SimulatedShip) -> bool {
+    ship.behavior != SimBehavior::Dead
+        && ship.bounty_id.is_none()
+        && fleet::role_of(ship.faction, ship.class) == super::roster::ClassRole::Civilian
 }
 
 /// Half the width of the strip a trader's berth keeps clear of hull.
@@ -305,7 +346,7 @@ pub fn run_traffic(
                 .find(|(station, ..)| station.index == s.index)
                 .map(|(_, tf, c)| c.circles.iter().map(|(at, r)| ((tf.rotation * at.extend(0.0)).truncate(), *r)).collect())
                 .unwrap_or_default();
-            Stop { name: s.name.clone(), pos: s.pos, radius: crate::world::home_base::station_extent(s.index), shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO }
+            Stop { name: s.name.clone(), pos: s.pos, radius: crate::world::home_base::station_extent(s.index), shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO, port: Some(PortId::Station(s.index)) }
         })
         .collect();
     if let Some((at, ring)) = ports.harbour(loaded) {
@@ -315,7 +356,7 @@ pub fn run_traffic(
         let bodies = nav_bodies.as_deref().map_or(&[][..], |b| b.loaded.as_slice());
         let avoid = bodies.iter().filter(|b| b.solid && b.center.distance(at) < ring + b.radius + 30_000.0).map(|b| (b.center, b.radius)).collect();
         let vel = bodies.iter().find(|b| !b.solid && b.center.distance(at) < 1_000.0).map_or(Vec2::ZERO, |b| b.vel);
-        stops.push(Stop { name, pos: at, radius: ring, shape: Vec::new(), lane: false, avoid, vel });
+        stops.push(Stop { name, pos: at, radius: ring, shape: Vec::new(), lane: false, avoid, vel, port: Some(PortId::Starport(loaded)) });
     }
 
     let sim: &mut WorldSimulation = &mut sim;
@@ -345,6 +386,23 @@ pub fn run_traffic(
 
     let mut jumps: Vec<(u32, u32, Vec2)> = Vec::new();
     let mut jumping_out: Vec<u32> = Vec::new();
+    // Ports: who is in each, and which fleets have ships in a berth.
+    let mut in_port: std::collections::HashMap<PortId, usize> = Default::default();
+    let mut moored_of: std::collections::HashMap<u32, Vec<u32>> = Default::default();
+    for s in sim.ships.iter().filter(|s| s.moored.is_some()) {
+        *in_port.entry(s.moored.unwrap()).or_insert(0) += 1;
+        moored_of.entry(s.fleet).or_default().push(s.id);
+    }
+    let mooring_crews: std::collections::HashMap<u32, Vec<(u32, bool)>> = {
+        let mut m: std::collections::HashMap<u32, Vec<(u32, bool)>> = Default::default();
+        for s in sim.ships.iter().filter(|s| s.fleet != 0 && s.moored.is_none() && moors(s)) {
+            m.entry(s.fleet).or_default().push((s.id, s.spawned));
+        }
+        m
+    };
+    // (fleet, port) to moor this tick; ships whose time in port is up.
+    let mut to_moor: Vec<(u32, PortId)> = Vec::new();
+    let mut casting: Vec<u32> = Vec::new();
     for fleet in sim.fleets.iter_mut().filter(|f| f.trade.is_some() && active(f.system_id) && manned.contains(&f.id)) {
         let here = fleet.system_id == loaded;
         let is_live = live.contains(&fleet.id);
@@ -361,6 +419,14 @@ pub fn run_traffic(
         }
         if gave_up.contains(&fleet.id) && run.dwell <= 0.0 {
             fleet.destination = position;
+        }
+        // Still has ships in a berth with its time up: they are casting off;
+        // it waits for them.
+        if run.dwell <= 0.0 && moored_of.contains_key(&fleet.id) {
+            fleet.velocity = Vec2::ZERO;
+            fleet.destination = position;
+            casting.extend(moored_of[&fleet.id].iter().copied());
+            continue;
         }
         if run.dwell > 0.0 {
             run.dwell -= TICK_S;
@@ -386,9 +452,36 @@ pub fn run_traffic(
                     jumping_out.push(fleet.id);
                 }
                 None => {
+                    // Into a berth, if the port has room for its working
+                    // ships; otherwise it waits outside, and in the end
+                    // tries somewhere else.
+                    let port = (here && !ports_off()).then(|| stops.iter().find(|s| s.name == run.bound_for).and_then(|s| s.port)).flatten();
+                    let crew = mooring_crews.get(&fleet.id).map_or(0, |c| c.len());
+                    let mut moored = false;
+                    if let Some(port) = port.filter(|_| crew > 0) {
+                        let there = in_port.get(&port).copied().unwrap_or(0);
+                        if room_at(port, there, crew) {
+                            *in_port.entry(port).or_insert(0) += crew;
+                            to_moor.push((fleet.id, port));
+                            run.waited = 0.0;
+                            moored = true;
+                        } else if run.waited < ROADS_WAIT {
+                            run.waited += TICK_S;
+                            fleet.velocity = Vec2::ZERO;
+                            if port_trace() && run.waited <= TICK_S {
+                                info!("PORT {} waits outside {} ({there} of {} berths taken)", trader_name(fleet.id, fleet.faction), run.bound_for, port_berths(port));
+                            }
+                            continue;
+                        } else {
+                            run.waited = 0.0;
+                            if port_trace() {
+                                info!("PORT {} gives up waiting at {}", trader_name(fleet.id, fleet.faction), run.bound_for);
+                            }
+                        }
+                    }
                     run.leaving = None;
                     run.last_stop = std::mem::take(&mut run.bound_for);
-                    run.dwell = rng.gen_range(DWELL_S.0..DWELL_S.1);
+                    run.dwell = if moored || port.is_none() { rng.gen_range(DWELL_S.0..DWELL_S.1) } else { 0.0 };
                     fleet.velocity = Vec2::ZERO;
                 }
             }
@@ -424,6 +517,33 @@ pub fn run_traffic(
     // On screen at its jump point: off screen, this frame (sync folds it
     // back), and through the jump on the next turn of this.
     sim.fold_back.extend(jumping_out);
+
+    // Into the berths: a ship on screen is taken off it at the gate (sync
+    // does that, and the station tows it in); one out of sight just moors.
+    for (fleet_id, port) in to_moor {
+        let name = sim.fleet(fleet_id).map(|f| trader_name(f.id, f.faction)).unwrap_or_default();
+        let mut n = 0;
+        for (id, live) in mooring_crews.get(&fleet_id).cloned().unwrap_or_default() {
+            if let Some(ship) = sim.ships.iter_mut().find(|s| s.id == id) {
+                ship.moored = Some(port);
+                ship.velocity = Vec2::ZERO;
+                n += 1;
+            }
+            if live {
+                sim.stow.push(id);
+            }
+        }
+        if port_trace() {
+            info!("PORT {name} moors {n} at {port:?}");
+        }
+    }
+    // Out of the berths: the stations back out those they have; the rest
+    // are let go (ai_ship::traffic::let_go).
+    for id in casting {
+        if !sim.cast_off.contains(&id) {
+            sim.cast_off.push(id);
+        }
+    }
 
     // Through the jump: out of one system, into the next.
     let mut flashes: Vec<(u32, Vec2, bool, AiShipType)> = Vec::new();
@@ -538,7 +658,7 @@ mod tests {
     use super::*;
 
     fn stop(name: &str, x: f32) -> Stop {
-        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0, shape: Vec::new(), lane: false, avoid: Vec::new(), vel: Vec2::ZERO }
+        Stop { name: name.into(), pos: Vec2::new(x, 0.0), radius: 1_000.0, shape: Vec::new(), lane: false, avoid: Vec::new(), vel: Vec2::ZERO, port: None }
     }
 
     #[test]
@@ -570,7 +690,7 @@ mod tests {
                 d += 1_000.0;
             }
         }
-        Stop { name: "Raft".into(), pos: Vec2::new(5_000.0, -3_000.0), radius: 19_000.0, shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO }
+        Stop { name: "Raft".into(), pos: Vec2::new(5_000.0, -3_000.0), radius: 19_000.0, shape, lane: true, avoid: Vec::new(), vel: Vec2::ZERO, port: None }
     }
 
     #[test]
@@ -600,6 +720,7 @@ mod tests {
             lane: true,
             avoid: Vec::new(),
             vel: Vec2::ZERO,
+            port: None,
         };
         // A degree either side of where it comes into the strip the berth
         // keeps clear: out past it, or close in by the hub.
@@ -675,7 +796,7 @@ mod tests {
     #[test]
     fn no_berth_is_inside_the_planet_the_station_sits_by() {
         let planet = (Vec2::new(-40_000.0, 0.0), 25_000.0);
-        let port = Stop { name: "port".into(), pos: Vec2::ZERO, radius: 12_000.0, shape: Vec::new(), lane: false, avoid: vec![planet], vel: Vec2::ZERO };
+        let port = Stop { name: "port".into(), pos: Vec2::ZERO, radius: 12_000.0, shape: Vec::new(), lane: false, avoid: vec![planet], vel: Vec2::ZERO, port: None };
         for i in 0..64 {
             let from = Vec2::from_angle(std::f32::consts::TAU * i as f32 / 64.0) * 200_000.0;
             let berth = port.berth(from);
@@ -741,5 +862,113 @@ mod tests {
         assert!(trader_label(&f, Some("Bulk Freighter")).contains("for Haven Station"));
         f.trade = Some(TradeRun { dwell: 5.0, ..default() });
         assert!(trader_label(&f, Some("Bulk Freighter")).contains("in port"));
+    }
+}
+
+/// Let go of moored ships nobody is drawing in a berth (`drawn` says who
+/// is): afloat where they are. And take back those a station backed out.
+pub fn let_go(sim: &mut WorldSimulation, drawn: &std::collections::HashSet<u32>) {
+    let released: Vec<(u32, Vec2)> = std::mem::take(&mut sim.released);
+    for (id, at) in released {
+        if let Some(ship) = sim.ships.iter_mut().find(|s| s.id == id) {
+            ship.moored = None;
+            ship.position = at;
+            ship.spawned = false;
+            if port_trace() {
+                info!("PORT ship {id} backed out of its berth at {:.0},{:.0}", at.x, at.y);
+            }
+        }
+        sim.towed.remove(&id);
+    }
+    let cast: Vec<u32> = std::mem::take(&mut sim.cast_off);
+    for id in cast {
+        if drawn.contains(&id) {
+            // A station has it, and is backing it out.
+            sim.cast_off.push(id);
+            continue;
+        }
+        if let Some(ship) = sim.ships.iter_mut().find(|s| s.id == id && s.moored.is_some()) {
+            ship.moored = None;
+            ship.spawned = false;
+        }
+        sim.towed.remove(&id);
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    #[test]
+    fn a_full_port_turns_a_convoy_away_and_an_empty_one_takes_it() {
+        let haven = PortId::Station(0);
+        let other = PortId::Station(14);
+        assert!(room_at(haven, 0, 3));
+        assert!(room_at(haven, 5, 3));
+        assert!(!room_at(haven, 6, 3), "over Haven's berths");
+        assert!(!room_at(other, 3, 3));
+        assert!(!room_at(other, 0, 0), "nothing to moor");
+        assert!(port_berths(haven) > port_berths(other));
+    }
+
+    /// Haulers moor; their guards, and a hauler with a bounty on it, don't.
+    #[test]
+    fn only_working_ships_moor() {
+        let hauler = crate::ai_ship::roster::roster(AiShipType::FreeHaulersCompact)
+            .iter()
+            .find(|c| c.role == crate::ai_ship::roster::ClassRole::Civilian)
+            .expect("the Compact flies haulers");
+        let mut ship = SimulatedShip::patrolling(0, AiShipType::FreeHaulersCompact, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+        ship.class = Some(hauler.key);
+        assert!(moors(&ship));
+        ship.bounty_id = Some(3);
+        assert!(!moors(&ship));
+        let guard = crate::ai_ship::roster::roster(AiShipType::TerranHegemony)
+            .iter()
+            .find(|c| c.role == crate::ai_ship::roster::ClassRole::Line)
+            .unwrap();
+        let mut g = SimulatedShip::patrolling(0, AiShipType::TerranHegemony, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+        g.class = Some(guard.key);
+        assert!(!moors(&g));
+    }
+
+    /// Ships cast off: one a station is drawing waits for it to back out;
+    /// the rest are afloat at once; and those backed out are afloat where
+    /// the station put them.
+    #[test]
+    fn ships_cast_off_drawn_or_not() {
+        let mut sim = WorldSimulation::default();
+        for i in 0..3 {
+            let mut s = SimulatedShip::patrolling(0, AiShipType::FreeHaulersCompact, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+            s.moored = Some(PortId::Station(0));
+            s.position = Vec2::new(i as f32, 0.0);
+            sim.add(s);
+        }
+        let ids: Vec<u32> = sim.ships.iter().map(|s| s.id).collect();
+        sim.cast_off = ids.clone();
+        let drawn: std::collections::HashSet<u32> = [ids[0]].into_iter().collect();
+        let_go(&mut sim, &drawn);
+        assert!(sim.ships[0].moored.is_some() && sim.cast_off == vec![ids[0]], "the drawn one was let go before it backed out");
+        assert!(sim.ships[1].afloat() && sim.ships[2].afloat());
+        sim.released.push((ids[0], Vec2::new(500.0, 40.0)));
+        let_go(&mut sim, &std::collections::HashSet::new());
+        assert!(sim.ships[0].afloat());
+        assert_eq!(sim.ships[0].position, Vec2::new(500.0, 40.0));
+    }
+
+    /// A moored ship saves as moored; an old save, without it, loads afloat.
+    #[test]
+    fn a_berth_is_saved() {
+        let mut sim = WorldSimulation::default();
+        let mut s = SimulatedShip::patrolling(0, AiShipType::FreeHaulersCompact, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+        s.moored = Some(PortId::Starport(7));
+        sim.add(s);
+        let json = serde_json::to_string(&sim.snapshot()).unwrap();
+        let back: SavedWorld = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.ships[0].moored, Some(PortId::Starport(7)));
+        let old = json.replace(",\"moored\":{\"Starport\":7}", "");
+        assert!(!old.contains("moored"), "{old}");
+        let back: SavedWorld = serde_json::from_str(&old).unwrap();
+        assert!(back.ships[0].afloat());
     }
 }

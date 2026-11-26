@@ -47,6 +47,7 @@ impl Plugin for WorldPlugin {
             // Stations follow whichever system is streamed in, and have to
             // exist while docked too — the game opens docked at Haven.
             .add_systems(OnEnter(GameState::StationDocked), home_base::spawn_base_arrow)
+            .init_resource::<raft_life::Released>()
             .add_systems(
                 Update,
                 (
@@ -58,6 +59,7 @@ impl Plugin for WorldPlugin {
                     raft_detail::update_station_detail,
                     raft_life::raft_roster,
                     raft_life::raft_motion,
+                    raft_life::berth_visitors,
                     raft_life::raft_districts,
                     home_base::park_at_station,
                 )

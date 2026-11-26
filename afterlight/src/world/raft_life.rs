@@ -83,6 +83,9 @@ pub struct RaftLive {
     pub next_leave: f32,
     pub next_arrive: f32,
     pub rng: StdRng,
+    /// Berths held by visiting traders (ai_ship::traffic): berth -> ship id.
+    /// They come and go with their trade, not with the station's own churn.
+    pub visitors: std::collections::HashMap<usize, u32>,
 }
 
 impl RaftLive {
@@ -148,12 +151,20 @@ impl RaftLive {
             next_leave,
             next_arrive: 5.0,
             rng,
+            visitors: Default::default(),
         }
     }
 
-    /// Ships moored or on their way in, by berth and design.
+    /// Ships moored or on their way in, by berth and design. Not the
+    /// visiting traders: they are saved as themselves, with their fleets.
     pub fn roster(&self) -> Vec<(usize, String)> {
-        self.plan.moorings.iter().chain(&self.arriving).filter_map(|m| Some((m.slot?, m.design.to_string()))).collect()
+        self.plan
+            .moorings
+            .iter()
+            .chain(&self.arriving)
+            .filter_map(|m| Some((m.slot?, m.design.to_string())))
+            .filter(|(slot, _)| !self.visitors.contains_key(slot))
+            .collect()
     }
 
     /// Every berth there is, moored or empty.
@@ -170,6 +181,9 @@ pub struct Departing {
     pub back: Vec2,
     pub out: Vec2,
     pub slot: Option<usize>,
+    /// A visiting trader backing out: once clear of its berth it is a ship
+    /// again (this ship id), not a picture fading away.
+    pub release: Option<u32>,
 }
 
 /// Arriving: brought in from outside to a berth.
@@ -222,6 +236,8 @@ pub struct EmergencyLight(pub usize);
 pub struct QuarterLabel(pub usize);
 
 const LEAVE_BACK_S: f32 = 4.0;
+/// Berths a station keeps free for visiting traders.
+const VISITOR_ROOM: usize = 8;
 const LEAVE_S: f32 = 22.0;
 const ARRIVE_S: f32 = 18.0;
 const TUG: &str = "free_haulers_compact/tug";
@@ -345,6 +361,12 @@ pub fn raft_roster(
         let berths = live.berths();
         // Haven fills with refugees; a faction's station keeps its own count.
         live.target = if live.haven { live.base + ((berths.saturating_sub(live.base)) as f32 * level).round() as usize } else { live.base };
+        // Berths kept for visiting traders: the refugees don't take them all.
+        live.target = live.target.min(berths.saturating_sub(VISITOR_ROOM));
+        // A station's own ships stay put: the comings and goings are the
+        // traders'. Haven keeps its refugees and its dark streets; anywhere,
+        // AFTERLIGHT_RAFT_BUSY keeps the old churn for filming.
+        let churns = live.haven || busy_k > 1.0;
 
         // Streets go dark with the scene round Haven, outermost first.
         let n_streets = live.plan.streets.len();
@@ -361,14 +383,14 @@ pub fn raft_roster(
         }
 
         // Someone casts off: in the dark, whoever is in a dark street first.
-        if live.next_leave <= 0.0 {
+        if live.next_leave <= 0.0 && churns {
             live.next_leave = live.rng.gen_range(25.0..60.0) * (1.0 + level) / (1.0 + 3.0 * dark);
             let free: Vec<(usize, bool)> = live
                 .plan
                 .moorings
                 .iter()
                 .filter_map(|m| Some((m.slot?, m.street.is_some_and(|s| live.dark_streets.contains(&s)))))
-                .filter(|(s, _)| !live.busy.contains(s))
+                .filter(|(s, _)| !live.busy.contains(s) && !live.visitors.contains_key(s))
                 .collect();
             let cut_loose: Vec<usize> = free.iter().filter(|(_, d)| *d).map(|(s, _)| *s).collect();
             let pool: Vec<usize> = if dark > 0.2 && !cut_loose.is_empty() { cut_loose } else { free.iter().map(|(s, _)| *s).collect() };
@@ -386,7 +408,7 @@ pub fn raft_roster(
                     let out = m.at.normalize_or(Vec2::Y);
                     for (e, s, parent) in &ships {
                         if parent.parent() == root && s.0 == slot {
-                            commands.entity(e).insert(Departing { t: 0.0, start: m.at, back, out, slot: Some(slot) });
+                            commands.entity(e).insert(Departing { t: 0.0, start: m.at, back, out, slot: Some(slot), release: None });
                         }
                     }
                     info!("Raft: the {} at berth {slot} casts off", m.design);
@@ -400,7 +422,7 @@ pub fn raft_roster(
 
         // Someone is brought in to an empty berth -- nobody comes into the dark.
         let count = live.plan.moorings.iter().filter(|m| m.slot.is_some()).count() + live.arriving.len();
-        if live.next_arrive <= 0.0 {
+        if live.next_arrive <= 0.0 && churns {
             live.next_arrive = if dark >= 0.6 || count >= live.target {
                 live.rng.gen_range(20.0..40.0)
             } else if count + 5 < live.target {
@@ -505,12 +527,195 @@ fn set_collider(commands: &mut Commands, root: Entity, plan: &RaftPlan) {
         .insert((crate::ship::collision::Collider::circles(circles.clone(), f32::INFINITY), super::home_base::StationCircles(circles)));
 }
 
+/// Traders a station has backed out of their berths this frame: (ship id,
+/// world position). berth_visitors hands them back to the simulation.
+#[derive(Resource, Default)]
+pub struct Released(pub Vec<(u32, Vec2)>);
+
+/// The port a station's root is: a station by its index, or a starport city.
+fn port_of(station: Option<&super::home_base::Station>, city: Option<&crate::celestial::components::StarSystemMember>) -> Option<crate::ai_ship::components::PortId> {
+    use crate::ai_ship::components::PortId;
+    match (station, city) {
+        (Some(s), _) => Some(PortId::Station(s.index)),
+        (None, Some(m)) => Some(PortId::Starport(m.system_id)),
+        _ => None,
+    }
+}
+
+/// The berth a visiting ship of `faction`/`class` goes in: the free berth it
+/// fits best, refitted to its own design where that design can moor at all.
+/// None when every berth is taken.
+pub fn berth_for(live: &RaftLive, faction: AiShipType, class: Option<&'static str>) -> Option<(usize, Mooring)> {
+    let key = class.map(|c| format!("{}/{}", crate::ai_ship::design_slug(faction), c));
+    let design = key.as_deref().and_then(|k| library().get_key_value(k).map(|(k, _)| *k));
+    let mut best: Option<(i32, usize, Mooring)> = None;
+    for (i, spare) in live.plan.spares.iter().enumerate() {
+        let Some(slot) = spare.slot else { continue };
+        if live.busy.contains(&slot) || live.visitors.contains_key(&slot) {
+            continue;
+        }
+        let (score, m) = match design.and_then(|d| refit(spare, d)) {
+            Some(fitted) => (2, fitted),
+            None => (1, spare.clone()),
+        };
+        // Its own ship in it beats a stand-in; then the outermost berth.
+        let score = score * 100_000 + (spare.at.length() / 1_000.0) as i32;
+        if best.as_ref().is_none_or(|(b, ..)| score > *b) {
+            best = Some((score, i, m));
+        }
+    }
+    best.map(|(_, i, m)| (i, m))
+}
+
+/// Visiting traders in the berths (ai_ship::traffic): a station draws the
+/// ships the simulation says are moored with it, tows in those just taken
+/// off screen at its gate, backs out those whose time is up, and lets go of
+/// the rest. The simulation is the truth; the station only draws it, so a
+/// station rebuilt (a save loaded, a system come back) has its traders.
+#[allow(clippy::too_many_arguments)]
+pub fn berth_visitors(
+    mut commands: Commands,
+    art: Option<Res<RaftArt>>,
+    mut bakes: ResMut<RaftBakes>,
+    mut sim: ResMut<crate::ai_ship::components::WorldSimulation>,
+    mut released: ResMut<Released>,
+    mut rafts: Query<(Entity, &mut RaftLive, &GlobalTransform, Option<&super::home_base::Station>, Option<&crate::celestial::components::StarSystemMember>)>,
+    ships: Query<(Entity, &ShipSlot, &ChildOf)>,
+    tubes: Query<(Entity, &TubeOf, &ChildOf)>,
+) {
+    let sim: &mut crate::ai_ship::components::WorldSimulation = &mut sim;
+    sim.released.append(&mut released.0);
+    if art.is_none() {
+        let drawn = std::collections::HashSet::new();
+        crate::ai_ship::traffic::let_go(sim, &drawn);
+        return;
+    }
+    let mut drawn: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    for (root, mut live, root_tf, station, city) in &mut rafts {
+        let Some(port) = port_of(station, city) else { continue };
+        let live = &mut *live;
+        let to_local = |world: Vec2| root_tf.affine().inverse().transform_point3(world.extend(0.0)).truncate();
+
+        // Gone from this port without being backed out (lost, saved away,
+        // let go): its berth is empty again.
+        let stale: Vec<(usize, u32)> = live
+            .visitors
+            .iter()
+            .filter(|(slot, id)| {
+                !live.departing.iter().any(|m| m.slot == Some(**slot))
+                    && !sim.ships.iter().any(|s| s.id == **id && s.moored == Some(port))
+            })
+            .map(|(s, i)| (*s, *i))
+            .collect();
+        for (slot, _) in stale {
+            live.visitors.remove(&slot);
+            for (e, s, parent) in &ships {
+                if parent.parent() == root && s.0 == slot {
+                    commands.entity(e).despawn();
+                }
+            }
+            for (e, of, parent) in &tubes {
+                if parent.parent() == root && of.0.contains(&Some(slot)) {
+                    commands.entity(e).despawn();
+                }
+            }
+            for list in [&mut live.plan.moorings, &mut live.arriving] {
+                if let Some(i) = list.iter().position(|m| m.slot == Some(slot)) {
+                    let m = list.remove(i);
+                    live.plan.spares.push(m);
+                }
+            }
+            live.busy.remove(&slot);
+            live.version += 1;
+            set_collider(&mut commands, root, &live.plan);
+        }
+
+        // Time up: back out of the berth. Not one still being towed in.
+        let leaving: Vec<(usize, u32)> = live
+            .visitors
+            .iter()
+            .filter(|(slot, id)| sim.cast_off.contains(id) && !live.busy.contains(slot))
+            .map(|(s, i)| (*s, *i))
+            .collect();
+        for (slot, id) in leaving {
+            let Some(i) = live.plan.moorings.iter().position(|m| m.slot == Some(slot)) else { continue };
+            let m = live.plan.moorings.remove(i);
+            live.busy.insert(slot);
+            for (e, of, parent) in &tubes {
+                if parent.parent() == root && of.0.contains(&Some(slot)) {
+                    commands.entity(e).despawn();
+                }
+            }
+            let back = (m.at - m.dock).normalize_or(Vec2::Y);
+            for (e, s, parent) in &ships {
+                if parent.parent() == root && s.0 == slot {
+                    commands.entity(e).insert(Departing { t: 0.0, start: m.at, back, out: Vec2::ZERO, slot: Some(slot), release: Some(id) });
+                }
+            }
+            if crate::ai_ship::traffic::port_trace() {
+                info!("PORT ship {id} casts off from berth {slot} at {port:?}");
+            }
+            live.departing.push(m);
+            live.version += 1;
+            set_collider(&mut commands, root, &live.plan);
+        }
+
+        // Moored here and not in a berth yet: towed in from the gate if it
+        // has just come off screen there, else simply there.
+        let waiting: Vec<(u32, AiShipType, Option<&'static str>)> = sim
+            .ships
+            .iter()
+            .filter(|s| s.moored == Some(port) && !live.visitors.values().any(|v| *v == s.id))
+            .map(|s| (s.id, s.faction, s.class))
+            .collect();
+        for (id, faction, class) in waiting {
+            let Some((i, m)) = berth_for(live, faction, class) else { continue };
+            bakes.ask([(m.design, m.quarter, live.theme)]);
+            if bakes.done_get(&(m.design, m.quarter, live.theme)).is_none() {
+                // Not painted yet: next time.
+                continue;
+            }
+            let slot = m.slot.unwrap_or(0);
+            live.plan.spares.remove(i);
+            live.visitors.insert(slot, id);
+            let [a, b] = spawn_ship(&mut commands, root, &m, &bakes, slot as u64, live.theme);
+            match sim.towed.remove(&id) {
+                Some(world) => {
+                    let from = to_local(world);
+                    for e in [a, b] {
+                        commands.entity(e).insert((Arriving { t: 0.0, from, to: m.at, slot, tug: false }, Transform::from_translation(from.extend(0.05))));
+                    }
+                    live.busy.insert(slot);
+                    if crate::ai_ship::traffic::port_trace() {
+                        info!("PORT ship {id} towed in to berth {slot} at {port:?}, {} from {:.0} km off", m.design, from.distance(m.at) / 1000.0);
+                    }
+                    live.arriving.push(m);
+                }
+                None => {
+                    if let Some(art) = &art {
+                        let tube = Tube { a: m.at, b: m.dock, width: CELL * 1.8, ends: [Some(slot), None] };
+                        let t = spawn_tube(&mut commands, art, &tube);
+                        commands.entity(root).add_child(t);
+                    }
+                    live.plan.moorings.push(m);
+                    set_collider(&mut commands, root, &live.plan);
+                }
+            }
+            live.version += 1;
+        }
+        drawn.extend(live.visitors.values().copied());
+    }
+    crate::ai_ship::traffic::let_go(sim, &drawn);
+}
+
 /// Move what's leaving and arriving, the street lights and the shuttles,
 /// and let the windows breathe.
 #[allow(clippy::too_many_arguments)]
 pub fn raft_motion(
     mut commands: Commands,
     time: Res<Time>,
+    // Traders backed out of their berths, for berth_visitors to let go.
+    (mut released, roots): (ResMut<Released>, Query<&GlobalTransform, With<RaftLive>>),
     art: Option<Res<RaftArt>>,
     mut rafts: Query<&mut RaftLive>,
     mut leaving: Query<(Entity, &mut Departing, &mut Transform, &mut Sprite, &ChildOf), Without<Arriving>>,
@@ -524,6 +729,29 @@ pub fn raft_motion(
 
     for (e, mut d, mut tf, mut sprite, parent) in &mut leaving {
         d.t += dt;
+        if let Some(id) = d.release {
+            // Backed out of the berth: a ship again, where it now is.
+            let backed = ease(d.t / LEAVE_BACK_S);
+            let pos = d.start + d.back * backed * CELL * 30.0;
+            tf.translation.x = pos.x;
+            tf.translation.y = pos.y;
+            if d.t >= LEAVE_BACK_S {
+                commands.entity(e).despawn();
+                if let (Some(slot), Ok(mut live)) = (d.slot, rafts.get_mut(parent.parent())) {
+                    if let Some(i) = live.departing.iter().position(|m| m.slot == Some(slot)) {
+                        let m = live.departing.remove(i);
+                        live.plan.spares.push(m);
+                        live.busy.remove(&slot);
+                        live.visitors.remove(&slot);
+                        live.version += 1;
+                    }
+                }
+                if let Ok(root) = roots.get(parent.parent()) {
+                    released.0.push((id, root.transform_point(pos.extend(0.0)).truncate()));
+                }
+            }
+            continue;
+        }
         let backed = ease(d.t / LEAVE_BACK_S);
         let away = (d.t - LEAVE_BACK_S).max(0.0);
         let pos = d.start + d.back * backed * CELL * 30.0 + d.out * away * away * 90.0;
@@ -562,7 +790,7 @@ pub fn raft_motion(
             if a.tug {
                 // The tug's job is done: it heads back out.
                 let out = (a.from - a.to).normalize_or(Vec2::Y);
-                commands.entity(e).remove::<Arriving>().insert(Departing { t: LEAVE_BACK_S, start: a.to, back: Vec2::ZERO, out, slot: None });
+                commands.entity(e).remove::<Arriving>().insert(Departing { t: LEAVE_BACK_S, start: a.to, back: Vec2::ZERO, out, slot: None, release: None });
                 continue;
             }
             commands.entity(e).remove::<Arriving>();

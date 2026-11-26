@@ -339,6 +339,14 @@ impl Wounds {
     }
 }
 
+/// A place a trader can moor: a station by its global index, or the
+/// faction starport of a system.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PortId {
+    Station(usize),
+    Starport(u32),
+}
+
 /// A simulated (off-screen) AI ship tracked by position only
 #[derive(Clone, Debug, Serialize)]
 pub struct SimulatedShip {
@@ -393,6 +401,9 @@ pub struct SimulatedShip {
     /// Its place in the fleet's formation, relative to the fleet's centre
     /// with +x along the fleet's heading.
     pub slot: Vec2,
+    /// Moored in a berth at this port: not flying, not on screen as a ship
+    /// (the station draws it), out of any fight.
+    pub moored: Option<PortId>,
 }
 
 /// A SimulatedShip as a save holds it. The class key is a `&'static str`
@@ -423,6 +434,8 @@ struct SavedShip {
     fleet: u32,
     #[serde(default)]
     slot: Vec2,
+    #[serde(default)]
+    moored: Option<PortId>,
 }
 
 impl<'de> Deserialize<'de> for SimulatedShip {
@@ -455,6 +468,7 @@ impl From<SavedShip> for SimulatedShip {
             wounds: s.wounds,
             fleet: s.fleet,
             slot: s.slot,
+            moored: s.moored,
         }
     }
 }
@@ -489,7 +503,13 @@ impl SimulatedShip {
             wounds: None,
             fleet: 0,
             slot: Vec2::ZERO,
+            moored: None,
         }
+    }
+
+    /// Out in space, not tied up in a berth.
+    pub fn afloat(&self) -> bool {
+        self.moored.is_none()
     }
 }
 
@@ -601,6 +621,16 @@ pub struct WorldSimulation {
     pub refill_clock: std::collections::HashMap<u32, f32>,
     /// Seconds each haunted system has been without its boss.
     pub boss_gone: std::collections::HashMap<u32, f32>,
+    /// Ships on screen to be taken off it now and moored (ids): they have
+    /// reached their berth's gate.
+    pub stow: Vec<u32>,
+    /// Where each of those was when it was taken off screen, for the tow in.
+    pub towed: std::collections::HashMap<u32, Vec2>,
+    /// Moored ships whose time in port is up (ids): a station that has them
+    /// in a berth backs them out; the rest are let go where they are.
+    pub cast_off: Vec<u32>,
+    /// Ships backed out of a berth (id, where, which way): afloat again.
+    pub released: Vec<(u32, Vec2)>,
     next_bounty_id: u32,
     next_ship_id: u32,
     next_fleet_id: u32,
@@ -619,6 +649,10 @@ impl Default for WorldSimulation {
             out_of_sight: Default::default(),
             refill_clock: Default::default(),
             boss_gone: Default::default(),
+            stow: Vec::new(),
+            towed: Default::default(),
+            cast_off: Vec::new(),
+            released: Vec::new(),
             next_bounty_id: 1,
             next_ship_id: 1,
             next_fleet_id: 1,

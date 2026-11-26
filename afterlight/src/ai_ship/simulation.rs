@@ -1324,7 +1324,7 @@ pub fn tick_world_simulation(
         }
     }
     for ship in sim.ships.iter_mut() {
-        if ship.spawned || ship.behavior == SimBehavior::Dead || ship.fleet == 0 {
+        if ship.spawned || ship.behavior == SimBehavior::Dead || ship.fleet == 0 || ship.moored.is_some() {
             continue;
         }
         if let Some(fleet) = sim.fleets.iter().find(|f| f.id == ship.fleet) {
@@ -1389,7 +1389,7 @@ pub fn tick_world_simulation(
     let slots: std::collections::HashMap<u32, super::fleet::SimFleet> =
         sim.fleets.iter().filter(|f| unseen_fleet.contains(&f.id) && f.trade.is_none()).map(|f| (f.id, f.clone())).collect();
     for ship in sim.ships.iter_mut() {
-        if ship.behavior != SimBehavior::Dead || ship.fuel > MENDED_AT || dark(ship.system_id) {
+        if ship.behavior != SimBehavior::Dead || ship.fuel > MENDED_AT || dark(ship.system_id) || ship.moored.is_some() {
             continue;
         }
         let Some(fleet) = slots.get(&ship.fleet) else { continue };
@@ -1661,6 +1661,8 @@ pub fn sync_simulation_entities(
     // Fleets going off screen this frame on purpose (see `fold_back`).
     let folding: std::collections::HashSet<u32> = sim.fold_back.drain(..).collect();
     sim.out_of_sight.extend(folding.iter().copied());
+    // Ships at their berth's gate, to be taken off screen and moored.
+    let stowing: std::collections::HashSet<u32> = sim.stow.drain(..).collect();
 
     // Spawn what entered render distance, nearest first, while the block
     // budget allows. Living hulls only: a wreck's blocks are a pile of
@@ -1684,7 +1686,7 @@ pub fn sync_simulation_entities(
     let mut groups: Vec<Group> = Vec::new();
     let mut fleet_group: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     for (i, s) in sim.ships.iter().enumerate() {
-        if s.spawned || s.behavior == SimBehavior::Dead || (s.fleet != 0 && sim.out_of_sight.contains(&s.fleet)) {
+        if s.spawned || s.behavior == SimBehavior::Dead || s.moored.is_some() || (s.fleet != 0 && sim.out_of_sight.contains(&s.fleet)) {
             continue;
         }
         let lost = s.wounds.as_ref().map_or(0, |w| w.hull.len() + w.modules.len() + w.turret_parts.len());
@@ -1856,10 +1858,11 @@ pub fn sync_simulation_entities(
         // Sent back to make room for a nearer fleet, or gone out of range.
         let made_room = evicted.contains(&member.map_or(Unit::Ship(entity), |m| Unit::Fleet(m.fleet)))
             || member.is_some_and(|m| folding.contains(&m.fleet));
-        if !made_room && near(pos) <= despawn_distance() {
+        let berthing = sim_id.is_some_and(|id| stowing.contains(&id.0));
+        if !made_room && !berthing && near(pos) <= despawn_distance() {
             continue;
         }
-        if !made_room && member.is_some_and(|m| near_fleets.contains(&m.fleet)) {
+        if !made_room && !berthing && member.is_some_and(|m| near_fleets.contains(&m.fleet)) {
             continue;
         }
         // The doppelganger wears the player's design; it is not a ship of its
@@ -1882,7 +1885,11 @@ pub fn sync_simulation_entities(
                 ship.spawned = false;
                 ship.behavior = SimBehavior::Patrolling;
                 ship.wounds = wounds;
-                if ship.fleet != 0 {
+                if berthing {
+                    // Into its berth: the station takes it from here.
+                    let id = ship.id;
+                    sim.towed.insert(id, pos);
+                } else if ship.fleet != 0 {
                     regroup.entry(ship.fleet).or_default().push(pos);
                 }
             }
@@ -1911,7 +1918,7 @@ pub fn sync_simulation_entities(
         if folding.contains(&fleet_id) {
             sim.flash(fleet.system_id, centre, false, fleet.faction);
         }
-        for ship in sim.ships.iter_mut().filter(|s| s.fleet == fleet_id && !s.spawned && s.behavior != SimBehavior::Dead) {
+        for ship in sim.ships.iter_mut().filter(|s| s.fleet == fleet_id && !s.spawned && s.behavior != SimBehavior::Dead && s.moored.is_none()) {
             ship.position = fleet.slot_position(ship.slot);
         }
     }

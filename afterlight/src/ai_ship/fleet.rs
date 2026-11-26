@@ -82,6 +82,9 @@ pub struct TradeRun {
     /// the jump out and waits there rather than turning back.
     #[serde(default)]
     pub refugees: bool,
+    /// Seconds waiting outside a full port for a berth.
+    #[serde(default)]
+    pub waited: f32,
 }
 
 /// What a fleet sent because of your standing is doing.
@@ -546,7 +549,7 @@ pub fn resolve_battles(ships: &mut [SimulatedShip], active: impl Fn(u32) -> bool
     let mut sides: Vec<Side> = Vec::new();
     let mut by_fleet: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     for (i, s) in ships.iter().enumerate() {
-        if s.spawned || s.behavior == SimBehavior::Dead || !active(s.system_id) {
+        if s.spawned || s.behavior == SimBehavior::Dead || !active(s.system_id) || s.moored.is_some() {
             continue;
         }
         let side = if s.fleet != 0 {

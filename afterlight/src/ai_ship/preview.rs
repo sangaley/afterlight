@@ -162,6 +162,7 @@ pub fn sync_previews(
         .filter(|s| {
             s.id != 0
                 && !s.spawned
+                && s.moored.is_none()
                 && s.behavior != SimBehavior::Dead
                 && streaming.loaded_system == Some(s.system_id)
                 && s.position.distance(player_pos) < PREVIEW_RANGE
