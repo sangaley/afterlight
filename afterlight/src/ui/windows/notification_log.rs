@@ -63,6 +63,8 @@ pub fn toggle_notification_log(
     contacts: Res<crate::diplomacy::contacts::Contacts>,
     galaxy: Res<crate::celestial::resources::GalaxyMap>,
     clock: Option<Res<crate::celestial::resources::GalaxyState>>,
+    work: Option<Res<crate::diplomacy::jobs::Jobs>>,
+    expedition: Option<Res<crate::narrative::expedition::Expedition>>,
 ) {
     if !keyboard.just_pressed(KeyCode::KeyL) {
         return;
@@ -102,7 +104,8 @@ pub fn toggle_notification_log(
             let row = commands.spawn(line("The Abbess of the Silence wants to hear you.".into(), 13.0, Color::srgb(0.85, 0.85, 0.9))).id();
             commands.entity(board).add_child(row);
         }
-        for row in crate::narrative::summit::board(progress, &galaxy) {
+        let no_work = crate::diplomacy::jobs::Jobs::default();
+        for row in crate::narrative::summit::board(progress, work.as_deref().unwrap_or(&no_work), &galaxy) {
             let (text, color) = match row {
                 BoardRow::Found(n, name, gist) => (format!("{n}  {name}: {gist}"), Color::srgb(0.85, 0.85, 0.9)),
                 BoardRow::Next(n, name, where_) => (format!("{n}  {name}: {where_}"), Color::srgb(0.95, 0.75, 0.35)),
@@ -112,6 +115,25 @@ pub fn toggle_notification_log(
             commands.entity(board).add_child(row);
         }
         commands.entity(content).add_child(board);
+    }
+
+    // The expedition's records: side reading once the story has a line of
+    // its own on the HUD, so the count lives here.
+    if let Some(exp) = expedition.as_deref().filter(|e| e.total > 0) {
+        let lead = match (exp.trail_exhausted, exp.next) {
+            (true, _) => "the trail ends here".to_string(),
+            (false, Some((system, _))) => format!("next record: {}", crate::celestial::galaxy::system_name(system)),
+            (false, None) => "find the rest".to_string(),
+        };
+        let row = commands
+            .spawn((
+                Text::new(format!("EXPEDITION RECORDS  {}/{}   {lead}", exp.found, exp.total)),
+                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                TextColor(Color::srgb(0.6, 0.62, 0.68)),
+                Node { margin: UiRect::bottom(Val::Px(10.0)), ..default() },
+            ))
+            .id();
+        commands.entity(content).add_child(row);
     }
 
     // The falls you've heard of, newest first (narrative::news). The map

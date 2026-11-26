@@ -1,7 +1,10 @@
 //! Narrative layer: what the game is about, told through what it already
 //! simulates rather than through cutscenes.
 
+pub mod beats;
+pub mod ending;
 pub mod logs;
+pub mod marlow;
 pub mod news;
 pub mod doppelganger;
 pub mod expedition;
@@ -10,6 +13,8 @@ pub mod front;
 pub mod interference;
 pub mod leads;
 pub mod reader;
+pub mod site;
+pub mod story;
 pub mod summit;
 pub mod trail;
 pub mod truth;
@@ -170,6 +175,10 @@ impl Plugin for NarrativePlugin {
         app.add_plugins(interference::InterferencePlugin);
         app.add_plugins(expedition::ExpeditionPlugin);
         app.add_plugins(summit::SummitPlugin);
+        app.add_plugins(marlow::MarlowPlugin);
+        app.add_plugins(beats::BeatsPlugin);
+        app.add_plugins(ending::EndingPlugin);
+        app.add_plugins(site::SitePlugin);
         app.add_plugins(leads::LeadsPlugin);
         app.add_plugins(front::FrontPlugin);
         app.add_plugins(ward::WardPlugin);

@@ -107,11 +107,14 @@ fn run_ward(
     mut hull: Query<(&mut HullSegment, &ChildOf)>,
     mut crew: Query<&mut CrewMember, Without<crate::ai_ship::components::OwnedByAiShip>>,
     mut notes: MessageWriter<crate::events::ShowNotification>,
+    site: Option<Res<super::site::AtSite>>,
 ) {
     let Ok(ship) = ship.single() else { return };
     let dt = time.delta_secs();
     let here = streaming.loaded_system.and_then(|id| galaxy.systems.iter().find(|s| s.id == id));
-    let in_dark = here.is_some_and(is_taken);
+    // The summit site is in the dark too, though it is no system.
+    let at_site = site.is_some_and(|s| s.0);
+    let in_dark = here.is_some_and(is_taken) || at_site;
 
     let blocks = modules.iter().filter(|(_, p)| p.parent() == ship).count() + hull.iter().filter(|(_, p)| p.parent() == ship).count();
     let wards = modules
@@ -135,7 +138,7 @@ fn run_ward(
 
     state.inside += dt;
     let deep = here.map_or(1, |s| depth(&galaxy, s.id));
-    state.need = draw(blocks, deep, state.inside / 60.0);
+    state.need = draw(blocks, deep, state.inside / 60.0) * if at_site { super::site::SITE_DRAW } else { 1.0 };
     if wards > 0 {
         let each = state.need / wards as f32;
         for (mut m, p) in &mut modules {
@@ -207,7 +210,8 @@ const THROWN_CREW: f32 = 0.10;
 /// go); the demo throws you back to Haven instead.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct CascadeReachedYou {
-    pub system: u32,
+    /// Where it had you: a taken system, or None at the summit site.
+    pub system: Option<u32>,
 }
 
 /// The demo stops the story before its end, so the dark can't end a demo run.
@@ -250,12 +254,14 @@ fn thrown_out(
     if state.failing < THROWN_AFTER {
         return;
     }
-    let (Ok(ship), Some(system)) = (ship.single(), streaming.loaded_system) else { return };
+    // No system to be in at the summit site, and the dark has you all the same.
+    let Ok(ship) = ship.single() else { return };
+    let system = streaming.loaded_system;
     reached.write(CascadeReachedYou { system });
     if !is_demo() {
         return;
     }
-    info!("WARD: the dark has the ship at {system}; thrown back to Haven");
+    info!("WARD: the dark has the ship at {system:?}; thrown back to Haven");
     for (mut seg, p) in &mut hull {
         if p.parent() == ship && seg.health > 0.0 {
             seg.health = (seg.health - seg.max_health * THROWN_HULL).max(1.0);
@@ -318,6 +324,23 @@ impl Plugin for WardPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The summit site is the story's own errand, and a big ship has to be
+    /// able to fly it: at the site's share of the draw, a ship of fifteen
+    /// hundred blocks with a modest two thousand of power to spare holds
+    /// its ward for well over a minute and a half.
+    #[test]
+    fn the_ward_gives_a_big_ship_a_minute_at_the_site() {
+        let spare = 2_000.0;
+        let at = |minutes: f32| draw(1_500, 1, minutes) * super::super::site::SITE_DRAW;
+        assert!(at(0.0) < spare * 0.5, "starving on arrival: {}", at(0.0));
+        assert!(at(1.5) < spare, "a minute and a half in, the ward is already failing: {}", at(1.5));
+        assert!(at(2.5) < spare, "{}", at(2.5));
+        // And it is still a clock: nobody sits there for ten minutes.
+        assert!(at(10.0) > spare * 4.0);
+        // Then a minute more before the dark has the ship.
+        assert!(THROWN_AFTER >= 60.0);
+    }
 
     /// Small and shallow is cheap; deeper, longer or bigger costs far more.
     #[test]

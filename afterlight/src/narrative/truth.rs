@@ -237,11 +237,19 @@ fn drive_truth(
     field: Query<Entity, With<TruthPipField>>,
     pips: Query<(Entity, &Node), With<TruthPip>>,
     mut lines: Query<(&TruthLine, &mut Text, &mut TextColor)>,
+    mut playing: ResMut<super::ending::Playing>,
+    mut just_played: ResMut<super::ending::JustPlayed>,
 ) {
     seq.elapsed += time.delta_secs();
     let t = seq.elapsed;
 
-    let script_lines = script(t, &stats, crate::narrative::logs::LOG_ENTRIES.len());
+    // Which script is up: this ending's own, or a sequence put together from
+    // the run (narrative::ending), which plays on the same screen.
+    let (script_lines, running_time, assembled) = match &*playing {
+        super::ending::Playing::Truth => (script(t, &stats, crate::narrative::logs::LOG_ENTRIES.len()), total_seconds(), None),
+        super::ending::Playing::Assembled { segments, after } => (super::ending::lines_at(segments, t), super::ending::total(segments), Some(*after)),
+    };
+    let own = assembled.is_none();
     for (idx, mut text, mut color) in lines.iter_mut() {
         let want = script_lines.get(idx.0).cloned().unwrap_or_default();
         if **text != want {
@@ -250,13 +258,13 @@ fn drive_truth(
         // Fade in rather than appear. Muted for the ledger rows, primary for
         // the sentences, so the stat block still reads as a stat block.
         let target = if want.is_empty() { 0.0 } else { 1.0 };
-        let base = if idx.0 >= 3 && t < T_PLAIN { ThemeColors::TEXT_MUTED } else { ThemeColors::TEXT_PRIMARY };
+        let base = if own && idx.0 >= 3 && t < T_PLAIN { ThemeColors::TEXT_MUTED } else { ThemeColors::TEXT_PRIMARY };
         let a = color.0.alpha();
         color.0 = base.with_alpha(a + (target - a) * (time.delta_secs() * 2.2).min(1.0));
     }
 
     // The map beat: the same pips the player has been reading all game.
-    if t >= T_DIVISION && t < T_ADDRESS {
+    if own && t >= T_DIVISION && t < T_ADDRESS {
         if let Ok(parent) = field.single() {
             if !seq.seeded {
                 seq.seeded = true;
@@ -306,14 +314,24 @@ fn drive_truth(
                 }
             }
         }
-    } else if t >= T_ADDRESS {
+    } else if own && t >= T_ADDRESS {
         for (e, _) in pips.iter() {
             commands.entity(e).despawn();
         }
     }
 
-    if t >= total_seconds() {
-        next_state.set(GameState::MainMenu);
+    if t >= running_time {
+        match assembled {
+            // This ending is the end of the run.
+            None => next_state.set(GameState::MainMenu),
+            // A sequence from the run hands back to flight, and says what
+            // it was so flight can carry on from it (ending::after_the_sequence).
+            Some(after) => {
+                just_played.0 = Some(after);
+                *playing = super::ending::Playing::Truth;
+                next_state.set(GameState::Exploring);
+            }
+        }
     }
 }
 
@@ -400,6 +418,46 @@ mod tests {
         let would_sample = !existing.is_empty() && existing.len() < MAX_PIPS;
         assert!(!would_sample, "an empty field must not reach the sampler");
         assert!(FALLBACK_PIPS > 0, "an empty galaxy must still draw something");
+    }
+
+    /// A sequence put together from the run plays on this screen through the
+    /// real system, shows its own lines, and when it is over hands back to
+    /// flight, once, leaving the screen ready for the far-edge ending.
+    #[test]
+    fn a_sequence_from_the_run_plays_and_hands_back_to_flight() {
+        use super::super::ending::{After, JustPlayed, Playing, Segment};
+        use bevy::state::app::StatesPlugin;
+        let segments = vec![
+            Segment { title: "14:03".into(), seconds: 6.0, lines: vec!["first".into(), "second".into()] },
+            Segment { title: String::new(), seconds: 5.0, lines: vec!["last".into()] },
+        ];
+        let mut app = App::new();
+        app.add_plugins(StatesPlugin)
+            .insert_state(GameState::Truth)
+            .init_resource::<Time>()
+            .init_resource::<TruthSequence>()
+            .init_resource::<Statistics>()
+            .init_resource::<JustPlayed>()
+            .insert_resource(crate::celestial::galaxy::generate_galaxy_map(42))
+            .insert_resource(Playing::Assembled { segments, after: After::Home })
+            .add_systems(Update, drive_truth.run_if(in_state(GameState::Truth)));
+        let lines: Vec<Entity> = (0..LINES).map(|i| app.world_mut().spawn((Text::new(""), TextColor(Color::WHITE), TruthLine(i))).id()).collect();
+        let step = |app: &mut App, secs: f32| {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_secs_f32(secs));
+            app.update();
+        };
+        let shown = |app: &App, i: usize| app.world().get::<Text>(lines[i]).unwrap().0.clone();
+        step(&mut app, 4.0);
+        assert_eq!((shown(&app, 0), shown(&app, 1), shown(&app, 2)), ("14:03".into(), "first".into(), "second".into()));
+        assert!(matches!(app.world().resource::<NextState<GameState>>(), NextState::Unchanged), "it ended early");
+        step(&mut app, 4.0);
+        assert_eq!((shown(&app, 0), shown(&app, 1), shown(&app, 2)), (String::new(), "last".into(), String::new()), "the first part is still up");
+        step(&mut app, 4.0);
+        assert!(matches!(app.world().resource::<NextState<GameState>>(), NextState::Pending(GameState::Exploring)), "it didn't hand back to flight");
+        assert_eq!(app.world().resource::<JustPlayed>().0, Some(After::Home));
+        assert!(matches!(*app.world().resource::<Playing>(), Playing::Truth), "the screen was left set to the old sequence");
+        // No star map was drawn for it: that is the far-edge ending's alone.
+        assert_eq!(app.world_mut().query::<&TruthPip>().iter(app.world()).count(), 0);
     }
 
     /// The closer must be the last thing standing, alone.

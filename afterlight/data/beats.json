@@ -1,0 +1,72 @@
+{
+ "_note": "Story beats (narrative::beats): small things that happen between the Summit Record's steps, so no leg of the trip is empty. 'stage' is how many pieces you have (0 to 4). 'asked' (stage 0 only) is whether the Abbess has asked for the pieces yet. 'gap' is seconds of flight since the last beat before this one may fire; after 'max_gap' seconds of quiet the next unfired beat of the stage fires whatever its gap. Beats of a stage fire in the order written, each once a run. 'toast' is the line shown (keep it short: an instrument report or one overheard sentence, not an explanation). 'kind' is info or warning. 'jolt' is [seconds, how badly 1-3] of lying instruments. 'push' makes the dark lurch (a story step lurches it 0.5). 'marlow' is a moment id from data/marlow.json for the chief to remark on. 'spawn' is something the code knows how to place (meridian). 'when' is anytime or away_from_haven. Plain ASCII only.",
+ "max_gap": 600,
+ "beats": [
+  {
+   "id": "ghost_contact",
+   "stage": 0,
+   "asked": false,
+   "gap": 90,
+   "toast": "Radar: one contact, close astern. Radar: no contact.",
+   "kind": "warning",
+   "jolt": [4, 1],
+   "marlow": "ghost_contact"
+  },
+  {
+   "id": "meridian",
+   "stage": 0,
+   "asked": true,
+   "gap": 120,
+   "when": "away_from_haven",
+   "toast": "Contact: a wreck, not under power. Its transponder still answers: CSS MERIDIAN.",
+   "kind": "warning",
+   "spawn": "meridian",
+   "marlow": "meridian"
+  },
+  {
+   "id": "unsigned",
+   "stage": 1,
+   "gap": 240,
+   "toast": "Comm, unsigned: \"The minutes were not his to sell. Someone has noticed that you have them.\"",
+   "jolt": [2, 1]
+  },
+  {
+   "id": "sister_hail",
+   "stage": 2,
+   "gap": 240,
+   "toast": "Open channel, very faint: \"Halyard? Halyard, is that you?\" Source: none found.",
+   "kind": "warning",
+   "jolt": [5, 1],
+   "marlow": "sister_hail"
+  },
+  {
+   "id": "leaving",
+   "stage": 2,
+   "gap": 300,
+   "toast": "Port traffic: convoys are leaving the outer systems. None are scheduled back.",
+   "push": 0.15,
+   "marlow": "refugees"
+  },
+  {
+   "id": "own_voice",
+   "stage": 3,
+   "gap": 240,
+   "toast": "Every channel carries one voice for a second. It is reading out your hull status.",
+   "kind": "warning",
+   "jolt": [6, 2]
+  },
+  {
+   "id": "counting",
+   "stage": 4,
+   "gap": 240,
+   "toast": "The Abbess, over the comm, to no one: \"...a billion and one. A billion and two.\"",
+   "jolt": [4, 2]
+  }
+ ],
+ "meridian": {
+  "kicker": "FLIGHT RECORDER",
+  "title": "CSS MERIDIAN",
+  "gist": "Your sister ship's mind came apart. It asked for you.",
+  "text": "CSS Meridian, flight recorder. The last entries.\n\nDay 211. The core asked the deck chief what day it was. He told it. It asked again.\n\nDay 214. The core has stopped answering to Meridian. It answers to another name, and then to several at once.\n\nDay 215. All hands to the boats. The core is still talking. It is talking to someone called Halyard.\n\nThe recording ends here."
+ }
+}

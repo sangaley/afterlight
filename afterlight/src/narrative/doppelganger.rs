@@ -74,7 +74,7 @@ fn maybe_send_it(
     mut notifications: MessageWriter<ShowNotification>,
     stations: Res<crate::world::home_base::SystemStations>,
     faction_stations: Res<crate::diplomacy::stations::FactionStations>,
-    contacts: Res<crate::diplomacy::contacts::Contacts>,
+    mut contacts: ResMut<crate::diplomacy::contacts::Contacts>,
 ) {
     // Once the Choir have played you your own voice (Summit Record step 3),
     // it comes for certain: what the piece said, the game now does.
@@ -124,6 +124,8 @@ fn maybe_send_it(
         .is_some()
     {
         state.spent = true;
+        // It counts as something happening, for the beats' spacing.
+        super::beats::note(&mut contacts.story);
         // Deliberately reads as an instrument report, not an announcement.
         // The player is meant to notice what it is by fighting it.
         notifications.write(ShowNotification {

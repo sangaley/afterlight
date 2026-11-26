@@ -45,6 +45,8 @@ pub(super) const HOSTILE_TEXT: Color = Color::srgb(1.0, 0.38, 0.35);
 const MAP_TRADER: Color = Color::srgb(0.35, 0.85, 0.75);
 const MAP_YOU: Color = Color::srgb(0.3, 0.9, 1.0);
 const MAP_TARGET: Color = Color::srgb(1.0, 0.85, 0.4);
+/// Where the story wants you: the Summit Record's orange.
+const STORY_MARK: Color = Color::srgb(0.95, 0.55, 0.20);
 const MAP_BOUNTY: Color = Color::srgb(1.0, 0.2, 0.85);
 const MAP_ORBIT: Color = Color::srgba(0.45, 0.53, 0.72, 0.45);
 const MAP_GROUND: Color = Color::srgb(0.008, 0.012, 0.04);
@@ -288,6 +290,11 @@ struct Scene {
     /// The tear where the summit station was (narrative::summit): galaxy
     /// position and radius, once the black box has been found.
     scar: Option<(Vec2, f32)>,
+    /// Where the story wants you next (narrative::summit::SummitObjective):
+    /// the system's place in the galaxy and a word for who or what is there.
+    /// Drawn whether or not you've charted the system: it's where you were
+    /// told to go.
+    story: Option<(Vec2, String)>,
 }
 
 /// Where you are on the map: your system, or open space after a blind jump.
@@ -540,6 +547,8 @@ pub struct MapWorld<'w, 's> {
     stats: Res<'w, crate::resources::Statistics>,
     /// How far the Summit Record has come (the scar).
     contacts: Res<'w, crate::diplomacy::contacts::Contacts>,
+    /// Where the story wants you next (the mark on its system).
+    objective: Res<'w, crate::narrative::summit::SummitObjective>,
     /// The galaxy clock, for how long ago you heard (narrative::news).
     clock: Res<'w, crate::celestial::resources::GalaxyState>,
 }
@@ -715,8 +724,16 @@ fn gather_scene(world: &MapWorld, dash: Option<Vec2>, jump: Option<GalaxyWarpTar
         hull: world.hull.hull_integrity,
         hold: (world.inventory.current_weight, world.inventory.max_capacity),
         cargo: world.inventory.items.iter().map(|(item, count)| (item.name().to_string(), *count)).collect(),
+        // The tear is where the site is pinned (narrative::site), once it is.
         scar: crate::narrative::summit::scar_radius(world.contacts.summit.done)
-            .map(|r| (crate::narrative::summit::summit_site(&world.galaxy_map), r)),
+            .map(|r| (world.contacts.story.site.unwrap_or_else(|| crate::narrative::summit::summit_site(&world.galaxy_map)), r)),
+        story: world
+            .objective
+            .system
+            .and_then(|id| world.galaxy_map.systems.iter().find(|s| s.id == id))
+            .map(|s| s.galaxy_pos)
+            .or(world.objective.place)
+            .map(|at| (at, world.objective.tag.clone())),
     }
 }
 
@@ -1262,6 +1279,19 @@ fn paint(p: &mut ChildSpawnerCommands, scene: &Scene, cam: MapCam, stage: Vec2, 
     // Keep the room for the map's own bars: names don't go under them.
     placed.push(Rect::from_corners(Vec2::ZERO, Vec2::new(stage.x, 40.0)));
     placed.push(Rect::from_corners(Vec2::new(0.0, stage.y - 40.0), stage));
+
+    // Where the story wants you: a doubled orange diamond round the system,
+    // named, on top of whatever is or isn't known about it.
+    if let Some((galaxy, tag)) = &scene.story {
+        let at = cam.to_px(*galaxy, stage);
+        if paint.on_stage(at, 40.0) && open < 0.9 {
+            let fade = 1.0 - open;
+            paint.diamond(at, 13.0, 2.0, faded(STORY_MARK, 0.95 * fade));
+            paint.diamond(at, 18.0, 1.0, faded(STORY_MARK, 0.5 * fade));
+            let words = if tag.is_empty() { "SUMMIT RECORD".to_string() } else { format!("SUMMIT RECORD: {}", tag.to_uppercase()) };
+            paint.label(&words, at + Vec2::new(-Painter::label_width(&words, F::TINY) / 2.0, 22.0), F::TINY, faded(STORY_MARK, fade), &mut placed);
+        }
+    }
 
     for sys in order {
         let at = cam.to_px(sys.galaxy, stage);

@@ -153,9 +153,11 @@ fn update_expedition_hud(
     } else {
         format!("EXPEDITION RECORDS  {}/{}   {}", exp.found, exp.total, lead)
     };
-    // The story leads; the records are reading on the way.
+    // One goal on screen. Once the story has a line it is the only one: the
+    // records are reading on the way, and their count lives in the Log
+    // window (L). Two lines competing here read as two things to do.
     let want = match &summit.line {
-        Some(story) => format!("{story}\n{records}"),
+        Some(story) => story.clone(),
         None => records,
     };
     if **text != want {

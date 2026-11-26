@@ -2602,6 +2602,14 @@ pub enum DockTab {
 
 impl DockTab {
     pub const ALL: [DockTab; 4] = [DockTab::Market, DockTab::Military, DockTab::Bar, DockTab::Comm];
+    /// A free port's: it has a bar and a comm relay, but nobody's High
+    /// Command and so no military market.
+    pub const FREE_PORT: [DockTab; 3] = [DockTab::Market, DockTab::Bar, DockTab::Comm];
+
+    /// The tabs a station has, by whether a faction owns it.
+    pub fn at(owned: bool) -> &'static [DockTab] {
+        if owned { &Self::ALL } else { &Self::FREE_PORT }
+    }
 
     pub fn label(self) -> &'static str {
         match self {

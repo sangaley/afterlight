@@ -4,7 +4,6 @@ use crate::ai_ship::components::{AiShipType, AiShipWreck};
 use crate::ai_ship::spawner;
 use crate::building::ModuleRegistry;
 use crate::components::{Ship, Weapon};
-use crate::contracts::MissionBoardOpen;
 use crate::crew::eva_salvage::EvaSalvaging;
 use crate::events::{NotificationType, ShowNotification};
 use crate::states::{BuildState, GameState};
@@ -51,7 +50,7 @@ pub enum Advance {
     Salvage,   // a salvage detail is out
     Dock,      // docked at a station again
     Build,     // opened the shipyard (build mode)
-    Contracts, // opened the bounty board
+    Comm, // turned to the station's Comm directory
     Crew,      // opened the crew menu
 }
 
@@ -67,10 +66,20 @@ const ENEMY_SPAWN_OFFSET: Vec2 = Vec2::new(1400.0, 1400.0);
 /// Swarm's stock 4800-range rockets dragging it across the system on contact.
 const TUTORIAL_ENEMY_RANGE: f32 = 700.0;
 
-/// One guided step: the instruction/lesson on the card + how it's completed.
+/// Width of the station services sheet (ui::spawn_docking_menu), which the
+/// card keeps clear of while it's open.
+const SERVICES_SHEET: f32 = 800.0;
+
+/// One guided step: how it's completed. What the card says for it is data,
+/// in two voices: Marlow's while he lives, the ship's own once he doesn't
+/// (narrative::marlow, `data/marlow.json`, in this order).
 struct TutorialStep {
-    body: &'static str,
     advance: Advance,
+}
+
+/// How many steps the shakedown has.
+pub fn step_count() -> usize {
+    STEPS.len()
 }
 
 /// The training script, in order. Action steps teach by doing; info steps
@@ -79,63 +88,48 @@ struct TutorialStep {
 const STEPS: &[TutorialStep] = &[
     TutorialStep {
         advance: Advance::Launch,
-        body: "Core's up. Good. I'm Marlow, deck chief. You're the Halyard's mind now, and we're its hands. We're berthed at Haven. When you're ready, take us out: Launch [Enter].",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "The block at the bottom right is the ship. HULL is what's still holding, POWER is reactor output against what we're drawing, FUEL burns whenever you thrust, and CREW is us. Keep an eye on all four.",
     },
     TutorialStep {
         advance: Advance::Thrust,
-        body: "The nose follows your cursor. [W] burns forward, [S] backs off, [A] and [D] slide us sideways. Give her a push.",
     },
     TutorialStep {
         advance: Advance::Inside,
-        body: "Press [.] to look inside the hull. That's all of us in there, and the air we breathe. [Q] shows the air itself. Press [.] again to come back out.",
     },
     TutorialStep {
         advance: Advance::Scan,
-        body: "Out here you find things by listening. [Z] pings the radar: anything in range shows up. Try it.",
     },
     TutorialStep {
         advance: Advance::Lock,
-        body: "Contact. A raider, a light one. Right-click it to lock on. We'll hold the best range for our guns on our own.",
     },
     TutorialStep {
         advance: Advance::Kill,
-        body: "Hold [Space] or the left button to fire. The turrets turn by themselves; the big one is slow, but it hits like a hammer. Don't waste shells on empty space.",
     },
     TutorialStep {
         advance: Advance::Salvage,
-        body: "Scratch one. The pay is in the wreck: get in close and press [F]. Anyone off shift suits up and strips it.",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "What they carry back is cargo, not credits. We sell it at a station. Hunt, salvage, sell, build: that's how the Halyard gets stronger.",
     },
     TutorialStep {
         advance: Advance::Dock,
-        body: "Take us home. Ease up to Haven and dock with [F].",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "Home. This is where we spend it: the shipyard, the job board and the crew roster.",
     },
     TutorialStep {
         advance: Advance::Build,
-        body: "[B] opens the shipyard. Everything you place draws power, so match it with reactors. The Guns tab opens with ready-made guns, then the parts to build your own. Outside the yard, right-click any of our guns to tune its shells.",
     },
     TutorialStep {
-        advance: Advance::Contracts,
-        body: "[J] is the job board. Contacts post work on real ships out there. Who we work for decides who shoots at us.",
+        advance: Advance::Comm,
     },
     TutorialStep {
         advance: Advance::Crew,
-        body: "[C] is the roster, [H] to hire. A station nobody's manning runs at a fraction. We're what make her work.",
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "That's the shakedown. One more thing: someone's been trying to raise us since you woke up. [M] is the map, and [L] keeps every record we find. Take us out when you're ready.",
     },
 ];
 
@@ -190,6 +184,10 @@ struct TutorialEnemy;
 /// Wrapper node — visibility is toggled here to show/hide the whole card.
 #[derive(Component)]
 struct TutorialRoot;
+
+/// The card's title strip: whose voice the shakedown is in.
+#[derive(Component)]
+struct TutorialTitleText;
 
 /// The "1 / N" progress readout in the card header.
 #[derive(Component)]
@@ -275,6 +273,7 @@ fn spawn_tutorial_card(mut commands: Commands) {
                     .with_children(|header| {
                         header.spawn((
                             Text::new("SHAKEDOWN - CHIEF MARLOW"),
+                            TutorialTitleText,
                             TextFont { font_size: FontSize::Px(ThemeFonts::TINY), ..default() },
                             TextColor(crate::ui::theme::Sheet::TITLE),
                         ));
@@ -288,7 +287,7 @@ fn spawn_tutorial_card(mut commands: Commands) {
 
                     // Instruction/lesson line for the current step.
                     card.spawn((
-                        Text::new(STEPS[0].body),
+                        Text::new(crate::narrative::marlow::tutorial_line(0, true)),
                         TextFont { font_size: FontSize::Px(13.5), ..default() },
                         TextColor(ThemeColors::TEXT_PRIMARY),
                         Node { margin: UiRect::axes(Val::Px(12.0), Val::Px(10.0)), ..default() },
@@ -386,7 +385,8 @@ fn advance_tutorial(
     mut tutorial: ResMut<Tutorial>,
     state: Res<State<GameState>>,
     build_state: Res<State<BuildState>>,
-    mission_board: Res<MissionBoardOpen>,
+    station_tabs: Query<&crate::components::DockTabState>,
+    contacts: Option<Res<crate::diplomacy::contacts::Contacts>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     wreck_q: Query<(), With<AiShipWreck>>,
     eva_q: Query<(), With<EvaSalvaging>>,
@@ -442,7 +442,9 @@ fn advance_tutorial(
         Advance::Dock => *state.get() == GameState::StationDocked,
         // Station-side lessons: opened the shipyard / bounty board / crew menu.
         Advance::Build => *build_state.get() != BuildState::Inactive,
-        Advance::Contracts => mission_board.0,
+        // The services window is up and turned to the Comm directory: where
+        // the story's work is taken (diplomacy::dock_tabs).
+        Advance::Comm => station_tabs.iter().any(|t| t.tab == crate::components::DockTab::Comm),
         Advance::Crew => {
             *state.get() == GameState::StationDocked && keyboard.just_pressed(KeyCode::KeyC)
         }
@@ -452,11 +454,12 @@ fn advance_tutorial(
         return;
     }
 
+    let marlow = contacts.is_some_and(|c| crate::narrative::marlow::aboard(&c));
     tutorial.step += 1;
     if tutorial.step >= STEPS.len() {
         tutorial.active = false;
         notifications.write(ShowNotification {
-            message: "Shakedown done. Marlow is back on deck.".into(),
+            message: if marlow { "Shakedown done. Marlow is back on deck." } else { "Shakedown done." }.into(),
             notification_type: NotificationType::Success,
             duration: 6.0,
         });
@@ -469,7 +472,10 @@ fn advance_tutorial(
 fn update_tutorial_card(
     tutorial: Res<Tutorial>,
     state: Res<State<GameState>>,
-    mut root_q: Query<&mut Visibility, With<TutorialRoot>>,
+    mut root_q: Query<(&mut Visibility, &mut Node), With<TutorialRoot>>,
+    services: Query<(), With<crate::components::DockingOverlay>>,
+    contacts: Option<Res<crate::diplomacy::contacts::Contacts>>,
+    mut title_q: Query<&mut Text, (With<TutorialTitleText>, Without<TutorialBodyText>, Without<TutorialProgressText>, Without<TutorialFooterText>)>,
     mut body_q: Query<&mut Text, (With<TutorialBodyText>, Without<TutorialProgressText>, Without<TutorialFooterText>)>,
     mut prog_q: Query<&mut Text, (With<TutorialProgressText>, Without<TutorialBodyText>, Without<TutorialFooterText>)>,
     mut foot_q: Query<&mut Text, (With<TutorialFooterText>, Without<TutorialBodyText>, Without<TutorialProgressText>)>,
@@ -478,16 +484,34 @@ fn update_tutorial_card(
         && matches!(*state.get(), GameState::StationDocked | GameState::Exploring)
         && tutorial.current().is_some();
 
-    if let Ok(mut vis) = root_q.single_mut() {
+    if let Ok((mut vis, mut node)) = root_q.single_mut() {
         *vis = if showing { Visibility::Inherited } else { Visibility::Hidden };
+        // The station's services sheet takes the right of the screen, and the
+        // lesson that opens it (the Comm directory) still has to be read with
+        // it up: the card moves into what's left.
+        let right = if services.is_empty() { Val::Px(0.0) } else { Val::Px(SERVICES_SHEET) };
+        if node.right != right {
+            node.right = right;
+        }
     }
     let Some(step) = tutorial.current().filter(|_| showing) else {
         return;
     };
 
+    // Marlow's voice while he's aboard; the ship's own if he has died on
+    // the way. In the first frames of a run, before the crew are in their
+    // bunks, it is his: he is about to be.
+    let marlow = contacts.map_or(true, |c| c.story.marlow != crate::narrative::story::MarlowFate::Dead);
+    let words = crate::narrative::marlow::tutorial_line(tutorial.step, marlow);
     if let Ok(mut body) = body_q.single_mut() {
-        if body.0.as_str() != step.body {
-            body.0 = step.body.to_string();
+        if body.0.as_str() != words {
+            body.0 = words.to_string();
+        }
+    }
+    if let Ok(mut title) = title_q.single_mut() {
+        let want = format!("SHAKEDOWN - {}", crate::narrative::marlow::kicker(marlow));
+        if title.0 != want {
+            title.0 = want;
         }
     }
     if let Ok(mut prog) = prog_q.single_mut() {
@@ -522,7 +546,6 @@ mod dock_step_tests {
         app.add_plugins(StatesPlugin);
         app.insert_state(state);
         app.init_state::<BuildState>();
-        app.init_resource::<MissionBoardOpen>();
         app.init_resource::<ButtonInput<KeyCode>>();
         app.init_resource::<crate::vfx::ship_roof::SeeInside>();
         app.init_resource::<crate::combat::targeting::AimLock>();
@@ -539,6 +562,27 @@ mod dock_step_tests {
         let mut app = app_berthed_in(GameState::StationDocked);
         app.update();
         assert_eq!(app.world().resource::<Tutorial>().step, dock_step() + 1);
+    }
+
+    /// The lesson on taking work is the Comm directory, where the story's
+    /// work is, and it is learned by turning to that tab.
+    #[test]
+    fn the_comm_lesson_is_learned_on_the_comm_tab() {
+        use crate::components::{DockTab, DockTabState};
+        let comm = STEPS.iter().position(|s| s.advance == Advance::Comm).expect("training never teaches the Comm");
+        for marlow in [true, false] {
+            let words = crate::narrative::marlow::tutorial_line(comm, marlow);
+            assert!(words.contains("[U]") && words.contains("Comm"), "{words}");
+            assert!((0..STEPS.len()).all(|i| !crate::narrative::marlow::tutorial_line(i, marlow).contains("[J]")), "training still sends you to the old job board");
+        }
+        let mut app = app_berthed_in(GameState::StationDocked);
+        app.world_mut().resource_mut::<Tutorial>().step = comm;
+        let window = app.world_mut().spawn(DockTabState { tab: DockTab::Market, tabs: true, contact: 0, item: 0 }).id();
+        app.update();
+        assert_eq!(app.world().resource::<Tutorial>().step, comm, "the market isn't the Comm");
+        app.world_mut().get_mut::<DockTabState>(window).unwrap().tab = DockTab::Comm;
+        app.update();
+        assert_eq!(app.world().resource::<Tutorial>().step, comm + 1);
     }
 
     /// An outpost colony is not a station: the next lessons open its

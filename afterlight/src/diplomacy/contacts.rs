@@ -53,6 +53,21 @@ pub struct ContactDef {
     pub trusted: String,
     #[serde(default)]
     pub story: bool,
+    /// The kind of work their `offer` line is about (diplomacy::talk): they
+    /// offer it first, and say something else when the work is another kind.
+    #[serde(default)]
+    pub prefers: Option<String>,
+    /// What they say about what you did (diplomacy::talk).
+    #[serde(default)]
+    pub reactive: Vec<Reactive>,
+}
+
+/// A line said when something is true of the story: `when` is read by
+/// diplomacy::talk.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Reactive {
+    pub when: String,
+    pub line: String,
 }
 
 #[derive(Deserialize)]
@@ -97,6 +112,10 @@ pub struct Contacts {
     /// save system (at Bevy's parameter limit) needs nothing new.
     #[serde(default)]
     pub summit: crate::narrative::summit::SummitProgress,
+    /// What else the story remembers about this run (narrative::story). Here
+    /// for the same reason.
+    #[serde(default)]
+    pub story: crate::narrative::story::StoryState,
 }
 
 impl Contacts {
@@ -168,6 +187,22 @@ pub fn present_at<'a>(
     // The story's people first, then by role.
     here.sort_by_key(|c| (!c.story, c.role as u8));
     here
+}
+
+/// Who answers in a station's Comm directory. A faction's starport has its
+/// own people (`present_at`). A free port has only a relay, and the one
+/// voice on it is the Abbess, once the Silence have hailed you: she will
+/// talk, speak for you and hand out her own work over it, but she asks for
+/// the pieces in person while she still has a house to ask in
+/// (narrative::summit::commission_here).
+pub fn comm_people<'a>(galaxy: &GalaxyMap, contacts: &Contacts, system_id: u32, owner: Option<AiShipType>) -> Vec<&'a ContactDef> {
+    match owner {
+        Some(faction) => present_at(galaxy, contacts, system_id, faction),
+        None if contacts.summit.hailed || contacts.summit.commissioned => {
+            all().iter().filter(|c| c.id == crate::narrative::summit::ABBESS).collect()
+        }
+        None => Vec::new(),
+    }
 }
 
 /// A faction's capital fell (to a rival, or to the dark): one in three of its

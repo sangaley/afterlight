@@ -23,10 +23,18 @@ pub const SURNAMES: [&str; 80] = [
     "Mwangi", "Orsini", "Rahimi", "Strand", "Yates", "Zeller",
 ];
 
-/// The `i`th member of the starting crew. Numbered hands only past the end
-/// of the pool, so two crew are never called the same thing.
+/// The deck chief (narrative::marlow). His name is his alone: it is not in
+/// the pool, so no bunk or hiring board deals it to anyone else.
+pub const MARLOW: &str = "Marlow";
+
+/// The `i`th member of the starting crew: the deck chief first, then the
+/// pool in order. Numbered hands only past the end of the pool, so two crew
+/// are never called the same thing.
 pub fn starting_name(i: usize) -> String {
-    match SURNAMES.get(i) {
+    if i == 0 {
+        return MARLOW.to_string();
+    }
+    match SURNAMES.get(i - 1) {
         Some(name) => (*name).to_string(),
         None => format!("Hand {}", i + 1),
     }
