@@ -13,6 +13,15 @@ use super::components::*;
 /// cargo is slag (non-scrap weights crushed), a pristine kill preserves and
 /// even concentrates it. Thresholds match the quantity tiers in
 /// ai_ship_death_system (>= 0.7 pristine, < 0.3 shattered).
+/// What comes out of a wreck next: mostly the cargo it was hauling, if it
+/// was, else what its kind of ship carries.
+pub fn loot_from(wreck: &AiShipWreck, rng: &mut impl Rng) -> ItemType {
+    match wreck.cargo {
+        Some(cargo) if rng.gen_bool(0.6) => cargo,
+        _ => roll_wreck_loot(wreck.ship_type, wreck.intact_frac, rng),
+    }
+}
+
 pub fn roll_wreck_loot(ship_type: AiShipType, intact_frac: f32, rng: &mut impl Rng) -> ItemType {
     use ItemType::*;
     let table: &[(ItemType, f32)] = match ship_type {
@@ -198,6 +207,7 @@ pub fn ai_ship_death_system(
     hull_query: Query<Has<HullDestroyed>, (With<HullSegment>, Without<Module>)>,
     mut shield_query: Query<&mut crate::combat::shields::ShipShield>,
     mut notifications: MessageWriter<ShowNotification>,
+    carried: Query<&CarriedCargo>,
 ) {
     for event in destroyed_events.read() {
         // Dead reactor, dead shield — permanently. update_shields recharges
@@ -273,6 +283,7 @@ pub fn ai_ship_death_system(
         commands.entity(event.entity).try_insert((
             AiShipWreck {
                 ship_type: event.ship_type,
+                cargo: carried.get(event.entity).ok().map(|c| c.0),
                 loot_remaining: loot,
                 intact_frac,
             },
@@ -407,6 +418,7 @@ mod paint_tests {
 
         app.world_mut().entity_mut(ship).insert(AiShipWreck {
             ship_type: AiShipType::TerranHegemony,
+            cargo: None,
             loot_remaining: 1,
             intact_frac: 1.0,
         });
@@ -437,6 +449,7 @@ mod paint_tests {
             .id();
         world.entity_mut(ship).insert(AiShipWreck {
             ship_type: AiShipType::TerranHegemony,
+            cargo: None,
             loot_remaining: 1,
             intact_frac: 1.0,
         });

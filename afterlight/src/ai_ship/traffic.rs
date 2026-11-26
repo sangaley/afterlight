@@ -297,7 +297,12 @@ pub fn trader_cargo(id: u32) -> &'static str {
 pub fn trader_label(fleet: &fleet::SimFleet, class: Option<&str>) -> String {
     let what = class.unwrap_or("Freighter");
     let name = trader_name(fleet.id, fleet.faction);
-    let cargo = trader_cargo(fleet.id);
+    // What's really in its hold (world::economy); the old made-up word if
+    // nothing is.
+    let cargo = match fleet.trade.as_ref().and_then(|t| t.cargo) {
+        Some(c) => format!("{:.0} {}", c.units, c.item.name().to_lowercase()),
+        None => format!("{}, in ballast", trader_cargo(fleet.id)),
+    };
     match fleet.trade.as_ref() {
         Some(run) if run.refugees => format!("{name}, {what}: refugees, for {}", run.bound_for),
         Some(run) if run.dwell > 0.0 => format!("{name}, {what}: {cargo}, in port"),
@@ -321,7 +326,9 @@ pub fn run_traffic(
     mut leaders: Query<(&Transform, &crate::components::Velocity, &mut AiShipNav, &super::fleet::FleetMember)>,
     hulls: Query<(&crate::world::home_base::Station, &Transform, &crate::ship::collision::Collider)>,
     nav_bodies: Option<Res<super::nav::NavBodies>>,
+    trade: (ResMut<crate::resources::MarketEvents>, Commands, Query<(Entity, &super::fleet::FleetMember, &AiShipType, Option<&AiShipClass>, Has<CarriedCargo>)>),
 ) {
+    let (mut market, mut commands, crews) = trade;
     if crate::demo::skip_ai_ship_spawn() && std::env::var("AFTERLIGHT_TRAFFIC").is_err() {
         return;
     }
@@ -400,6 +407,15 @@ pub fn run_traffic(
         }
         m
     };
+    // The ports here are on the books: their stock drifts from now on.
+    for port in stops.iter().filter_map(|s| s.port) {
+        market.stock.touch(crate::world::economy::port_index(port));
+    }
+    // What traders are already carrying to each port.
+    let mut pledged: std::collections::HashMap<(usize, crate::resources::ItemType), f32> = Default::default();
+    for c in sim.fleets.iter().filter_map(|f| f.trade.as_ref().and_then(|t| t.cargo)) {
+        *pledged.entry((c.dest, c.item)).or_insert(0.0) += c.units;
+    }
     // (fleet, port) to moor this tick; ships whose time in port is up.
     let mut to_moor: Vec<(u32, PortId)> = Vec::new();
     let mut casting: Vec<u32> = Vec::new();
@@ -452,6 +468,16 @@ pub fn run_traffic(
                     jumping_out.push(fleet.id);
                 }
                 None => {
+                    // Unloads its cargo where it was going.
+                    let arrived_at = here.then(|| stops.iter().find(|s| s.name == run.bound_for).and_then(|s| s.port)).flatten();
+                    if let (Some(at), Some(c)) = (arrived_at, run.cargo) {
+                        let idx = crate::world::economy::port_index(at);
+                        market.stock.add(idx, c.item, c.units);
+                        run.cargo = None;
+                        if crate::world::economy::econ_trace() {
+                            info!("ECON {} delivers {:.0} {} to {}", trader_name(fleet.id, fleet.faction), c.units, c.item.name(), run.bound_for);
+                        }
+                    }
                     // Into a berth, if the port has room for its working
                     // ships; otherwise it waits outside, and in the end
                     // tries somewhere else.
@@ -504,9 +530,36 @@ pub fn run_traffic(
                 run.bound_for = to.name.clone();
                 fleet.destination = jump_point(from, to, 1.0);
             } else if here {
-                let Some(stop) = next_stop(&stops, &run.last_stop, &mut rng) else {
-                    fleet.destination = open_point(from, &mut rng);
-                    continue;
+                // Where to, by what pays: load what's cheap here and take it
+                // where it's dear (world::economy::choose_run). Now and then,
+                // or with nothing worth carrying, anywhere.
+                let origin = stops.iter().find(|s| s.name == run.last_stop).and_then(|s| s.port).map(crate::world::economy::port_index);
+                let candidates: Vec<(usize, f32)> =
+                    stops.iter().filter_map(|s| Some((crate::world::economy::port_index(s.port?), s.pos.distance(position)))).collect();
+                let hold = crate::world::economy::hold_of(mooring_crews.get(&fleet.id).map_or(0, |c| c.len()));
+                let deal = origin
+                    .filter(|_| rng.gen::<f32>() > 0.1 && hold > 0.0)
+                    .and_then(|o| crate::world::economy::choose_run(&market.stock, o, &candidates, &pledged, hold, &mut rng).map(|d| (o, d)));
+                let chosen = deal.and_then(|(o, (dest, item, units))| {
+                    stops.iter().find(|s| s.port.map(crate::world::economy::port_index) == Some(dest)).map(|s| (s, o, dest, item, units))
+                });
+                let stop = match chosen {
+                    Some((stop, origin, dest, item, units)) => {
+                        market.stock.add(origin, item, -units);
+                        *pledged.entry((dest, item)).or_insert(0.0) += units;
+                        run.cargo = Some(super::fleet::Cargo { item, units, dest });
+                        if crate::world::economy::econ_trace() {
+                            info!("ECON {} loads {:.0} {} at {} for {}", trader_name(fleet.id, fleet.faction), units, item.name(), run.last_stop, stop.name);
+                        }
+                        stop
+                    }
+                    None => {
+                        let Some(stop) = next_stop(&stops, &run.last_stop, &mut rng) else {
+                            fleet.destination = open_point(from, &mut rng);
+                            continue;
+                        };
+                        stop
+                    }
                 };
                 run.bound_for = stop.name.clone();
                 fleet.destination = stop.berth(position);
@@ -590,6 +643,25 @@ pub fn run_traffic(
 
     trading.0.clear();
     trading.0.extend(sim.fleets.iter().filter(|f| f.trade.is_some()).map(|f| f.id));
+
+    // The haulers on screen carry their fleet's cargo, for their wrecks.
+    let carrying: std::collections::HashMap<u32, crate::resources::ItemType> = sim
+        .fleets
+        .iter()
+        .filter_map(|f| Some((f.id, f.trade.as_ref()?.cargo?.item)))
+        .collect();
+    for (e, member, faction, class, has) in crews.iter() {
+        let hauler = fleet::role_of(*faction, class.map(|c| c.0)) == super::roster::ClassRole::Civilian;
+        match carrying.get(&member.fleet).filter(|_| hauler) {
+            Some(item) => {
+                commands.entity(e).try_insert(CarriedCargo(*item));
+            }
+            None if has => {
+                commands.entity(e).try_remove::<CarriedCargo>();
+            }
+            None => {}
+        }
+    }
 
     // Ships on screen are flown by their leader: give it the same orders.
     let orders: std::collections::HashMap<u32, Vec2> = sim

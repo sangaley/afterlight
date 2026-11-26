@@ -153,7 +153,7 @@ pub fn wreck_drill_system(
         };
         let item = if wreck.loot_remaining > 0 {
             match ai_wreck {
-                Some(aw) => crate::ai_ship::wreck::roll_wreck_loot(aw.ship_type, aw.intact_frac, &mut rng),
+                Some(aw) => crate::ai_ship::wreck::loot_from(aw, &mut rng),
                 None => generic_loot[rng.gen_range(0..generic_loot.len())],
             }
         } else {

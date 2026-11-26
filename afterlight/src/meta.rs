@@ -1212,7 +1212,7 @@ mod save_scope_tests {
         let player = app.world_mut().spawn((Ship, Transform::from_xyz(120.0, -40.0, 0.0))).id();
         let ai = app.world_mut().spawn((AiShip, Transform::from_xyz(5000.0, 0.0, 0.0))).id();
         let wreck = app.world_mut().spawn((
-            AiShipWreck { ship_type: AiShipType::StellarPreserve, loot_remaining: 3, intact_frac: 0.5 },
+            AiShipWreck { cargo: None, ship_type: AiShipType::StellarPreserve, loot_remaining: 3, intact_frac: 0.5 },
             Transform::from_xyz(-5000.0, 0.0, 0.0),
         )).id();
 

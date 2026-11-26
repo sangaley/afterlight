@@ -402,7 +402,7 @@ fn still_the_hulks(
         }
         let loot = crate::ai_ship::wreck::base_loot(*faction) * crate::celestial::poi::DARK_HAUL;
         commands.entity(e).try_insert((
-            AiShipWreck { ship_type: *faction, loot_remaining: loot, intact_frac: 1.0 },
+            AiShipWreck { cargo: None, ship_type: *faction, loot_remaining: loot, intact_frac: 1.0 },
             PointOfInterest { poi_type: PoiType::Wreck, discovered: true },
             Wreck { loot_remaining: loot, is_explored: false },
         ));

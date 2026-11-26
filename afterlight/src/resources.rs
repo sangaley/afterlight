@@ -564,6 +564,14 @@ pub struct MarketEvents {
     /// Docked at a faction station: its name and the terms your standing
     /// gets you (diplomacy::stations). None at an ordinary station.
     pub dock_terms: Option<DockTerms>,
+    /// What every station has on its shelves (world::economy).
+    pub stock: crate::world::economy::Stock,
+    /// The price index of where you're docked, when it isn't the nearest
+    /// station: a faction starport (world::economy::port_index).
+    pub dock_port: Option<usize>,
+    /// Credits of goods you've bought and sold here this visit, for the
+    /// standing your business earns (diplomacy::stations::standing_from_trade).
+    pub traded: f32,
 }
 
 /// What a faction station charges you, from your standing with it.
@@ -582,7 +590,7 @@ pub struct DockTerms {
 
 impl Default for MarketEvents {
     fn default() -> Self {
-        Self { active: Vec::new(), next_roll: 120.0, dock_terms: None }
+        Self { active: Vec::new(), next_roll: 120.0, dock_terms: None, stock: Default::default(), dock_port: None, traded: 0.0 }
     }
 }
 
@@ -608,9 +616,27 @@ pub fn live_item_price(events: &MarketEvents, station_idx: usize, item: ItemType
     (shelf_price(events, station_idx, item) * terms).round().max(1.0) as u32
 }
 
-/// The station's own sell price with any shortage, before your terms.
+/// The station's own sell price with any shortage, before your terms: its
+/// table price, moved by what it has in stock (world::economy).
 fn shelf_price(events: &MarketEvents, station_idx: usize, item: ItemType) -> f32 {
-    (station_item_price(station_idx, item) as f32) * events.multiplier(station_idx, item)
+    shelf_base(station_idx, item) * events.multiplier(station_idx, item) * events.stock.factor(station_idx, item)
+}
+
+/// A station's table price for a good, before stock or shortage.
+pub fn shelf_base(station_idx: usize, item: ItemType) -> f32 {
+    station_item_price(station_idx, item) as f32
+}
+
+/// What `count` of a good fetches at a station, sold one after another:
+/// each one sold is one more on its shelves, and worth a little less to it.
+pub fn sale_value(events: &MarketEvents, station_idx: usize, item: ItemType, count: u32) -> u32 {
+    let terms = events.dock_terms.as_ref().map_or(1.0, |t| t.sell);
+    let base = shelf_base(station_idx, item) * events.multiplier(station_idx, item) * terms;
+    let n = crate::world::economy::normal(station_idx, item);
+    let s = events.stock.get(station_idx, item);
+    (0..count)
+        .map(|k| (base * crate::world::economy::stock_factor(s + k as f32, n)).round().max(1.0) as u32)
+        .sum()
 }
 
 /// Per-unit BUY price at a station: 1.5x its (live) sell price. The

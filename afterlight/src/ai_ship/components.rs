@@ -306,6 +306,9 @@ pub fn wreck_shade(color: Color) -> Color {
 #[derive(Component)]
 pub struct AiShipWreck {
     pub ship_type: AiShipType,
+    /// What it was carrying when it died, if it was a trader's hauler: its
+    /// wreck gives up mostly that.
+    pub cargo: Option<crate::resources::ItemType>,
     pub loot_remaining: u32,
     /// Fraction of blocks still intact at the moment of death (0..1).
     /// Forensic record of how gently the kill was done — biases loot
@@ -346,6 +349,10 @@ pub enum PortId {
     Station(usize),
     Starport(u32),
 }
+
+/// On a trader's working ship on screen: the good in its hold.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct CarriedCargo(pub crate::resources::ItemType);
 
 /// A simulated (off-screen) AI ship tracked by position only
 #[derive(Clone, Debug, Serialize)]
@@ -555,6 +562,10 @@ pub struct SavedWorld {
     /// kept: then it is every system a saved ship is in.
     #[serde(default)]
     pub populated: Vec<u32>,
+    /// Every station's stock that has moved off its normal level
+    /// (world::economy). Empty on older saves: every station at normal.
+    #[serde(default)]
+    pub stock: Vec<(usize, crate::resources::ItemType, f32)>,
 }
 
 impl SavedWorld {
@@ -631,6 +642,10 @@ pub struct WorldSimulation {
     pub cast_off: Vec<u32>,
     /// Ships backed out of a berth (id, where, which way): afloat again.
     pub released: Vec<(u32, Vec2)>,
+    /// The stations' stock, as last mirrored for a save (world::economy::mirror_stock).
+    pub stock: Vec<(usize, crate::resources::ItemType, f32)>,
+    /// A save was just loaded: its stock is to go back on the shelves.
+    pub stock_loaded: bool,
     next_bounty_id: u32,
     next_ship_id: u32,
     next_fleet_id: u32,
@@ -653,6 +668,8 @@ impl Default for WorldSimulation {
             towed: Default::default(),
             cast_off: Vec::new(),
             released: Vec::new(),
+            stock: Vec::new(),
+            stock_loaded: false,
             next_bounty_id: 1,
             next_ship_id: 1,
             next_fleet_id: 1,
@@ -686,6 +703,7 @@ impl WorldSimulation {
                 ids.sort_unstable();
                 ids
             },
+            stock: self.stock.clone(),
         }
     }
 
@@ -707,6 +725,8 @@ impl WorldSimulation {
                 ship.fleet = 0;
             }
         }
+        self.stock = saved.stock.clone();
+        self.stock_loaded = true;
         self.populated = if saved.populated.is_empty() {
             self.ships.iter().map(|s| s.system_id).collect()
         } else {

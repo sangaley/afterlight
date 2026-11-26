@@ -295,7 +295,7 @@ mod tests {
         app.world_mut().spawn((AiShip, Transform::from_xyz(500.0, 200.0, 0.0)));
         app.world_mut().spawn((
             AiShip,
-            AiShipWreck { ship_type: AiShipType::TerranHegemony, loot_remaining: 1, intact_frac: 1.0 },
+            AiShipWreck { cargo: None, ship_type: AiShipType::TerranHegemony, loot_remaining: 1, intact_frac: 1.0 },
             Transform::from_xyz(-6000.0, 0.0, 0.0),
         ));
         app.world_mut().spawn((AiShip, Transform::from_xyz(0.0, MARKER_RANGE + 1000.0, 0.0)));

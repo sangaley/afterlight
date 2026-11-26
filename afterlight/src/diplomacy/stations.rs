@@ -346,7 +346,7 @@ fn in_docking_reach(core: &Transform, anchor: &StationAnchor, ship: Vec2) -> boo
 /// The terms a faction starport gave you, held until a flown approach brings
 /// you to its berth (world::docking).
 #[derive(Resource, Default)]
-pub struct PendingDock(pub Option<DockTerms>);
+pub struct PendingDock(pub Option<(DockTerms, usize)>);
 
 /// Brought to a starport's berth by the docking run: docked.
 fn finish_starport_docking(
@@ -359,8 +359,9 @@ fn finish_starport_docking(
         return;
     }
     docking.arrived_starport = false;
-    if let Some(terms) = pending.0.take() {
+    if let Some((terms, port)) = pending.0.take() {
         market.dock_terms = Some(terms);
+        market.dock_port = Some(port);
         next_state.set(GameState::Docked);
     }
 }
@@ -434,6 +435,8 @@ fn faction_station_docking(
         return;
     };
     let terms = DockTerms { faction: Some(faction), name: name.clone(), standing: tier.label(), buy, sell };
+    // Its own shelves and prices: it used to trade at Haven's.
+    let port = crate::world::economy::STARPORT_BASE + streaming.loaded_system.unwrap_or(0) as usize;
     // Flown in to the berth at the end of the city's east arm, as at Haven,
     // when the planet isn't across the way in.
     let here = core_tf.translation.truncate();
@@ -445,13 +448,14 @@ fn faction_station_docking(
         let angle = physics.map_or(0.0, |p| p.rotation);
         if crate::world::docking::begin_docking_at(&mut docking, &settings, core, name.clone(), here, tip, extent, pos, angle, ship_radius) {
             info!("STARPORT docking at {name}: flown in to the east arm's berth");
-            pending.0 = Some(terms);
+            pending.0 = Some((terms, port));
             return;
         }
     } else if tip.is_some() {
         info!("STARPORT docking at {name}: the planet is across the way in, docking at once");
     }
     market.dock_terms = Some(terms);
+    market.dock_port = Some(port);
     notifications.write(ShowNotification {
         message: format!("Docking at {name}..."),
         notification_type: NotificationType::Info,
@@ -636,6 +640,8 @@ fn release_at_berth(
 
 fn clear_dock_terms(mut market: ResMut<MarketEvents>) {
     market.dock_terms = None;
+    market.dock_port = None;
+    market.traded = 0.0;
 }
 
 /// A system changed hands: the old owner's station there goes (the new
@@ -689,11 +695,13 @@ fn free_port_docking(
 
 /// Trading at a faction's station earns a little standing with it: a fifth
 /// of a point per item bought or sold, a few points at most per deal.
+/// Credits of business that earn one point of standing.
+const TRADE_PER_POINT: f32 = 400.0;
+
 fn standing_from_trade(
     market: Res<MarketEvents>,
-    inventory: Res<Inventory>,
     mut standing: ResMut<FactionStanding>,
-    mut last: Local<Option<u32>>,
+    mut last: Local<Option<f32>>,
     // Trade also strengthens the station's owner's hold on its system.
     border: (
         ResMut<crate::celestial::territory::BorderWar>,
@@ -702,20 +710,23 @@ fn standing_from_trade(
     ),
 ) {
     let (mut war, mut galaxy, streaming) = border;
-    let held: u32 = inventory.items.values().sum();
+    // By the value of the business, not by how often the hold changed: a
+    // point for every 400 credits bought or sold, three at most a visit.
+    // Buying and selling one scrap at a time used to earn half a point a
+    // go, and so did a job's cargo coming aboard and fuel cells spent.
+    let traded = market.traded;
     let Some((terms, faction)) = market.dock_terms.as_ref().and_then(|t| t.faction.map(|f| (t, f))) else {
         *last = None;
         return;
     };
     let Some(before) = *last else {
-        *last = Some(held);
+        *last = Some(traded);
         return;
     };
-    if held != before {
-        let moved = held.abs_diff(before) as f32;
-        let gain = (moved * 0.2).clamp(0.5, 3.0);
-        let verb = if held < before { "sold" } else { "bought" };
-        standing.change(faction, gain, format!("You {verb} goods at {}", terms.name));
+    let earned = |v: f32| (v / TRADE_PER_POINT).min(3.0);
+    if traded > before && earned(traded) > earned(before) {
+        let gain = earned(traded) - earned(before);
+        standing.change(faction, gain, format!("You traded goods at {}", terms.name));
         // Strengthening an owner never hands its system to anyone else.
         if let Some(system) = streaming.loaded_system {
             war.push(&mut galaxy, system, faction, gain * TRADE_PUSH);
@@ -728,8 +739,8 @@ fn standing_from_trade(
                 }
             }
         }
-        *last = Some(held);
     }
+    *last = Some(traded);
 }
 
 /// A station's death leaves its system without one for the rest of the run.

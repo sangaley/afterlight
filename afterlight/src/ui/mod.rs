@@ -3737,6 +3737,24 @@ fn plan_module_repair(damage: &[(u8, f32)], credits: u32, rate: f32) -> Vec<f32>
 /// per item stack actually held (stable order). Lets the player dump
 /// scrap at a Trade Hub while holding artifacts back for the Research
 /// Outpost, instead of the old all-or-nothing dump.
+/// What a station's shelves say about a good, for the menu.
+fn stock_words(market: &MarketEvents, station_idx: usize, item: ItemType) -> &'static str {
+    if market.stock.short(station_idx, item) {
+        "  * SHORT"
+    } else if market.stock.plenty(station_idx, item) {
+        "  - plenty"
+    } else {
+        ""
+    }
+}
+
+/// Goods Sell All leaves aboard: the fuel cells and ammo crates the ship
+/// runs on (refuelling and rearming use them first), and whatever a job
+/// sealed for delivery.
+fn kept_aboard(item: ItemType) -> bool {
+    matches!(item, ItemType::FuelCell | ItemType::AmmoCrate)
+}
+
 fn sell_choices(inventory: &Inventory) -> Vec<Option<ItemType>> {
     let mut choices = vec![None];
     for item in TRADE_GOODS {
@@ -3752,8 +3770,12 @@ fn buy_row(inventory: &Inventory, station_idx: usize, choice_idx: usize, market:
     let item = TRADE_GOODS[choice_idx % TRADE_GOODS.len()];
     let price = crate::resources::live_item_buy_price(market, station_idx, item);
     let held = inventory.items.get(&item).copied().unwrap_or(0);
+    let for_sale = market.stock.for_sale(station_idx, item).floor() as u32;
     (
-        format!("{} @ {}c each (hold: {})  (Left/Right: browse, Enter: buy 1)", item.name(), price, held),
+        format!(
+            "{} @ {}c each, {} for sale{} (hold: {})  (Left/Right: browse, Enter: buy 1)",
+            item.name(), price, for_sale, stock_words(market, station_idx, item), held
+        ),
         price,
         item,
     )
@@ -3764,17 +3786,18 @@ fn sell_row(inventory: &Inventory, station_idx: usize, choice: Option<ItemType>,
     match choice {
         None => {
             let mut total = 0u32;
-            for (item, count) in &inventory.items {
-                total += crate::resources::live_item_price(market, station_idx, *item) * count;
+            for (item, count) in inventory.items.iter().filter(|(i, _)| !kept_aboard(**i)) {
+                total += crate::resources::sale_value(market, station_idx, *item, *count);
             }
-            (format!("ALL cargo - {}c  (Left/Right: pick a single stack)", total), total)
+            (format!("ALL cargo but fuel cells and ammo - {}c  (Left/Right: pick a single stack)", total), total)
         }
         Some(item) => {
             let count = inventory.items.get(&item).copied().unwrap_or(0);
             let price = crate::resources::live_item_price(market, station_idx, item);
-            let value = price * count;
-            let tag = if market.multiplier(station_idx, item) > 1.0 { "  * SHORTAGE" } else { "" };
-            (format!("{}x {} @ {}c each = {}c{}  (Left/Right: cycle)", count, item.name(), price, value, tag), value)
+            // Each one sold is one more on their shelves.
+            let value = crate::resources::sale_value(market, station_idx, item, count);
+            let tag = stock_words(market, station_idx, item);
+            (format!("{}x {} from {}c each = {}c{}  (Left/Right: cycle)", count, item.name(), price, value, tag), value)
         }
     }
 }
@@ -4073,8 +4096,8 @@ fn spawn_docking_menu(
     // Escape leaves a settlement berth, but at a station it only closes this
     // menu (handle_menu_input) -- the hint has to say which.
     let escape_hint = if *state.get() == GameState::StationDocked { "Esc  close" } else { "Esc  undock" };
-    let station_idx = ship_query.single().ok()
-        .and_then(|t| stations.nearest_index(t.translation.truncate()))
+    let station_idx = market.dock_port.or_else(|| ship_query.single().ok()
+        .and_then(|t| stations.nearest_index(t.translation.truncate())))
         .unwrap_or(0);
     let far = distance_price_multiplier_for(station_idx, &galaxy) * market.service_multiplier();
     let services = get_docking_services(&hull_state, &oxygen_state, &fuel_state, &weapon_query, crew_count, staffing_state.total_berths, &inventory, station_idx, &market, far, &galaxy);
@@ -4512,13 +4535,13 @@ fn docking_menu_input(
     mut module_query: Query<&mut Module, Without<crate::ai_ship::components::OwnedByAiShip>>,
     ship_query: Query<&Transform, With<Ship>>,
     world_ctx: (
-        Res<MarketEvents>,
+        ResMut<MarketEvents>,
         Res<crate::world::home_base::SystemStations>,
         Res<crate::celestial::resources::GalaxyMap>,
     ),
 ) {
     let (assets, crew_atlases) = crew_art;
-    let (market, stations, galaxy) = world_ctx;
+    let (mut market, stations, galaxy) = world_ctx;
     let (mut hull_state, mut oxygen_state, mut fuel_state, mut currency, mut inventory) = econ_state;
 
     // Keep the menu's own credit readout honest. It is spawned once and
@@ -4537,8 +4560,8 @@ fn docking_menu_input(
         return;
     }
 
-    let station_idx = ship_query.single().ok()
-        .and_then(|t| stations.nearest_index(t.translation.truncate()))
+    let station_idx = market.dock_port.or_else(|| ship_query.single().ok()
+        .and_then(|t| stations.nearest_index(t.translation.truncate())))
         .unwrap_or(0);
     // Must match the multipliers used for the displayed costs in
     // get_docking_services / the refresh block below. That now includes the
@@ -4879,8 +4902,10 @@ fn docking_menu_input(
                 match choice {
                     None => {
                         let mut total_value = 0u32;
-                        for (item_type, count) in &inventory.items {
-                            total_value += crate::resources::live_item_price(&market, station_idx, *item_type) * count;
+                        let selling: Vec<(ItemType, u32)> =
+                            inventory.items.iter().filter(|(i, c)| !kept_aboard(**i) && **c > 0).map(|(i, c)| (*i, *c)).collect();
+                        for (item_type, count) in &selling {
+                            total_value += crate::resources::sale_value(&market, station_idx, *item_type, *count);
                         }
                         if total_value == 0 {
                             notifications.write(ShowNotification {
@@ -4890,10 +4915,13 @@ fn docking_menu_input(
                             });
                         } else {
                             currency.credits += total_value;
-                            inventory.items.clear();
-                            inventory.current_weight = 0.0;
+                            for (item_type, count) in &selling {
+                                inventory.remove_item(*item_type, *count);
+                                market.stock.add(station_idx, *item_type, *count as f32);
+                            }
+                            market.traded += total_value as f32;
                             notifications.write(ShowNotification {
-                                message: format!("Sold all cargo for {}c!", total_value),
+                                message: format!("Sold all cargo for {}c (fuel cells and ammo kept)", total_value),
                                 notification_type: NotificationType::Success,
                                 duration: 3.0,
                             });
@@ -4910,12 +4938,14 @@ fn docking_menu_input(
                             });
                         } else {
                             let price = crate::resources::live_item_price(&market, station_idx, item);
-                            let value = price * count;
+                            let value = crate::resources::sale_value(&market, station_idx, item, count);
                             inventory.remove_item(item, count);
+                            market.stock.add(station_idx, item, count as f32);
+                            market.traded += value as f32;
                             currency.credits += value;
                             selection.1 = 0;
                             notifications.write(ShowNotification {
-                                message: format!("Sold {}x {} for {}c ({}c each)", count, item.name(), value, price),
+                                message: format!("Sold {}x {} for {}c (from {}c each)", count, item.name(), value, price),
                                 notification_type: NotificationType::Success,
                                 duration: 3.0,
                             });
@@ -4978,7 +5008,13 @@ fn docking_menu_input(
             7 => {
                 // Buy Goods — one unit of the Left/Right choice
                 let (_, price, item) = buy_row(&inventory, station_idx, selection.1, &market);
-                if currency.credits < price {
+                if market.stock.for_sale(station_idx, item) < 1.0 {
+                    notifications.write(ShowNotification {
+                        message: format!("They're keeping the rest of their {}.", item.name()),
+                        notification_type: NotificationType::Info,
+                        duration: 2.0,
+                    });
+                } else if currency.credits < price {
                     notifications.write(ShowNotification {
                         message: format!("Not enough credits (need {}c, have {}c)", price, currency.credits),
                         notification_type: NotificationType::Warning,
@@ -4992,6 +5028,8 @@ fn docking_menu_input(
                     });
                 } else {
                     currency.credits -= price;
+                    market.stock.add(station_idx, item, -1.0);
+                    market.traded += price as f32;
                     notifications.write(ShowNotification {
                         message: format!("Bought 1x {} (-{}c)", item.name(), price),
                         notification_type: NotificationType::Success,

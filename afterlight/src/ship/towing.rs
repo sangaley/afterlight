@@ -365,7 +365,7 @@ mod tests {
     use crate::ai_ship::components::AiShipType;
 
     fn hulk(loot: u32, intact: f32) -> AiShipWreck {
-        AiShipWreck { ship_type: AiShipType::TerranHegemony, loot_remaining: loot, intact_frac: intact }
+        AiShipWreck { cargo: None, ship_type: AiShipType::TerranHegemony, loot_remaining: loot, intact_frac: intact }
     }
 
     /// Towing must yield the rare classes, because that is the entire reason

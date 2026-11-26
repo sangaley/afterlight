@@ -18,6 +18,7 @@ pub mod starport_raft;
 pub mod raft_detail;
 pub mod raft_look;
 pub mod station_types;
+pub mod economy;
 
 #[allow(unused_imports)]
 pub use generation::*;
@@ -48,6 +49,8 @@ impl Plugin for WorldPlugin {
             // exist while docked too — the game opens docked at Haven.
             .add_systems(OnEnter(GameState::StationDocked), home_base::spawn_base_arrow)
             .init_resource::<raft_life::Released>()
+            // The stations' stock into the save, and back out of a loaded one.
+            .add_systems(Update, economy::mirror_stock)
             .add_systems(
                 Update,
                 (
@@ -72,7 +75,10 @@ impl Plugin for WorldPlugin {
                     update_chunks,
                     check_depth_zone_change,
                     // update_biome is OFF for the demo — see the function.
-                    tick_market_events,
+                    // Stock drifts and is now and then hit (world::economy);
+                    // it replaced the random timed shortages.
+                    economy::tick_economy,
+                    economy::stock_shocks,
                     // Both claim the shared F press (resources::InteractPress),
                     // so they must sit behind the salvage handler: crew on the
                     // hull, and a wreck nearer than the station, outrank
@@ -543,6 +549,7 @@ fn check_docking_proximity(
 /// through resources::live_item_price, so the docking menu reflects the
 /// premium automatically; expiry is silent (the notification names the
 /// duration up front).
+#[allow(dead_code)]
 fn tick_market_events(
     time: Res<Time>,
     mut events: ResMut<MarketEvents>,

@@ -85,6 +85,17 @@ pub struct TradeRun {
     /// Seconds waiting outside a full port for a berth.
     #[serde(default)]
     pub waited: f32,
+    /// What it's carrying, and to where (world::economy).
+    #[serde(default)]
+    pub cargo: Option<Cargo>,
+}
+
+/// A trader's load: a good, how many, and the port (price index) it's for.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Cargo {
+    pub item: crate::resources::ItemType,
+    pub units: f32,
+    pub dest: usize,
 }
 
 /// What a fleet sent because of your standing is doing.

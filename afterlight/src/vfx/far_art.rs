@@ -1508,6 +1508,7 @@ mod tests {
         let alive = pixel(&app, s, IVec2::ZERO);
 
         app.world_mut().entity_mut(s).insert(crate::ai_ship::components::AiShipWreck {
+            cargo: None,
             ship_type: crate::ai_ship::components::AiShipType::TerranHegemony,
             loot_remaining: 1,
             intact_frac: 1.0,

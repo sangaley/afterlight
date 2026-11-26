@@ -590,11 +590,7 @@ pub fn run_salvage_detail(
                     if wreck.loot_remaining > 0 {
                         wreck.loot_remaining -= 1;
                         eva.carrying = Some(match ai_wreck {
-                            Some(aw) => crate::ai_ship::wreck::roll_wreck_loot(
-                                aw.ship_type,
-                                aw.intact_frac,
-                                &mut rng,
-                            ),
+                            Some(aw) => crate::ai_ship::wreck::loot_from(aw, &mut rng),
                             None => generic_loot[rng.gen_range(0..generic_loot.len())],
                         });
 
