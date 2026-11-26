@@ -43,25 +43,28 @@ pub fn dock_tab_keys(
     mut notes: MessageWriter<crate::events::ShowNotification>,
     mut currency: ResMut<crate::resources::Currency>,
     mut story: MessageWriter<jobs::SummitStepWon>,
+    mut standing: ResMut<FactionStanding>,
 ) {
     let Ok(mut state) = windows.single_mut() else { return };
     if !state.tabs {
         return;
     }
-    let i = DockTab::ALL.iter().position(|t| *t == state.tab).unwrap_or(0);
+    let owner = market.dock_terms.as_ref().and_then(|t| t.faction);
+    let tabs = DockTab::at(owner.is_some());
+    let i = tabs.iter().position(|t| *t == state.tab).unwrap_or(0);
     if keyboard.just_pressed(KeyCode::KeyE) {
-        state.tab = DockTab::ALL[(i + 1) % DockTab::ALL.len()];
+        state.tab = tabs[(i + 1) % tabs.len()];
     }
     if keyboard.just_pressed(KeyCode::KeyQ) {
-        state.tab = DockTab::ALL[(i + DockTab::ALL.len() - 1) % DockTab::ALL.len()];
+        state.tab = tabs[(i + tabs.len() - 1) % tabs.len()];
     }
     if state.tab != DockTab::Comm {
         return;
     }
-    let (Some(faction), Some(system)) = (market.dock_terms.as_ref().and_then(|t| t.faction), streaming.loaded_system) else {
-        return;
-    };
-    let here = contacts::present_at(&galaxy, &contacts, system, faction);
+    let Some(system) = streaming.loaded_system else { return };
+    // A free port has no people of its own, only a relay (contacts::comm_people).
+    let relay = owner.is_none();
+    let here = contacts::comm_people(&galaxy, &contacts, system, owner);
     if here.is_empty() {
         return;
     }
@@ -75,16 +78,41 @@ pub fn dock_tab_keys(
     let def = here[state.contact];
     if keyboard.just_pressed(KeyCode::Enter) {
         contacts.talk(def);
-        // Meeting the Abbess opens the chain.
-        if def.id == summit::ABBESS && !contacts.summit.commissioned {
+        let abbess = def.id == summit::ABBESS;
+        // Meeting the Abbess opens the chain: at her desk, or over a relay
+        // if she has no desk left.
+        if abbess && !contacts.summit.commissioned && summit::commission_here(relay, &galaxy) {
             contacts.summit.commissioned = true;
             contacts.summit.hailed = true;
-            info!("SUMMIT commissioned by the Abbess");
+            info!("SUMMIT commissioned by the Abbess{}", if relay { " (over a relay)" } else { "" });
+        }
+        // Shut out by whoever holds the piece you're after: she speaks for you.
+        if abbess {
+            if let Some(faction) = summit::speak_for(&contacts.summit, &mut standing) {
+                info!("SUMMIT the Abbess spoke for you to {faction:?}");
+                notes.write(crate::events::ShowNotification {
+                    message: summit::data().spoken_for.clone(),
+                    notification_type: crate::events::NotificationType::Success,
+                    duration: 8.0,
+                });
+            }
         }
         if work.of(&def.id).is_none() {
             let (sim, war) = (&world.0, &world.1);
+            // Her first jobs are written from her own house, wherever you
+            // happen to be calling from.
+            let errand = (abbess && summit::errands_open(&contacts))
+                .then(|| summit::capital_of(&galaxy, AiShipType::TheSilence).map_or(system, |(id, _)| id))
+                .map(|home| jobs::errand_offer(contacts.story.errands, &jobs::World { sim, galaxy: &galaxy, war, here: home }, &mut rand::thread_rng()));
             let at = jobs::World { sim, galaxy: &galaxy, war, here: system };
-            if let Some(job) = jobs::offer_for(def, contacts.relationship(&def.id), &at, &mut rand::thread_rng()) {
+            let offered = match errand {
+                Some(job) => {
+                    contacts.story.errands_given = contacts.story.errands + 1;
+                    Some(job)
+                }
+                None => jobs::offer_for(def, contacts.relationship(&def.id), &at, &mut rand::thread_rng()),
+            };
+            if let Some(job) = offered {
                 info!("JOB offered by {}: {} ({} cr) - {}", def.name, job.title, job.reward, job.brief);
                 work.push(job);
             }
@@ -215,6 +243,8 @@ pub fn refresh_dock_tabs(
             DockTab::Market => "Up/Down  select    Left/Right  cargo choice    Enter  buy    Esc  undock",
             DockTab::Bar => "Q / E  switch tab    Esc  undock",
             DockTab::Military => "Up/Down  select    Enter  buy    Q / E  switch tab    Esc  undock",
+            // A free port's relay has nobody who holds a piece of the record.
+            DockTab::Comm if market.dock_terms.as_ref().is_some_and(|t| t.faction.is_none()) => "Up/Down  contact    Enter  talk    A  take the job    Q / E  tab    Esc  close",
             DockTab::Comm => "Up/Down  contact    Enter  talk    A  take the job    1 / 2  story: deal or force    Q / E  tab    Esc  undock",
         };
         if text.0 != want {
@@ -427,20 +457,32 @@ fn fill_comm(
     owner: Option<AiShipType>,
     selected: usize,
 ) {
-    let here = match (owner, streaming.loaded_system) {
-        (Some(f), Some(system)) => contacts::present_at(galaxy, contacts, system, f),
-        _ => Vec::new(),
+    let relay = owner.is_none();
+    let here = match streaming.loaded_system {
+        Some(system) => contacts::comm_people(galaxy, contacts, system, owner),
+        None => Vec::new(),
     };
     commands.entity(panel).with_children(|p| {
         if here.is_empty() {
-            p.spawn(line("No one here takes calls.", ThemeFonts::BODY, ThemeColors::TEXT_MUTED));
+            if relay {
+                // A free port: nobody of its own, only the relay.
+                p.spawn(line("COMM RELAY", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
+                p.spawn(line(summit::data().relay_idle.clone(), ThemeFonts::BODY, ThemeColors::TEXT_MUTED));
+                p.spawn(line(
+                    "At a faction's starport this tab lists its people: Enter talks to one, and A takes the work they offer.",
+                    ThemeFonts::BODY_SMALL,
+                    ThemeColors::TEXT_MUTED,
+                ));
+            } else {
+                p.spawn(line("No one here takes calls.", ThemeFonts::BODY, ThemeColors::TEXT_MUTED));
+            }
             return;
         }
         p.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(12.0), ..default() }).with_children(|row| {
             // Who's here.
             row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), width: Val::Px(270.0), flex_shrink: 0.0, ..default() })
                 .with_children(|list| {
-                    list.spawn(line("CONTACTS", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
+                    list.spawn(line(if relay { "ON THE RELAY" } else { "CONTACTS" }, ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
                     for (i, def) in here.iter().enumerate() {
                         let on = i == selected.min(here.len() - 1);
                         let rel = contacts.relationship(&def.id);
@@ -461,7 +503,10 @@ fn fill_comm(
             let def = here[selected.min(here.len() - 1)];
             let state = contacts.state(&def.id);
             let rel = state.map_or(0.0, |s| s.relationship);
-            let said = contacts::line_for(def, rel, state.map_or(0, |s| s.talks)).to_string();
+            // Over a relay, while she still has a house, she only tells you
+            // to come.
+            let waiting = relay && def.id == summit::ABBESS && !contacts.summit.commissioned && !summit::commission_here(relay, galaxy);
+            let said = if waiting { summit::relay_wait(galaxy) } else { contacts::line_for(def, rel, state.map_or(0, |s| s.talks)).to_string() };
             row.spawn((
                 Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), padding: UiRect::all(Val::Px(16.0)), flex_grow: 1.0, ..default() },
                 BackgroundColor(ThemeColors::BG_CARD),
@@ -474,7 +519,7 @@ fn fill_comm(
                         bar.spawn((Node { width: Val::Percent(rel.clamp(0.0, 100.0)), height: Val::Percent(100.0), ..default() }, BackgroundColor(ThemeColors::ACCENT_GREEN)));
                     });
                 d.spawn((line(format!("\"{said}\""), 17.0, ThemeColors::TEXT_PRIMARY), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
-                story_box(d, def, contacts, work, galaxy);
+                story_box(d, def, contacts, work, galaxy, relay);
                 // The work they have for you.
                 let held = work.held();
                 d.spawn((
@@ -674,7 +719,7 @@ fn fill_military(
 /// What a contact has to do with the Summit Record: the Abbess's reading of
 /// where it stands, the current step's two ways, or a note that they hold a
 /// piece for later.
-fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts: &Contacts, work: &Jobs, galaxy: &GalaxyMap) {
+fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts: &Contacts, work: &Jobs, galaxy: &GalaxyMap, relay: bool) {
     let progress = &contacts.summit;
     let boxed = (
         Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(12.0)), margin: UiRect::top(Val::Px(10.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
@@ -686,7 +731,7 @@ fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts:
         d.spawn(boxed).with_children(|b| {
             b.spawn(line(header(progress.done), ThemeFonts::CAPTION, ThemeColors::ACCENT_ORANGE));
             let said = if !progress.commissioned {
-                "Talk to her.".to_string()
+                if summit::commission_here(relay, galaxy) { "Talk to her.".to_string() } else { "She will ask it of you in person.".to_string() }
             } else if progress.done == 0 {
                 summit::commission(galaxy)
             } else {
@@ -791,6 +836,7 @@ mod tests {
             .init_resource::<WorldSimulation>()
             .init_resource::<BorderWar>()
             .init_resource::<Inventory>()
+            .init_resource::<FactionStanding>()
             .insert_resource(Currency { credits: 5_000 })
             .add_systems(Update, dock_tab_keys);
         app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0, item: 0 }));
@@ -821,6 +867,74 @@ mod tests {
         let story = work.story().expect("force gave no work");
         assert_eq!(story.story, Some(jobs::StoryMark { step: 1, forced: true }));
         assert_eq!(work.held(), 0);
+    }
+
+    /// A free port's Comm tab is a relay. Before the Silence call it is
+    /// empty; after, the Abbess is on it. With her house standing she won't
+    /// ask for the pieces over it, but once she has asked, Enter there gets
+    /// her first job offered and A takes it, as at any starport. A free port
+    /// has no Military tab to turn to.
+    #[test]
+    fn a_free_port_relays_the_abbess_and_her_work() {
+        use crate::resources::{Currency, DockTerms, Inventory};
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<crate::events::ShowNotification>()
+            .add_message::<jobs::SummitStepWon>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(MarketEvents {
+                dock_terms: Some(DockTerms { faction: None, name: "Haven".into(), standing: "Free Port", buy: 1.0, sell: 1.0 }),
+                ..Default::default()
+            })
+            .insert_resource(galaxy)
+            .insert_resource(SystemStreamingManager { loaded_system: Some(0), ..default() })
+            .init_resource::<Contacts>()
+            .init_resource::<Jobs>()
+            .init_resource::<WorldSimulation>()
+            .init_resource::<BorderWar>()
+            .init_resource::<Inventory>()
+            .init_resource::<FactionStanding>()
+            .insert_resource(Currency { credits: 750 })
+            .add_systems(Update, dock_tab_keys);
+        let window = app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Market, tabs: true, contact: 0, item: 0 })).id();
+        let press = |app: &mut App, key: KeyCode| {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+            app.update();
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release(key);
+            keys.clear();
+        };
+        let tab = |app: &App| app.world().get::<DockTabState>(window).unwrap().tab;
+
+        // Market -> Bar -> Comm -> Market: three tabs, no Military.
+        press(&mut app, KeyCode::KeyE);
+        assert_eq!(tab(&app), DockTab::Bar);
+        press(&mut app, KeyCode::KeyE);
+        assert_eq!(tab(&app), DockTab::Comm);
+        press(&mut app, KeyCode::KeyE);
+        assert_eq!(tab(&app), DockTab::Market);
+        press(&mut app, KeyCode::KeyQ);
+        assert_eq!(tab(&app), DockTab::Comm);
+
+        // Nobody has called: Enter talks to no one.
+        press(&mut app, KeyCode::Enter);
+        assert!(!app.world().resource::<Contacts>().summit.commissioned);
+
+        // Hailed: she's on the relay, but asks in person.
+        app.world_mut().resource_mut::<Contacts>().summit.hailed = true;
+        press(&mut app, KeyCode::Enter);
+        assert!(!app.world().resource::<Contacts>().summit.commissioned, "commissioned over a relay with her house standing");
+
+        // Once she has asked (at her desk), the relay hands out her first job.
+        app.world_mut().resource_mut::<Contacts>().summit.commissioned = true;
+        app.world_mut().resource_mut::<Jobs>().list.clear();
+        press(&mut app, KeyCode::Enter);
+        let offered = app.world().resource::<Jobs>().of(summit::ABBESS).cloned().expect("she offered nothing");
+        assert_eq!((offered.status, offered.reward), (JobStatus::Offered, summit::ERRAND_PAY[0]));
+        assert_eq!(app.world().resource::<Contacts>().story.errands_given, 1);
+        press(&mut app, KeyCode::KeyA);
+        assert_eq!(app.world().resource::<Jobs>().of(summit::ABBESS).unwrap().status, JobStatus::Active);
     }
 
     /// The military market sells at a Friendly capital and nowhere else:

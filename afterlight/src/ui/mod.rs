@@ -4173,7 +4173,9 @@ fn spawn_docking_menu(
             }, BackgroundColor(Color::srgba(0.0, 0.01, 0.03, 0.35)), ZIndex(100)),
         DockingOverlay,
         DockingMenuSelection(0, 0),
-        DockTabState { tab: DockTab::Market, tabs: owner.is_some(), contact: 0, item: 0 },
+        // Every station has tabs: a faction's starport all four, a free port
+        // its market, a bar and a comm relay (DockTab::at).
+        DockTabState { tab: DockTab::Market, tabs: true, contact: 0, item: 0 },
     )).with_children(|backdrop| {
         backdrop.spawn((
             Node {
@@ -4228,8 +4230,8 @@ fn spawn_docking_menu(
                     });
             });
 
-            // Tabs, at a faction starport.
-            if owner.is_some() {
+            // Tabs: a faction starport's four, a free port's three.
+            {
                 window.spawn((
                     Node {
                         flex_direction: FlexDirection::Row,
@@ -4241,7 +4243,7 @@ fn spawn_docking_menu(
                     },
                     BorderColor::all(theme::Sheet::RULE),
                 )).with_children(|bar| {
-                    for tab in DockTab::ALL {
+                    for &tab in DockTab::at(owner.is_some()) {
                         bar.spawn((
                             Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border: UiRect::bottom(Val::Px(2.0)), ..default() },
                             BackgroundColor(Color::NONE),
@@ -4315,8 +4317,8 @@ fn spawn_docking_menu(
                 });
                 // The Military market, the Bar and the Comm directory: filled
                 // by diplomacy::dock_tabs.
-                if owner.is_some() {
-                    for tab in [DockTab::Military, DockTab::Bar, DockTab::Comm] {
+                {
+                    for &tab in DockTab::at(owner.is_some()).iter().filter(|t| **t != DockTab::Market) {
                         body.spawn((
                             Node { display: Display::None, flex_direction: FlexDirection::Column, flex_grow: 1.0, row_gap: Val::Px(8.0), ..default() },
                             DockTabPanel(tab),

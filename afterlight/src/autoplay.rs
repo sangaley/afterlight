@@ -211,6 +211,10 @@ pub struct Director {
     /// Training's crew lesson opened the crew window; close it before going
     /// on, as a player would, or it sat over a third of every later frame.
     crew_window_open: bool,
+    /// Training's Comm lesson: keys pressed so far (shipyard shut, services
+    /// open, then tab by tab), so the services window it leaves open can be
+    /// shut again before the crew lesson.
+    comm_taps: u8,
     /// How long the current recovered log has been up unread.
     log_up_for: f32,
     /// Station discs (centre, keep-out radius) in the loaded system, refreshed
@@ -383,6 +387,7 @@ impl Plugin for AutoplayPlugin {
             eva_hold: 0.0,
             undock_armed: false,
             crew_window_open: false,
+            comm_taps: 0,
             log_up_for: 0.0,
             search_for: 0.0,
             obstacles: Vec::new(),
@@ -1708,15 +1713,25 @@ fn drive_tutorial(
                 d.tap(KeyCode::KeyB);
             }
         }
-        Advance::Contracts => {
+        Advance::Comm => {
+            // As a player would: shut the shipyard the last lesson opened (U
+            // does nothing while it's up), open the services, then turn tab
+            // by tab until the Comm directory is showing.
             if beat_ready {
                 d.beat = 0.0;
-                d.tap(KeyCode::KeyJ);
+                d.tap(match d.comm_taps { 0 => KeyCode::KeyB, 1 => KeyCode::KeyU, _ => KeyCode::KeyE });
+                d.comm_taps = d.comm_taps.saturating_add(1);
             }
         }
         Advance::Crew => {
             if beat_ready {
                 d.beat = 0.0;
+                // The services window is still up from the Comm lesson.
+                if d.comm_taps > 0 {
+                    d.comm_taps = 0;
+                    d.tap(KeyCode::KeyU);
+                    return;
+                }
                 d.tap(KeyCode::KeyC);
                 d.crew_window_open = true;
             }

@@ -10,6 +10,7 @@ pub mod front;
 pub mod interference;
 pub mod leads;
 pub mod reader;
+pub mod story;
 pub mod summit;
 pub mod trail;
 pub mod truth;

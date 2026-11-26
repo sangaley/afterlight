@@ -4,7 +4,6 @@ use crate::ai_ship::components::{AiShipType, AiShipWreck};
 use crate::ai_ship::spawner;
 use crate::building::ModuleRegistry;
 use crate::components::{Ship, Weapon};
-use crate::contracts::MissionBoardOpen;
 use crate::crew::eva_salvage::EvaSalvaging;
 use crate::events::{NotificationType, ShowNotification};
 use crate::states::{BuildState, GameState};
@@ -51,7 +50,7 @@ pub enum Advance {
     Salvage,   // a salvage detail is out
     Dock,      // docked at a station again
     Build,     // opened the shipyard (build mode)
-    Contracts, // opened the bounty board
+    Comm, // turned to the station's Comm directory
     Crew,      // opened the crew menu
 }
 
@@ -66,6 +65,10 @@ const ENEMY_SPAWN_OFFSET: Vec2 = Vec2::new(1400.0, 1400.0);
 /// it patrolling its spawn until the player closes in — instead of a Rust
 /// Swarm's stock 4800-range rockets dragging it across the system on contact.
 const TUTORIAL_ENEMY_RANGE: f32 = 700.0;
+
+/// Width of the station services sheet (ui::spawn_docking_menu), which the
+/// card keeps clear of while it's open.
+const SERVICES_SHEET: f32 = 800.0;
 
 /// One guided step: the instruction/lesson on the card + how it's completed.
 struct TutorialStep {
@@ -119,15 +122,15 @@ const STEPS: &[TutorialStep] = &[
     },
     TutorialStep {
         advance: Advance::Continue,
-        body: "Home. This is where we spend it: the shipyard, the job board and the crew roster.",
+        body: "Home. This is where we spend it: the shipyard, the station's services and the crew roster.",
     },
     TutorialStep {
         advance: Advance::Build,
         body: "[B] opens the shipyard. Everything you place draws power, so match it with reactors. The Guns tab opens with ready-made guns, then the parts to build your own. Outside the yard, right-click any of our guns to tune its shells.",
     },
     TutorialStep {
-        advance: Advance::Contracts,
-        body: "[J] is the job board. Contacts post work on real ships out there. Who we work for decides who shoots at us.",
+        advance: Advance::Comm,
+        body: "Shut the shipyard with [B]. [U] opens the station's services: fuel, repairs, selling what we salvage. The tabs run along the top, and [E] turns to the next. Find the Comm directory. At a faction's port that's where the people with work are, and who we work for decides who shoots at us.",
     },
     TutorialStep {
         advance: Advance::Crew,
@@ -386,7 +389,7 @@ fn advance_tutorial(
     mut tutorial: ResMut<Tutorial>,
     state: Res<State<GameState>>,
     build_state: Res<State<BuildState>>,
-    mission_board: Res<MissionBoardOpen>,
+    station_tabs: Query<&crate::components::DockTabState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     wreck_q: Query<(), With<AiShipWreck>>,
     eva_q: Query<(), With<EvaSalvaging>>,
@@ -442,7 +445,9 @@ fn advance_tutorial(
         Advance::Dock => *state.get() == GameState::StationDocked,
         // Station-side lessons: opened the shipyard / bounty board / crew menu.
         Advance::Build => *build_state.get() != BuildState::Inactive,
-        Advance::Contracts => mission_board.0,
+        // The services window is up and turned to the Comm directory: where
+        // the story's work is taken (diplomacy::dock_tabs).
+        Advance::Comm => station_tabs.iter().any(|t| t.tab == crate::components::DockTab::Comm),
         Advance::Crew => {
             *state.get() == GameState::StationDocked && keyboard.just_pressed(KeyCode::KeyC)
         }
@@ -469,7 +474,8 @@ fn advance_tutorial(
 fn update_tutorial_card(
     tutorial: Res<Tutorial>,
     state: Res<State<GameState>>,
-    mut root_q: Query<&mut Visibility, With<TutorialRoot>>,
+    mut root_q: Query<(&mut Visibility, &mut Node), With<TutorialRoot>>,
+    services: Query<(), With<crate::components::DockingOverlay>>,
     mut body_q: Query<&mut Text, (With<TutorialBodyText>, Without<TutorialProgressText>, Without<TutorialFooterText>)>,
     mut prog_q: Query<&mut Text, (With<TutorialProgressText>, Without<TutorialBodyText>, Without<TutorialFooterText>)>,
     mut foot_q: Query<&mut Text, (With<TutorialFooterText>, Without<TutorialBodyText>, Without<TutorialProgressText>)>,
@@ -478,8 +484,15 @@ fn update_tutorial_card(
         && matches!(*state.get(), GameState::StationDocked | GameState::Exploring)
         && tutorial.current().is_some();
 
-    if let Ok(mut vis) = root_q.single_mut() {
+    if let Ok((mut vis, mut node)) = root_q.single_mut() {
         *vis = if showing { Visibility::Inherited } else { Visibility::Hidden };
+        // The station's services sheet takes the right of the screen, and the
+        // lesson that opens it (the Comm directory) still has to be read with
+        // it up: the card moves into what's left.
+        let right = if services.is_empty() { Val::Px(0.0) } else { Val::Px(SERVICES_SHEET) };
+        if node.right != right {
+            node.right = right;
+        }
     }
     let Some(step) = tutorial.current().filter(|_| showing) else {
         return;
@@ -522,7 +535,6 @@ mod dock_step_tests {
         app.add_plugins(StatesPlugin);
         app.insert_state(state);
         app.init_state::<BuildState>();
-        app.init_resource::<MissionBoardOpen>();
         app.init_resource::<ButtonInput<KeyCode>>();
         app.init_resource::<crate::vfx::ship_roof::SeeInside>();
         app.init_resource::<crate::combat::targeting::AimLock>();
@@ -539,6 +551,24 @@ mod dock_step_tests {
         let mut app = app_berthed_in(GameState::StationDocked);
         app.update();
         assert_eq!(app.world().resource::<Tutorial>().step, dock_step() + 1);
+    }
+
+    /// The lesson on taking work is the Comm directory, where the story's
+    /// work is, and it is learned by turning to that tab.
+    #[test]
+    fn the_comm_lesson_is_learned_on_the_comm_tab() {
+        use crate::components::{DockTab, DockTabState};
+        let comm = STEPS.iter().position(|s| s.advance == Advance::Comm).expect("training never teaches the Comm");
+        assert!(STEPS[comm].body.contains("[U]") && STEPS[comm].body.contains("Comm"));
+        assert!(STEPS.iter().all(|s| !s.body.contains("[J]")), "training still sends you to the old job board");
+        let mut app = app_berthed_in(GameState::StationDocked);
+        app.world_mut().resource_mut::<Tutorial>().step = comm;
+        let window = app.world_mut().spawn(DockTabState { tab: DockTab::Market, tabs: true, contact: 0, item: 0 }).id();
+        app.update();
+        assert_eq!(app.world().resource::<Tutorial>().step, comm, "the market isn't the Comm");
+        app.world_mut().get_mut::<DockTabState>(window).unwrap().tab = DockTab::Comm;
+        app.update();
+        assert_eq!(app.world().resource::<Tutorial>().step, comm + 1);
     }
 
     /// An outpost colony is not a station: the next lessons open its

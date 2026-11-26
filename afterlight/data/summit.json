@@ -6,6 +6,30 @@
   "gist": "The Silence can hear you. Go to them."
  },
  "commission": "Before the Cascade there was a summit. Every power that mattered sent someone. The record of that meeting was cut into pieces, and every faction took one home. Bring me the pieces. The first is for sale: the Merchant Princes sell everything. Ask for Broker Anselm Quay at {capital}.",
+ "errands_note": "The Abbess's first jobs, after she asks for the pieces: ordinary work, paid 600 / 700 / 800, so the Princes' price is earned on her errands and not on strangers'. {system} is where the work is, {cargo} what is carried, {fleet} who is to be destroyed, {n} how many hulls, {price} the Princes' price. The first is offered at her desk; the next two come over the comm as each is finished.",
+ "errands": [
+  {
+   "title": "For the Abbess: carry the crystal",
+   "brief": "The Princes will want {price} credits for their piece, and I do not send a ship out poor. Carry {cargo}, sealed, to our house at {system}. Dock there and it is done."
+  },
+  {
+   "title": "For the Abbess: quiet {system}",
+   "brief": "{fleet} is loud in {system}: {n} hulls. Destroy every one of them. We do not ask this often."
+  },
+  {
+   "title": "For the Abbess: listen at {system}",
+   "brief": "Sit a minute in {system}, on the road to the Princes, with your receivers open. Tell me what you hear there."
+  }
+ ],
+ "errand_fallback": {
+  "title": "For the Abbess: listen at {system}",
+  "brief": "Sit a minute in {system} with your receivers open. Tell me what you hear there."
+ },
+ "errand_next": "The Abbess, over the comm: \"Good. One more thing, and I will pay for it.\"",
+ "errands_done": "The Abbess, over the comm: \"That covers the Princes' price. Go and buy the minutes.\"",
+ "relay_wait": "Not over a relay. Come to {capital} and ask for me. We will wait.",
+ "relay_idle": "Nobody is calling. When someone wants this ship, they will be listed here.",
+ "spoken_for": "The Abbess, over the comm: \"I have spoken to them for you. They will let you dock. They will not like it.\"",
  "steps": [
   {
    "name": "The Quiet Ones",

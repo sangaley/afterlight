@@ -74,6 +74,10 @@ pub fn edge_point(offset: Vec2, screen: Vec2, insets: EdgeInsets) -> Option<(Vec
 /// red and grey of ships.
 const RECORD_COLOR: Color = Color::srgba(0.90, 0.72, 0.35, 0.85);
 
+/// The story's marker: the Summit Record's orange, as on its board and its
+/// box in the Comm directory.
+const STORY_COLOR: Color = Color::srgba(0.95, 0.55, 0.20, 0.95);
+
 /// Closer ships draw stronger; the furthest ones are barely there.
 fn marker_alpha(distance: f32) -> f32 {
     let t = ((distance - 4_000.0) / (MARKER_RANGE - 4_000.0)).clamp(0.0, 1.0);
@@ -119,6 +123,7 @@ pub fn update_offscreen_markers(
         Res<crate::narrative::expedition::Expedition>,
         Res<crate::celestial::resources::SystemStreamingManager>,
         Query<(Entity, &Transform, &LogEntry)>,
+        Query<(Entity, &Transform, &crate::narrative::summit::StoryTarget)>,
     ),
     ui_scale: Res<bevy::ui::UiScale>,
 ) {
@@ -160,8 +165,20 @@ pub fn update_offscreen_markers(
 
     // The next expedition record, when it lies in this system: an amber
     // marker at any range, and over the derelict itself once it's in view.
-    let (expedition, streaming, carriers) = &trail;
-    if let Some((system, title)) = expedition.next {
+    let (expedition, streaming, carriers, story) = &trail;
+    // The story's goal, when it is somewhere in this system
+    // (narrative::summit::place_story_target): at any range, and over the
+    // thing itself once it's in view. It comes before the records: one goal.
+    let story_here = story.iter().next().map(|(entity, tf, tag)| (entity, tf.translation.truncate(), tag.0.clone()));
+    if let Some((entity, pos, tag)) = &story_here {
+        let world = *pos - cam;
+        let offset = Vec2::new(world.x, -world.y) / scale;
+        let (centre, bearing) = edge_point(offset, screen, INSETS)
+            .unwrap_or((screen / 2.0 + offset - Vec2::new(0.0, 36.0), std::f32::consts::FRAC_PI_2));
+        let label = format!("{tag} {}", super::format_range_km(pos.distance(home)));
+        wanted.insert(*entity, (centre, bearing, STORY_COLOR, label));
+    }
+    if let Some((system, title)) = expedition.next.filter(|_| story_here.is_none()) {
         if streaming.loaded_system == Some(system) {
             if let Some((entity, tf, _)) = carriers.iter().find(|(_, _, log)| log.title == title) {
                 let pos = tf.translation.truncate();

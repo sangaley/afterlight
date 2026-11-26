@@ -635,6 +635,144 @@ pub fn story_offer(step: u8, forced: bool, def: &ContactDef, world: &World, rng:
     }
 }
 
+/// The biggest fleet the Abbess will send a new ship after, in blocks.
+const ERRAND_BOUNTY_BLOCKS: u32 = 1_600;
+
+/// The Abbess's first jobs (narrative::summit::ERRANDS of them, `n` from 0):
+/// ordinary work at fixed pay, written against the galaxy as it is, so the
+/// Princes' price for the minutes is earned on the story's own errands. Each
+/// falls back to listening in a system next door, which can always be done.
+/// `world.here` is where she is (her capital), wherever the ship happens to
+/// be when the next one comes over the comm.
+pub fn errand_offer(n: u8, world: &World, rng: &mut impl Rng) -> Job {
+    use crate::narrative::summit;
+    let d = summit::data();
+    let lit = |id: u32| world.galaxy.systems.iter().find(|s| s.id == id).is_some_and(|s| !crate::narrative::front::is_taken(s));
+    let name_of = |id: u32| world.galaxy.systems.iter().find(|s| s.id == id).map_or("somewhere".to_string(), |s| s.name.clone());
+    let pos_of = |id: u32| world.galaxy.systems.iter().find(|s| s.id == id).map_or(Vec2::ZERO, |s| s.galaxy_pos);
+    let here_pos = pos_of(world.here);
+    let alive = |fleet: u32| world.sim.ships.iter().filter(|s| s.fleet == fleet && s.behavior != SimBehavior::Dead).collect::<Vec<_>>();
+    let blocks = |fleet: u32| -> u32 { alive(fleet).iter().map(|s| crate::ai_ship::spawner::design_blocks(s.faction, s.class) as u32).sum() };
+    let reward = summit::ERRAND_PAY[(n as usize).min(summit::ERRAND_PAY.len() - 1)];
+    let words = |text: &str, system: u32, cargo: &str, fleet: &str, hulls: usize| {
+        text.replace("{system}", &name_of(system))
+            .replace("{cargo}", cargo)
+            .replace("{fleet}", fleet)
+            .replace("{n}", &hulls.to_string())
+            .replace("{price}", &MINUTES_PRICE.to_string())
+    };
+    let job = |kind: JobKind, title: String, brief: String| Job {
+        id: 0,
+        giver: summit::ABBESS.to_string(),
+        faction: AiShipType::TheSilence,
+        kind,
+        title,
+        brief,
+        reward,
+        status: JobStatus::Offered,
+        story: None,
+    };
+    let mut near = vec![world.here];
+    near.extend(crate::celestial::galaxy::nearest_neighbors(world.galaxy, world.here, 3));
+
+    match (n, d.errands.get(n as usize)) {
+        // Cargo to another house of the Silence, the nearest.
+        (0, Some(e)) => {
+            let mut houses: Vec<_> = world
+                .galaxy
+                .systems
+                .iter()
+                .filter(|s| s.faction == Some(AiShipType::TheSilence) && s.id != world.here && lit(s.id))
+                .collect();
+            houses.sort_by(|a, b| a.galaxy_pos.distance(here_pos).total_cmp(&b.galaxy_pos.distance(here_pos)));
+            if let Some(to) = houses.first() {
+                let (item, count) = (cargo_of(AiShipType::TheSilence), 2);
+                let cargo = cargo_count(item, count);
+                return job(
+                    JobKind::Delivery { to_system: to.id, item, count },
+                    words(&e.title, to.id, &cargo, "", 0),
+                    words(&e.brief, to.id, &cargo, "", 0),
+                );
+            }
+        }
+        // The smallest fleet near her that is the Silence's enemy.
+        (1, Some(e)) => {
+            let target = world
+                .sim
+                .fleets
+                .iter()
+                .filter(|f| near.contains(&f.system_id) && lit(f.system_id) && f.mission == Mission::None)
+                .filter(|f| matches!(f.kind, FleetKind::Patrol | FleetKind::Raiders))
+                .filter(|f| factions_hostile(AiShipType::TheSilence, f.faction) && !alive(f.id).is_empty())
+                .filter(|f| !crate::celestial::territory::ROAMING.contains(&f.faction))
+                .filter(|f| blocks(f.id) <= ERRAND_BOUNTY_BLOCKS)
+                .min_by_key(|f| blocks(f.id));
+            if let Some(f) = target {
+                let what = if f.kind == FleetKind::Raiders { "raider band" } else { "patrol" };
+                let who = a_fleet_of(f.faction, what);
+                let hulls = alive(f.id).len();
+                return job(
+                    JobKind::Bounty { fleet: f.id, system: f.system_id },
+                    words(&e.title, f.system_id, "", &who, hulls),
+                    words(&e.brief, f.system_id, "", &who, hulls),
+                );
+            }
+        }
+        // A minute in the system that lies most nearly between her and the
+        // Princes: the errand ends on the road to the first piece.
+        (2, Some(e)) => {
+            let princes = summit::contact_of(1).and_then(|c| summit::capital_of(world.galaxy, c.faction)).map(|(id, _)| id);
+            if let Some(princes) = princes {
+                let mut road = crate::celestial::galaxy::nearest_neighbors(world.galaxy, world.here, 4);
+                road.extend(crate::celestial::galaxy::nearest_neighbors(world.galaxy, princes, 4));
+                let detour = |id: u32| pos_of(id).distance(here_pos) + pos_of(id).distance(pos_of(princes));
+                let best = road
+                    .into_iter()
+                    .filter(|id| *id != world.here && *id != princes && lit(*id))
+                    .min_by(|a, b| detour(*a).total_cmp(&detour(*b)));
+                if let Some(system) = best {
+                    return job(JobKind::Survey { system, seconds: 0.0 }, words(&e.title, system, "", "", 0), words(&e.brief, system, "", "", 0));
+                }
+            }
+        }
+        _ => {}
+    }
+    let system = near.iter().copied().find(|id| *id != world.here && lit(*id)).unwrap_or(world.here);
+    let e = &d.errand_fallback;
+    job(JobKind::Survey { system, seconds: 0.0 }, words(&e.title, system, "", "", 0), words(&e.brief, system, "", "", 0))
+}
+
+/// Somewhere else to do a story job whose system the dark has taken: the
+/// nearest lit system of the right owner. None when the work was tied to a
+/// fleet that died there, or nowhere is left.
+fn retarget(kind: &JobKind, giver: AiShipType, galaxy: &GalaxyMap) -> Option<JobKind> {
+    let old = match kind {
+        JobKind::Delivery { to_system, .. } => *to_system,
+        JobKind::Strike { system, .. } | JobKind::Handoff { system, .. } | JobKind::Survey { system, .. } => *system,
+        _ => return None,
+    };
+    let from = galaxy.systems.iter().find(|s| s.id == old).map_or(Vec2::ZERO, |s| s.galaxy_pos);
+    // The nearest lit system, of one owner or of anyone who holds ground.
+    let nearest = |owner: Option<AiShipType>| {
+        galaxy
+            .systems
+            .iter()
+            .filter(|s| s.id != old && !crate::narrative::front::is_taken(s))
+            .filter(|s| match owner { Some(f) => s.faction == Some(f), None => s.faction.is_some() })
+            .min_by(|a, b| a.galaxy_pos.distance(from).total_cmp(&b.galaxy_pos.distance(from)))
+            .map(|s| s.id)
+    };
+    match kind {
+        JobKind::Delivery { item, count, .. } => nearest(Some(giver)).map(|to| JobKind::Delivery { to_system: to, item: *item, count: *count }),
+        JobKind::Strike { target, kills, needed, .. } => {
+            nearest(Some(*target)).map(|system| JobKind::Strike { system, target: *target, kills: *kills, needed: *needed })
+        }
+        JobKind::Handoff { item, count, .. } => nearest(None).map(|system| JobKind::Handoff { system, item: *item, count: *count, seconds: 0.0 }),
+        JobKind::Survey { .. } => nearest(None).map(|system| JobKind::Survey { system, seconds: 0.0 }),
+        _ => None,
+    }
+}
+
 /// What finishing (or failing) moves.
 const DONE_REGARD: f32 = 8.0;
 const DONE_STANDING: f32 = 3.0;
@@ -668,7 +806,42 @@ pub fn track_jobs(
         .filter(|d| victims.get(d.entity).is_ok_and(|s| you.is_some_and(|(p, _)| s.last_attacker == Some(p))))
         .map(|d| d.ship_type)
         .collect();
+    // The run's own count (narrative::story), for what the ending says of you.
+    if !kills.is_empty() {
+        contacts.story.ship_kills += kills.len() as u32;
+    }
     let alive = |fleet: u32| sim.ships.iter().filter(|s| s.fleet == fleet && s.behavior != SimBehavior::Dead).collect::<Vec<_>>();
+
+    // Work whose place the dark has taken can't be done: everything there is
+    // dead and the dock is shut (narrative::front). Ordinary work is called
+    // off, at no cost to anyone's regard. The story's moves somewhere lit,
+    // or is dropped to be asked for again.
+    for job in jobs.list.iter_mut().filter(|j| j.status == JobStatus::Active) {
+        let old = job.system();
+        let Some(place) = galaxy.systems.iter().find(|s| s.id == old).filter(|s| crate::narrative::front::is_taken(s)) else { continue };
+        let gone = place.name.clone();
+        let moved = job.story.and_then(|_| retarget(&job.kind, job.faction, &galaxy));
+        let message = match moved {
+            Some(kind) => {
+                job.kind = kind;
+                let to = job.system();
+                let name = galaxy.systems.iter().find(|s| s.id == to).map_or("somewhere".to_string(), |s| s.name.clone());
+                job.brief = format!("{gone} has gone dark. The work has moved to {name}.");
+                info!("JOB moved out of the dark: {} ({gone} -> {name})", job.title);
+                format!("{}: {gone} has gone dark. Go to {name} instead.", job.title)
+            }
+            None => {
+                job.status = JobStatus::Failed;
+                info!("JOB called off, {gone} is dark: {}", job.title);
+                if job.story.is_some() {
+                    format!("{}: {gone} has gone dark. Ask for the work again.", job.title)
+                } else {
+                    format!("{} is called off: {gone} has gone dark.", job.title)
+                }
+            }
+        };
+        notes.write(crate::events::ShowNotification { message, notification_type: crate::events::NotificationType::Warning, duration: 7.0 });
+    }
 
     for job in jobs.list.iter_mut().filter(|j| j.status == JobStatus::Active) {
         let outcome: Option<bool> = match &mut job.kind {
@@ -789,6 +962,12 @@ fn settle(
     if won {
         job.status = JobStatus::Done;
         currency.credits += job.reward;
+        // One of the Abbess's first jobs: the next comes over the comm
+        // (narrative::summit::the_abbess_has_more_work).
+        let story = &contacts.story;
+        if job.giver == crate::narrative::summit::ABBESS && crate::narrative::summit::errands_open(contacts) && story.errands_given > story.errands {
+            contacts.story.errands += 1;
+        }
         let s = contacts.state_mut(&job.giver);
         s.relationship = (s.relationship + DONE_REGARD).min(100.0);
         standing.change(job.faction, DONE_STANDING, format!("You did a job for {who}"));
@@ -1120,6 +1299,97 @@ mod tests {
         assert!(app.world().resource::<Jobs>().list.is_empty(), "the theft wasn't handed over");
         assert_eq!(app.world().resource::<Currency>().credits, Currency::default().credits + job.reward);
         assert!(app.world().resource::<FactionStanding>().value(victim) < before);
+    }
+
+    /// The dark takes a system (narrative::front): nothing lives there and
+    /// the dock is shut.
+    fn darken(app: &mut App, id: u32) {
+        let mut galaxy = app.world_mut().resource_mut::<GalaxyMap>();
+        galaxy.systems.iter_mut().find(|s| s.id == id).unwrap().dark = crate::narrative::front::TAKEN;
+        crate::narrative::front::go_dark(&mut galaxy, id);
+    }
+
+    /// A delivery to a station the dark has taken could never be handed
+    /// over, and had no way to fail. It is called off, and nobody thinks
+    /// the less of you for it.
+    #[test]
+    fn a_delivery_into_the_dark_is_called_off() {
+        let giver = "TerranHegemony_captain_idris_vale";
+        let job = active(JobKind::Delivery { to_system: 7, item: ItemType::AmmoCrate, count: 3 });
+        let mut app = app_with(vec![job], 4);
+        app.world_mut().resource_mut::<Contacts>().state_mut(giver).relationship = 20.0;
+        app.add_systems(Update, track_jobs);
+        app.update();
+        assert_eq!(app.world().resource::<Jobs>().active().count(), 1, "called off with the lights still on");
+        darken(&mut app, 7);
+        app.update();
+        assert!(app.world().resource::<Jobs>().list.is_empty(), "a delivery into the dark is still in hand");
+        assert_eq!(app.world().resource::<Contacts>().relationship(giver), 20.0, "it cost regard");
+        assert_eq!(app.world().resource::<Currency>().credits, Currency::default().credits);
+    }
+
+    /// The story's work moves instead: a strike to another of the target's
+    /// systems, a delivery to another of the giver's, both lit. The step is
+    /// still in hand and nothing was won by the move.
+    #[test]
+    fn a_story_job_moves_when_its_system_goes_dark() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let choir: Vec<u32> = galaxy.systems.iter().filter(|s| s.faction == Some(AiShipType::BrokenChoir)).map(|s| s.id).collect();
+        assert!(choir.len() >= 2, "the Choir hold one system in this galaxy");
+        let mut strike = active(JobKind::Strike { system: choir[0], target: AiShipType::BrokenChoir, kills: 0, needed: 1 });
+        strike.story = Some(StoryMark { step: 3, forced: true });
+        let mut app = app_with(vec![strike], 4);
+        app.add_systems(Update, track_jobs);
+        darken(&mut app, choir[0]);
+        app.update();
+        let work = app.world().resource::<Jobs>();
+        let job = work.story().expect("the step's work was dropped, not moved");
+        let JobKind::Strike { system, target, .. } = job.kind else { panic!("it changed kind: {:?}", job.kind) };
+        assert_ne!(system, choir[0]);
+        let map = app.world().resource::<GalaxyMap>();
+        let to = map.systems.iter().find(|s| s.id == system).unwrap();
+        assert_eq!(to.faction, Some(target), "moved somewhere the Choir don't live");
+        assert!(!crate::narrative::front::is_taken(to), "moved into the dark again");
+        assert_eq!(app.world().resource::<Messages<SummitStepWon>>().len(), 0);
+
+        // A fleet job can't follow its fleet into the dark: it is dropped,
+        // to be asked for again, and it costs no regard.
+        let mut raid = active(JobKind::Raid { fleet: 999, system: 9 });
+        raid.story = Some(StoryMark { step: 1, forced: true });
+        let mut app = app_with(vec![raid], 4);
+        app.world_mut().resource_mut::<Contacts>().state_mut("TerranHegemony_captain_idris_vale").relationship = 20.0;
+        app.add_systems(Update, track_jobs);
+        darken(&mut app, 9);
+        app.update();
+        assert!(app.world().resource::<Jobs>().list.is_empty());
+        assert_eq!(app.world().resource::<Contacts>().relationship("TerranHegemony_captain_idris_vale"), 20.0);
+    }
+
+    /// One of the Abbess's first jobs, finished, counts toward the three;
+    /// her ordinary work afterwards doesn't, and nor does a stranger's.
+    #[test]
+    fn an_errand_done_is_counted_once() {
+        use crate::narrative::summit;
+        let errand = |giver: &str| {
+            let mut job = active(JobKind::Survey { system: 5, seconds: SURVEY_SECONDS });
+            job.giver = giver.to_string();
+            job.faction = AiShipType::TheSilence;
+            job
+        };
+        let mut app = app_with(vec![errand(summit::ABBESS), errand("TheSilence_someone_else")], 5);
+        {
+            let mut c = app.world_mut().resource_mut::<Contacts>();
+            c.summit.hailed = true;
+            c.summit.commissioned = true;
+            c.story.errands_given = 1;
+        }
+        app.add_systems(Update, track_jobs);
+        app.update();
+        assert_eq!(app.world().resource::<Contacts>().story.errands, 1);
+        // Another of hers, with none handed out as an errand: ordinary work.
+        app.world_mut().resource_mut::<Jobs>().push(errand(summit::ABBESS));
+        app.update();
+        assert_eq!(app.world().resource::<Contacts>().story.errands, 1, "ordinary work for her counted as an errand");
     }
 
     /// A strike counts only the named faction's ships, in its system.

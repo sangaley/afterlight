@@ -387,12 +387,16 @@ impl Plugin for DiplomacyPlugin {
                 Update,
                 (dock_tabs::dock_tab_keys, dock_tabs::military_keys, dock_tabs::refresh_standing_chip, dock_tabs::refresh_dock_tabs, jobs::deliver_cargo, dock_tabs::refresh_dock_hold)
                     .chain()
-                    .run_if(in_state(GameState::Docked)),
+                    // A station berth too (Haven): its services window has a
+                    // bar and a comm relay. These all return at once while
+                    // that window is shut.
+                    .run_if(in_state(GameState::Docked).or_else(in_state(GameState::StationDocked))),
             )
             .init_resource::<jobs::Jobs>()
             .add_message::<jobs::SummitStepWon>()
             .add_systems(Update, (signatures::grant_from_env, signatures::regrow, signatures::fuel_capacity))
             .add_systems(OnExit(GameState::Docked), dock_tabs::lapse_offers)
+            .add_systems(OnExit(GameState::StationDocked), dock_tabs::lapse_offers)
             .add_systems(Update, (jobs::track_jobs, jobs::standing_from_contracts));
     }
 }
