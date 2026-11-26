@@ -467,6 +467,11 @@ pub fn run_traffic(
                     fleet.velocity = Vec2::ZERO;
                     jumping_out.push(fleet.id);
                 }
+                // Already arrived and done here (its ships just backed out
+                // of their berths): it's leaving, not arriving again. Taken
+                // as a second arrival, it lost which port it had been at
+                // and sat out a second stay outside.
+                None if run.bound_for.is_empty() => {}
                 None => {
                     // Unloads its cargo where it was going.
                     let arrived_at = here.then(|| stops.iter().find(|s| s.name == run.bound_for).and_then(|s| s.port)).flatten();
