@@ -327,8 +327,19 @@ pub fn run_traffic(
     hulls: Query<(&crate::world::home_base::Station, &Transform, &crate::ship::collision::Collider)>,
     nav_bodies: Option<Res<super::nav::NavBodies>>,
     trade: (ResMut<crate::resources::MarketEvents>, Commands, Query<(Entity, &super::fleet::FleetMember, &AiShipType, Option<&AiShipClass>, Has<CarriedCargo>)>),
+    mut flips: MessageReader<crate::celestial::territory::SystemChangedHands>,
+    mut lost: Local<Vec<(Vec<PortId>, Option<AiShipType>)>>,
 ) {
     let (mut market, mut commands, crews) = trade;
+    // Read every frame (a message lives two): the ports of a system that
+    // changed hands, to be cleared of traders the new owner would shoot.
+    for flip in flips.read() {
+        if let Some(def) = galaxy.systems.iter().find(|s| s.id == flip.system_id) {
+            let mut here: Vec<PortId> = crate::world::home_base::station_sites(def).iter().map(|s| PortId::Station(s.index)).collect();
+            here.push(PortId::Starport(flip.system_id));
+            lost.push((here, Some(flip.to)));
+        }
+    }
     if crate::demo::skip_ai_ship_spawn() && std::env::var("AFTERLIGHT_TRAFFIC").is_err() {
         return;
     }
@@ -367,6 +378,16 @@ pub fn run_traffic(
     }
 
     let sim: &mut WorldSimulation = &mut sim;
+    // A starport shot down: everyone moored there cuts loose.
+    for &system in &ports.destroyed {
+        lost.push((vec![PortId::Starport(system)], None));
+    }
+    for (gone, owner) in lost.drain(..) {
+        let n = cut_loose(sim, &gone, owner);
+        if n > 0 && port_trace() {
+            info!("PORT {n} ships cut loose from {gone:?}");
+        }
+    }
     let manned: std::collections::HashSet<u32> =
         sim.ships.iter().filter(|s| s.fleet != 0 && s.behavior != SimBehavior::Dead).map(|s| s.fleet).collect();
     let live: std::collections::HashSet<u32> =
@@ -976,6 +997,73 @@ pub fn take_back_released(sim: &mut WorldSimulation) {
     }
 }
 
+/// Cut loose every ship moored at `ports` -- all of them when the port is
+/// gone, only those `owner` is at war with when it has changed hands -- and
+/// send their fleets on. Returns how many ships.
+pub fn cut_loose(sim: &mut WorldSimulation, ports: &[PortId], owner: Option<AiShipType>) -> usize {
+    let mut fleets: Vec<u32> = Vec::new();
+    let mut n = 0;
+    for ship in sim.ships.iter_mut() {
+        let Some(at) = ship.moored.filter(|p| ports.contains(p)) else { continue };
+        let _ = at;
+        if owner.is_some_and(|o| !factions_hostile(ship.faction, o)) {
+            continue;
+        }
+        ship.moored = None;
+        ship.spawned = false;
+        sim.towed.remove(&ship.id);
+        fleets.push(ship.fleet);
+        n += 1;
+    }
+    sim.cast_off.retain(|id| sim.ships.iter().any(|s| s.id == *id && s.moored.is_some()));
+    for fleet in sim.fleets.iter_mut().filter(|f| fleets.contains(&f.id)) {
+        if let Some(run) = fleet.trade.as_mut() {
+            run.dwell = 0.0;
+        }
+    }
+    n
+}
+
+/// A trader on screen with nobody leading it -- its lead hauler moored, or
+/// shot -- gets a new lead: the member nearest its formation's middle. Only
+/// a leader is given the fleet's orders (`run_traffic`), so without one a
+/// convoy whose ships came back out of their berths never moved on.
+pub fn promote_trader_leaders(
+    time: Res<Time>,
+    mut next: Local<f32>,
+    trading: Res<TradingFleets>,
+    mut members: Query<(&mut super::fleet::FleetMember, &AiShipState)>,
+) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 1.0;
+    let mut led: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let mut best: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+    for (m, state) in members.iter() {
+        if state.is_destroyed || !trading.0.contains(&m.fleet) {
+            continue;
+        }
+        if m.leader {
+            led.insert(m.fleet);
+        }
+        let d = m.slot.length();
+        let b = best.entry(m.fleet).or_insert(f32::MAX);
+        *b = b.min(d);
+    }
+    let mut done: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    for (mut m, state) in members.iter_mut() {
+        if state.is_destroyed || led.contains(&m.fleet) || done.contains(&m.fleet) {
+            continue;
+        }
+        if best.get(&m.fleet).is_some_and(|b| m.slot.length() <= *b) {
+            m.leader = true;
+            done.insert(m.fleet);
+        }
+    }
+}
+
 /// Let go of moored ships whose time is up and that no station is drawing
 /// in a berth (`drawn` says who is): afloat where they are.
 pub fn let_go(sim: &mut WorldSimulation, drawn: &std::collections::HashSet<u32>) {
@@ -1057,6 +1145,31 @@ mod port_tests {
         assert!(sim.cast_off.is_empty(), "a ship backed out is still waiting to cast off");
         assert!(sim.ships[0].afloat());
         assert_eq!(sim.ships[0].position, Vec2::new(500.0, 40.0));
+    }
+
+    /// A starport lost: every ship moored there cuts loose and its fleet
+    /// goes on. A system changing hands: only those the new owner would shoot.
+    #[test]
+    fn traders_cut_loose_when_a_port_falls() {
+        let mut sim = WorldSimulation::default();
+        let port = PortId::Starport(4);
+        for faction in [AiShipType::MerchantPrinces, AiShipType::FreeHaulersCompact] {
+            let fleet = fleet::SimFleet::new(FleetKind::Convoy, faction, 4, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+            let mut s = SimulatedShip::patrolling(4, faction, Vec2::ZERO, Vec2::ZERO, 1.0, 1.0);
+            s.moored = Some(port);
+            let id = sim.add_fleet(fleet, vec![s]);
+            sim.fleets.iter_mut().find(|f| f.id == id).unwrap().trade = Some(TradeRun { dwell: 60.0, ..default() });
+        }
+        // The Compact and the Princes are at war: the Princes' new system
+        // throws the Compact out and keeps its own.
+        assert!(factions_hostile(AiShipType::MerchantPrinces, AiShipType::FreeHaulersCompact));
+        assert_eq!(cut_loose(&mut sim, &[port], Some(AiShipType::MerchantPrinces)), 1);
+        let compact = sim.ships.iter().find(|s| s.faction == AiShipType::FreeHaulersCompact).unwrap();
+        assert!(compact.afloat());
+        assert_eq!(sim.fleet(compact.fleet).unwrap().trade.as_ref().unwrap().dwell, 0.0);
+        // The port shot down: everyone.
+        assert_eq!(cut_loose(&mut sim, &[port], None), 1);
+        assert!(sim.ships.iter().all(|s| s.afloat()));
     }
 
     /// A moored ship saves as moored; an old save, without it, loads afloat.

@@ -374,6 +374,7 @@ pub struct DiplomacyPlugin;
 
 impl Plugin for DiplomacyPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(Update, jobs::note_sealed_cargo);
         app.init_resource::<FactionStanding>()
             .add_systems(
                 Update,

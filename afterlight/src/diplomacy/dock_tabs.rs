@@ -192,7 +192,7 @@ pub fn refresh_dock_tabs(
             commands.entity(entity).despawn_related::<Children>();
             let owner = market.dock_terms.as_ref().and_then(|t| t.faction);
             match panel.0 {
-                DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs()),
+                DockTab::Bar => fill_bar(&mut commands, entity, &sim, &galaxy, &war, &standing, &streaming, owner, time.elapsed_secs(), &market.stock),
                 DockTab::Comm => fill_comm(&mut commands, entity, &galaxy, &contacts, &work, &streaming, owner, state.contact),
                 DockTab::Military => fill_military(&mut commands, entity, &galaxy, &standing, &contacts, &streaming, owner, state.item),
                 DockTab::Market => {}
@@ -262,6 +262,7 @@ pub fn rumours(
     standing: &FactionStanding,
     system_id: u32,
     seed: u64,
+    stock: &crate::world::economy::Stock,
 ) -> Vec<String> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let name_of = |id: u32| galaxy.systems.iter().find(|s| s.id == id).map_or("somewhere".to_string(), |s| s.name.clone());
@@ -301,6 +302,44 @@ pub fn rumours(
             None => ", and nobody guarding it".to_string(),
         };
         said.push(format!("A {} convoy is running through here: {haulers} haulers{guard}.", faction_display_name(f.faction)));
+    }
+    // Who's short of what, and who has too much (world::economy): near here,
+    // where a station's stock has been moving.
+    let port_name = |idx: usize| -> String {
+        if idx >= crate::world::economy::STARPORT_BASE {
+            format!("the starport at {}", name_of((idx - crate::world::economy::STARPORT_BASE) as u32))
+        } else {
+            crate::world::home_base::station_display_name(idx)
+        }
+    };
+    let near_ports: Vec<usize> = near
+        .iter()
+        .filter_map(|id| galaxy.systems.iter().find(|s| s.id == *id))
+        .flat_map(|def| {
+            let mut v: Vec<usize> = crate::world::home_base::station_sites(def).iter().map(|s| s.index).collect();
+            v.push(crate::world::economy::STARPORT_BASE + def.id as usize);
+            v
+        })
+        .collect();
+    let mut short: Vec<(usize, crate::resources::ItemType)> = Vec::new();
+    let mut glut: Vec<(usize, crate::resources::ItemType)> = Vec::new();
+    for &(idx, item) in stock.levels.keys() {
+        if !near_ports.contains(&idx) {
+            continue;
+        }
+        if stock.short(idx, item) {
+            short.push((idx, item));
+        } else if stock.plenty(idx, item) {
+            glut.push((idx, item));
+        }
+    }
+    short.sort_by_key(|(i, g)| (*i, *g as u8));
+    glut.sort_by_key(|(i, g)| (*i, *g as u8));
+    if let Some(&(idx, item)) = short.choose(&mut rng) {
+        said.push(format!("{} is short of {}. They're paying well for it, if you've any aboard.", port_name(idx), item.name().to_lowercase()));
+    }
+    if let Some(&(idx, item)) = glut.choose(&mut rng) {
+        said.push(format!("{} is sitting on more {} than it can shift. Cheap, if you want it.", port_name(idx), item.name().to_lowercase()));
     }
     // A border slipping.
     let slipping: Vec<(u32, AiShipType, f32)> = near
@@ -359,11 +398,12 @@ fn fill_bar(
     streaming: &SystemStreamingManager,
     owner: Option<AiShipType>,
     now: f32,
+    stock: &crate::world::economy::Stock,
 ) {
     let system = streaming.loaded_system.unwrap_or(0);
     // The same talk for five minutes at a stretch, not a new crowd every tab.
     let seed = system as u64 * 1_000_003 + (now / 300.0) as u64;
-    let said = rumours(sim, galaxy, war, standing, system, seed);
+    let said = rumours(sim, galaxy, war, standing, system, seed, stock);
     let who = patrons(owner);
     commands.entity(panel).with_children(|p| {
         p.spawn(line("WHO'S TALKING", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
@@ -687,19 +727,37 @@ fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts:
 mod tests {
     use super::*;
 
+    /// The bar knows who near here is short of what.
+    #[test]
+    fn the_bar_talks_about_shortages_near_here() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let here = galaxy.systems.iter().find(|s| s.faction.is_some()).unwrap();
+        let idx = crate::world::home_base::station_sites(here)[0].index;
+        let mut stock = crate::world::economy::Stock::default();
+        stock.touch(idx);
+        stock.add(idx, crate::resources::ItemType::Crystal, -1_000.0);
+        let sim = WorldSimulation::default();
+        let heard = (0..40).any(|seed| {
+            rumours(&sim, &galaxy, &BorderWar::default(), &FactionStanding::default(), here.id, seed, &stock)
+                .iter()
+                .any(|l| l.contains("short of crystal"))
+        });
+        assert!(heard, "nobody mentioned the crystal shortage");
+    }
+
     #[test]
     fn the_bar_always_has_something_to_say_and_it_is_true() {
         let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
         let mut sim = WorldSimulation::default();
         let capital = galaxy.systems.iter().find(|s| s.capital && s.faction == Some(AiShipType::TerranHegemony)).unwrap();
         // An empty world: a quiet night.
-        let quiet = rumours(&sim, &galaxy, &BorderWar::default(), &FactionStanding::default(), capital.id, 1);
+        let quiet = rumours(&sim, &galaxy, &BorderWar::default(), &FactionStanding::default(), capital.id, 1, &Default::default());
         assert_eq!(quiet.len(), 1);
         // A populated one: real fleets in this system get talked about.
         crate::ai_ship::simulation::ensure_system_population(&mut sim, &galaxy, capital.id);
         let mut heard_fleet = false;
         for seed in 0..40 {
-            let said = rumours(&sim, &galaxy, &BorderWar::default(), &FactionStanding::default(), capital.id, seed);
+            let said = rumours(&sim, &galaxy, &BorderWar::default(), &FactionStanding::default(), capital.id, seed, &Default::default());
             assert!((1..=3).contains(&said.len()));
             heard_fleet |= said.iter().any(|s| s.contains("battle group") || s.contains("convoy"));
         }

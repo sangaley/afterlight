@@ -457,6 +457,23 @@ impl RaftBakes {
         }
     }
 
+    /// Let go of plain pictures nothing is drawn with (`used`), once there
+    /// are more than `keep` of them. They were kept for the whole run, and
+    /// every trader design that ever moored added four turns of itself.
+    /// Returns how many went.
+    pub fn forget_unused(&mut self, used: &HashSet<BakeKey>, keep: usize) -> usize {
+        if self.done.len() <= keep {
+            return 0;
+        }
+        let spare: Vec<BakeKey> = self.done.keys().filter(|k| !used.contains(k)).copied().collect();
+        let over = self.done.len() - keep;
+        for k in spare.iter().take(over) {
+            self.done.remove(k);
+            self.asked.remove(k);
+        }
+        spare.len().min(over)
+    }
+
     /// A finished picture: (hull, lights, world size).
     pub fn done_get(&self, key: &BakeKey) -> Option<&(Handle<Image>, Handle<Image>, Vec2)> {
         self.done.get(&painted_as(*key))
@@ -675,5 +692,46 @@ mod tests {
         assert!(data.chunks(4).filter(|p| p[3] == 255).count() > span.x as usize * PX);
         let lights = b.lights.data.as_ref().unwrap();
         assert!(lights.chunks(4).any(|p| p[3] > 200), "no lights at all");
+    }
+}
+
+/// Plain station pictures held at most, before those nothing is drawn with go.
+const BAKES_KEPT: usize = 240;
+
+/// Every half minute, let go of the station pictures nothing uses.
+pub fn evict_unused_bakes(
+    time: Res<Time>,
+    mut next: Local<f32>,
+    mut bakes: ResMut<RaftBakes>,
+    hulls: Query<&RaftHull>,
+) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 30.0;
+    let used: HashSet<BakeKey> = hulls.iter().map(|h| painted_as(h.key)).collect();
+    let gone = bakes.forget_unused(&used, BAKES_KEPT);
+    if gone > 0 {
+        debug!("RaftBakes: let go of {gone} unused pictures");
+    }
+}
+
+#[cfg(test)]
+mod bake_tests {
+    use super::*;
+
+    #[test]
+    fn unused_pictures_go_once_there_are_too_many_and_used_ones_stay() {
+        let mut bakes = RaftBakes::default();
+        let keys: Vec<BakeKey> = ["a/x", "b/y", "c/z", "d/w"].iter().map(|k| (*k, 0u8, 0u8)).collect();
+        for k in &keys {
+            bakes.done.insert(*k, (Handle::default(), Handle::default(), Vec2::ONE));
+        }
+        let used: HashSet<BakeKey> = [keys[0], keys[1]].into_iter().collect();
+        assert_eq!(bakes.forget_unused(&used, 10), 0, "under the limit, nothing goes");
+        assert_eq!(bakes.forget_unused(&used, 2), 2);
+        assert!(bakes.done.contains_key(&keys[0]) && bakes.done.contains_key(&keys[1]));
+        assert_eq!(bakes.done.len(), 2);
     }
 }

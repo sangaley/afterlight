@@ -18,6 +18,7 @@
 //! Failing costs a little regard. Three jobs at a time.
 
 use bevy::prelude::*;
+use std::collections::HashMap;
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -145,6 +146,18 @@ pub struct Jobs {
 }
 
 impl Jobs {
+    /// Cargo aboard that belongs to a job in hand: a delivery's, or a
+    /// handoff's. It isn't yours to sell.
+    pub fn sealed(&self) -> HashMap<ItemType, u32> {
+        let mut out: HashMap<ItemType, u32> = HashMap::new();
+        for job in self.active() {
+            if let JobKind::Delivery { item, count, .. } | JobKind::Handoff { item, count, .. } = job.kind {
+                *out.entry(item).or_insert(0) += count;
+            }
+        }
+        out
+    }
+
     pub fn active(&self) -> impl Iterator<Item = &Job> {
         self.list.iter().filter(|j| j.status == JobStatus::Active)
     }
@@ -1126,5 +1139,32 @@ mod tests {
         assert_eq!(won.len(), 1, "a won story job didn't report its step");
         // Force earns no regard from the people you took it from.
         assert_eq!(app.world().resource::<Contacts>().relationship("TerranHegemony_captain_idris_vale"), 0.0);
+    }
+}
+
+/// What the trade menu holds back from sale: the cargo jobs in hand sealed.
+pub fn note_sealed_cargo(jobs: Res<Jobs>, mut market: ResMut<crate::resources::MarketEvents>) {
+    if jobs.is_changed() {
+        market.sealed = jobs.sealed();
+    }
+}
+
+#[cfg(test)]
+mod sealed_tests {
+    use super::*;
+
+    #[test]
+    fn a_delivery_s_cargo_is_sealed_and_a_finished_one_s_isn_t() {
+        let mut jobs = Jobs::default();
+        let job = |kind: JobKind, status: JobStatus| Job {
+            id: 0, giver: "x".into(), faction: AiShipType::TerranHegemony, kind, title: String::new(), brief: String::new(),
+            reward: 0, status, story: None,
+        };
+        jobs.list.push(job(JobKind::Delivery { to_system: 3, item: ItemType::Crystal, count: 4 }, JobStatus::Active));
+        jobs.list.push(job(JobKind::Handoff { system: 3, item: ItemType::Crystal, count: 2, seconds: 0.0 }, JobStatus::Active));
+        jobs.list.push(job(JobKind::Delivery { to_system: 3, item: ItemType::RareAlloy, count: 9 }, JobStatus::Done));
+        let sealed = jobs.sealed();
+        assert_eq!(sealed.get(&ItemType::Crystal), Some(&6));
+        assert_eq!(sealed.get(&ItemType::RareAlloy), None);
     }
 }

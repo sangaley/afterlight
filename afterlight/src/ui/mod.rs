@@ -3749,10 +3749,15 @@ fn stock_words(market: &MarketEvents, station_idx: usize, item: ItemType) -> &'s
 }
 
 /// Goods Sell All leaves aboard: the fuel cells and ammo crates the ship
-/// runs on (refuelling and rearming use them first), and whatever a job
-/// sealed for delivery.
+/// runs on (refuelling and rearming use them first). Sealed job cargo isn't
+/// for sale at all (`for_sale`).
 fn kept_aboard(item: ItemType) -> bool {
     matches!(item, ItemType::FuelCell | ItemType::AmmoCrate)
+}
+
+/// How many of `count` aboard you may sell: not what a job has sealed.
+fn for_sale(market: &MarketEvents, item: ItemType, count: u32) -> u32 {
+    count.saturating_sub(market.sealed.get(&item).copied().unwrap_or(0))
 }
 
 fn sell_choices(inventory: &Inventory) -> Vec<Option<ItemType>> {
@@ -3787,17 +3792,19 @@ fn sell_row(inventory: &Inventory, station_idx: usize, choice: Option<ItemType>,
         None => {
             let mut total = 0u32;
             for (item, count) in inventory.items.iter().filter(|(i, _)| !kept_aboard(**i)) {
-                total += crate::resources::sale_value(market, station_idx, *item, *count);
+                total += crate::resources::sale_value(market, station_idx, *item, for_sale(market, *item, *count));
             }
-            (format!("ALL cargo but fuel cells and ammo - {}c  (Left/Right: pick a single stack)", total), total)
+            (format!("ALL cargo but fuel cells, ammo and sealed cargo - {}c  (Left/Right: pick a single stack)", total), total)
         }
         Some(item) => {
-            let count = inventory.items.get(&item).copied().unwrap_or(0);
+            let held = inventory.items.get(&item).copied().unwrap_or(0);
+            let count = for_sale(market, item, held);
             let price = crate::resources::live_item_price(market, station_idx, item);
             // Each one sold is one more on their shelves.
             let value = crate::resources::sale_value(market, station_idx, item, count);
             let tag = stock_words(market, station_idx, item);
-            (format!("{}x {} from {}c each = {}c{}  (Left/Right: cycle)", count, item.name(), price, value, tag), value)
+            let sealed = if count < held { format!(" ({} sealed, held back)", held - count) } else { String::new() };
+            (format!("{}x {} from {}c each = {}c{}{}  (Left/Right: cycle)", count, item.name(), price, value, tag, sealed), value)
         }
     }
 }
@@ -4902,8 +4909,13 @@ fn docking_menu_input(
                 match choice {
                     None => {
                         let mut total_value = 0u32;
-                        let selling: Vec<(ItemType, u32)> =
-                            inventory.items.iter().filter(|(i, c)| !kept_aboard(**i) && **c > 0).map(|(i, c)| (*i, *c)).collect();
+                        let selling: Vec<(ItemType, u32)> = inventory
+                            .items
+                            .iter()
+                            .filter(|(i, _)| !kept_aboard(**i))
+                            .map(|(i, c)| (*i, for_sale(&market, *i, *c)))
+                            .filter(|(_, c)| *c > 0)
+                            .collect();
                         for (item_type, count) in &selling {
                             total_value += crate::resources::sale_value(&market, station_idx, *item_type, *count);
                         }
@@ -4929,10 +4941,15 @@ fn docking_menu_input(
                         }
                     }
                     Some(item) => {
-                        let count = inventory.items.get(&item).copied().unwrap_or(0);
+                        let held = inventory.items.get(&item).copied().unwrap_or(0);
+                        let count = for_sale(&market, item, held);
                         if count == 0 {
                             notifications.write(ShowNotification {
-                                message: format!("No {} in the hold.", item.name()),
+                                message: if held > 0 {
+                                    format!("The {} aboard is sealed for a job.", item.name())
+                                } else {
+                                    format!("No {} in the hold.", item.name())
+                                },
                                 notification_type: NotificationType::Info,
                                 duration: 2.0,
                             });

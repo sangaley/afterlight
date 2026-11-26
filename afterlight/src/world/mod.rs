@@ -51,6 +51,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<raft_life::Released>()
             // The stations' stock into the save, and back out of a loaded one.
             .add_systems(Update, economy::mirror_stock)
+            .add_systems(Update, raft_art::evict_unused_bakes)
             .add_systems(
                 Update,
                 (

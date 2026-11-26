@@ -572,6 +572,8 @@ pub struct MarketEvents {
     /// Credits of goods you've bought and sold here this visit, for the
     /// standing your business earns (diplomacy::stations::standing_from_trade).
     pub traded: f32,
+    /// Cargo sealed for a job (diplomacy::jobs::Jobs::sealed): not for sale.
+    pub sealed: HashMap<ItemType, u32>,
 }
 
 /// What a faction station charges you, from your standing with it.
@@ -590,7 +592,7 @@ pub struct DockTerms {
 
 impl Default for MarketEvents {
     fn default() -> Self {
-        Self { active: Vec::new(), next_roll: 120.0, dock_terms: None, stock: Default::default(), dock_port: None, traded: 0.0 }
+        Self { active: Vec::new(), next_roll: 120.0, dock_terms: None, stock: Default::default(), dock_port: None, traded: 0.0, sealed: HashMap::new() }
     }
 }
 

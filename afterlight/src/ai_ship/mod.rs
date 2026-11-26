@@ -102,6 +102,7 @@ impl Plugin for AiShipPlugin {
                 nav::refresh_nav_bodies,
                 simulation::fly_departures,
                 simulation::show_jump_flashes,
+                traffic::promote_trader_leaders.after(traffic::run_traffic),
             )
                 .run_if(in_state(crate::states::GameState::Exploring)),
         );
