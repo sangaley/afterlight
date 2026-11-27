@@ -328,8 +328,14 @@ fn update_objective(
     currency: Res<Currency>,
     mut obj: ResMut<SummitObjective>,
     at_site: Option<Res<super::site::AtSite>>,
+    streaming: Option<Res<crate::celestial::resources::SystemStreamingManager>>,
 ) {
     let mut want = objective(&contacts, &work, &galaxy, &standing, currency.credits);
+    // The first trip of the story is also the first jump anyone makes: say
+    // how it is done, not only where to.
+    if let Some(how) = how_to_reach_her(&contacts.summit, &want, streaming.as_ref().and_then(|s| s.loaded_system)) {
+        want.line = want.line.map(|line| format!("{line}\n{how}"));
+    }
     // There already: the line stops talking about getting there (the empty
     // berth has its own marker at the edge of the screen).
     if at_site.is_some_and(|s| s.0) && contacts.story.carry && !contacts.story.ending_seen {
@@ -338,6 +344,22 @@ fn update_objective(
     if *obj != want {
         *obj = want;
     }
+}
+
+/// The keys for the story's first trip, until the Abbess has been met:
+/// to her system by the map and the jump drive, and once there, to her by
+/// the dock and the Comm directory. None once she has asked for the pieces,
+/// or if she has no house to go to.
+pub fn how_to_reach_her(progress: &SummitProgress, goal: &SummitObjective, here: Option<u32>) -> Option<String> {
+    if !progress.hailed || progress.commissioned {
+        return None;
+    }
+    let system = goal.system?;
+    Some(if here == Some(system) {
+        "Dock at the Silence's starport [F], turn to the Comm directory [E], and talk to her [Enter].".to_string()
+    } else {
+        "Open the map [M], click that system, close the map and jump [G]. Then dock there [F].".to_string()
+    })
 }
 
 /// Where the story's line points inside the system you're in: an unseen
@@ -860,6 +882,27 @@ mod tests {
         let after = see(&c);
         assert!(after.line.unwrap().contains("still lit"));
         assert_eq!(after.place, None);
+    }
+
+    /// Until the Abbess has been met the line says how to get to her, by
+    /// which keys: first the jump, then the dock and the Comm directory.
+    /// After that it stops explaining.
+    #[test]
+    fn the_first_trip_says_how() {
+        let galaxy = crate::celestial::galaxy::generate_galaxy_map(42);
+        let (work, standing) = (Jobs::default(), FactionStanding::default());
+        let mut c = Contacts::default();
+        let goal = |c: &Contacts| objective(c, &work, &galaxy, &standing, 750);
+        assert_eq!(how_to_reach_her(&c.summit, &goal(&c), Some(0)), None, "advice before anyone has called");
+        c.summit.hailed = true;
+        let silence = capital_of(&galaxy, AiShipType::TheSilence).unwrap().0;
+        let away = how_to_reach_her(&c.summit, &goal(&c), Some(0)).expect("no word on how to get there");
+        assert!(away.contains("[M]") && away.contains("[G]"), "{away}");
+        let there = how_to_reach_her(&c.summit, &goal(&c), Some(silence)).unwrap();
+        assert!(there.contains("[F]") && there.contains("Comm") && there.contains("[Enter]"), "{there}");
+        assert!(away.is_ascii() && there.is_ascii());
+        c.summit.commissioned = true;
+        assert_eq!(how_to_reach_her(&c.summit, &goal(&c), Some(silence)), None, "still explaining after she has asked");
     }
 
     /// Short of the Princes' price, the line says what it costs and what you

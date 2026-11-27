@@ -2640,6 +2640,13 @@ pub struct DockingRowCard(pub usize);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DockTabPanel(pub DockTab);
 
+/// What a tab's panel (or the cargo list) is filled with: one holder node
+/// under the panel, with everything else under it. It exists so that
+/// contents left without a window can be found and removed
+/// (diplomacy::dock_tabs::sweep_tab_contents).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DockTabContent;
+
 /// A tab's button in the station window's tab bar.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DockTabButton(pub DockTab);
