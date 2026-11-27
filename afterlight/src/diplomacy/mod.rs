@@ -384,6 +384,7 @@ impl Plugin for DiplomacyPlugin {
             .add_plugins((ui::DiplomacyUiPlugin, stations::FactionStationPlugin))
             .init_resource::<contacts::Contacts>()
             .add_systems(Update, contacts::contacts_flee_fallen_capitals)
+            .add_systems(Update, dock_tabs::sweep_tab_contents)
             .add_systems(
                 Update,
                 (dock_tabs::dock_tab_keys, dock_tabs::military_keys, dock_tabs::refresh_standing_chip, dock_tabs::refresh_dock_tabs, jobs::deliver_cargo, dock_tabs::refresh_dock_hold)

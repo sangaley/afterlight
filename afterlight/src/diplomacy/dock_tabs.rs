@@ -74,7 +74,11 @@ pub fn dock_tab_keys(
     if keyboard.just_pressed(KeyCode::ArrowUp) {
         state.contact = (state.contact + here.len() - 1) % here.len();
     }
-    state.contact = state.contact.min(here.len() - 1);
+    // Only when it has to: writing it every frame marked the window changed
+    // every frame, which redrew this tab every frame.
+    if state.contact >= here.len() {
+        state.contact = here.len() - 1;
+    }
     let def = here[state.contact];
     if keyboard.just_pressed(KeyCode::Enter) {
         contacts.talk(def);
@@ -97,7 +101,11 @@ pub fn dock_tab_keys(
                 });
             }
         }
-        if work.of(&def.id).is_none() {
+        // Until she has asked for the pieces she has nothing else to ask:
+        // an ordinary survey job offered over the relay, before the story
+        // had begun, read as the mission and wasn't.
+        let not_yet = abbess && !contacts.summit.commissioned;
+        if work.of(&def.id).is_none() && !not_yet {
             let (sim, war) = (&world.0, &world.1);
             // Her first jobs are written from her own house, wherever you
             // happen to be calling from.
@@ -182,7 +190,7 @@ pub fn refresh_dock_hold(
         commands.entity(list).despawn_related::<Children>();
         let mut items: Vec<_> = inventory.items.iter().collect();
         items.sort_by_key(|(item, _)| item.name());
-        commands.entity(list).with_children(|l| {
+        fill(&mut commands, list, 3.0, |l| {
             if items.is_empty() {
                 l.spawn(line("Empty", ThemeFonts::BODY_SMALL, ThemeColors::TEXT_MUTED));
             }
@@ -257,6 +265,38 @@ pub fn refresh_dock_tabs(
         };
         if text.0 != want {
             text.0 = want.to_string();
+        }
+    }
+}
+
+/// Fill a tab's panel (or the cargo list): one holder node under it, marked,
+/// and the contents under that.
+///
+/// The contents are spawned by commands, and so is the window's closing
+/// (U or Escape at a station berth, from another system). When both happen
+/// in one frame and the closing is applied first, the contents are left
+/// with no parent: they become screen-level nodes that nothing owns and no
+/// key removes. A whole Comm panel was left over the game that way. With
+/// everything under one marked holder, `sweep_tab_contents` can find what
+/// was left and take it away.
+fn fill(commands: &mut Commands, parent: Entity, row_gap: f32, build: impl FnOnce(&mut ChildSpawnerCommands)) {
+    commands.entity(parent).with_children(|p| {
+        p.spawn((
+            Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(row_gap), flex_grow: 1.0, ..default() },
+            DockTabContent,
+        ))
+        .with_children(build);
+    });
+}
+
+/// Remove tab contents that have no window: no parent at all, or a parent
+/// that no longer exists. Runs always, since the window can close in any
+/// state.
+pub fn sweep_tab_contents(mut commands: Commands, contents: Query<(Entity, Option<&ChildOf>), With<DockTabContent>>, alive: Query<()>) {
+    for (entity, parent) in &contents {
+        if parent.is_none_or(|p| !alive.contains(p.parent())) {
+            info!("DOCK: tab contents left without a window, removed");
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -451,7 +491,7 @@ fn fill_bar(
         said.truncate(3);
     }
     let who = patrons(owner);
-    commands.entity(panel).with_children(|p| {
+    fill(commands, panel, 8.0, |p| {
         p.spawn(line("WHO'S TALKING", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
         for (i, rumour) in said.into_iter().enumerate() {
             p.spawn(card()).with_children(|c| {
@@ -478,7 +518,7 @@ fn fill_comm(
         Some(system) => contacts::comm_people(galaxy, contacts, system, owner),
         None => Vec::new(),
     };
-    commands.entity(panel).with_children(|p| {
+    fill(commands, panel, 8.0, |p| {
         if here.is_empty() {
             if relay {
                 // A free port: nobody of its own, only the relay.
@@ -560,7 +600,8 @@ fn fill_comm(
                     }
                     None => {
                         w.spawn(line("WORK", ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
-                        w.spawn(line("Talk to them and ask.", ThemeFonts::BODY_SMALL, ThemeColors::TEXT_MUTED));
+                        let ask = if waiting { "None yet. Go to her first: her work comes after." } else { "Talk to them and ask." };
+                        w.spawn(line(ask, ThemeFonts::BODY_SMALL, ThemeColors::TEXT_MUTED));
                     }
                 });
             });
@@ -698,7 +739,7 @@ fn fill_military(
     let Some(faction) = owner else { return };
     let items: Vec<_> = signatures::of(faction).collect();
     let closed = military_closed(galaxy, standing, contacts, streaming.loaded_system, owner);
-    commands.entity(panel).with_children(|p| {
+    fill(commands, panel, 8.0, |p| {
         p.spawn(line(format!("{} SIGNATURE MODULES", faction_display_name(faction).to_uppercase()), ThemeFonts::CAPTION, ThemeColors::TEXT_MUTED));
         p.spawn(line(signatures::summit_line(faction), ThemeFonts::BODY_SMALL, ThemeColors::TEXT_PRIMARY));
         p.spawn(line(
@@ -748,7 +789,12 @@ fn story_box(d: &mut ChildSpawnerCommands, def: &contacts::ContactDef, contacts:
         d.spawn(boxed).with_children(|b| {
             b.spawn(line(header(progress.done), ThemeFonts::CAPTION, ThemeColors::ACCENT_ORANGE));
             let said = if !progress.commissioned {
-                if summit::commission_here(relay, galaxy) { "Talk to her.".to_string() } else { "She will ask it of you in person.".to_string() }
+                if summit::commission_here(relay, galaxy) {
+                    "Talk to her: press Enter.".to_string()
+                } else {
+                    let home = summit::capital_of(galaxy, AiShipType::TheSilence).map_or("her house".to_string(), |(_, name)| name);
+                    format!("She will ask it of you in person. Go to {home}: open the map [M], click {home}, close the map and jump [G]. Dock there [F] and find her in this tab.")
+                }
             } else if progress.done == 0 {
                 summit::commission(galaxy)
             } else {
@@ -952,6 +998,143 @@ mod tests {
         assert_eq!(app.world().resource::<Contacts>().story.errands_given, 1);
         press(&mut app, KeyCode::KeyA);
         assert_eq!(app.world().resource::<Jobs>().of(summit::ABBESS).unwrap().status, JobStatus::Active);
+    }
+
+    /// Tab contents left with no window are taken away, whether they have no
+    /// parent or a parent that is gone; contents in a live window stay. (A
+    /// Comm panel was left over the game, with no key to remove it, when the
+    /// window closed in the same frame its tab was redrawn.)
+    #[test]
+    fn closing_the_window_leaves_nothing_behind() {
+        let mut app = App::new();
+        app.add_systems(Update, sweep_tab_contents);
+        let window = app.world_mut().spawn(Node::default()).id();
+        let kept = app.world_mut().spawn((Node::default(), DockTabContent, ChildOf(window))).id();
+        let kept_line = app.world_mut().spawn((Text::new("inside"), ChildOf(kept))).id();
+        // Left with no parent at all.
+        let loose = app.world_mut().spawn((Node::default(), DockTabContent)).id();
+        let loose_line = app.world_mut().spawn((Text::new("left behind"), ChildOf(loose))).id();
+        app.update();
+        assert!(app.world().get_entity(loose).is_err(), "contents with no window are still on screen");
+        assert!(app.world().get_entity(loose_line).is_err(), "their text is still on screen");
+        assert!(app.world().get_entity(kept).is_ok() && app.world().get_entity(kept_line).is_ok(), "a live window lost its contents");
+        // The window goes: its contents go with it, and nothing is left.
+        app.world_mut().despawn(window);
+        app.update();
+        assert!(app.world().get_entity(kept).is_err());
+        let left = app.world_mut().query::<&DockTabContent>().iter(app.world()).count();
+        assert_eq!(left, 0);
+    }
+
+    /// The frame that left a Comm panel stuck over the game: the window is
+    /// closed (U or Escape at a station berth, another system's commands)
+    /// in the same frame its tab is redrawn, and the closing is applied
+    /// first. The redraw's contents then have no parent. This runs the real
+    /// redraw through exactly that order, checks that it does leave them
+    /// behind, and that the sweep then clears every last node.
+    #[test]
+    fn a_window_closed_as_its_tab_redraws_leaves_nothing() {
+        use crate::resources::DockTerms;
+        use bevy::ecs::schedule::ScheduleBuildSettings;
+        fn close_on_the_second_frame(mut commands: Commands, windows: Query<Entity, With<DockingOverlay>>, mut frame: Local<u32>) {
+            *frame += 1;
+            if *frame == 2 {
+                for w in &windows {
+                    commands.entity(w).despawn();
+                }
+            }
+        }
+        let mut app = App::new();
+        // As the game runs: a command aimed at an entity that has just gone
+        // is survived, not a crash (despawn_races). That is what lets the
+        // rest of the redraw go ahead and spawn its parentless contents.
+        app.set_error_handler(crate::despawn_races::survive_despawned);
+        app.init_resource::<Time>()
+            .insert_resource(MarketEvents {
+                dock_terms: Some(DockTerms { faction: None, name: "Haven".into(), standing: "Free Port", buy: 1.0, sell: 1.0 }),
+                ..Default::default()
+            })
+            .insert_resource(crate::celestial::galaxy::generate_galaxy_map(42))
+            .insert_resource(SystemStreamingManager { loaded_system: Some(0), ..default() })
+            .init_resource::<Contacts>()
+            .init_resource::<Jobs>()
+            .init_resource::<WorldSimulation>()
+            .init_resource::<BorderWar>()
+            .init_resource::<FactionStanding>()
+            .add_systems(Update, (close_on_the_second_frame, refresh_dock_tabs).chain());
+        // Both systems' commands applied together at the end of the frame,
+        // the closing first: as when two unordered systems share a frame.
+        app.edit_schedule(Update, |s| {
+            s.set_build_settings(ScheduleBuildSettings { auto_insert_apply_deferred: false, ..default() });
+        });
+        app.world_mut().resource_mut::<Contacts>().summit.hailed = true;
+        let window = app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0, item: 0 })).id();
+        app.world_mut().spawn((Node::default(), DockTabPanel(DockTab::Comm), ChildOf(window)));
+        let texts = |app: &mut App| app.world_mut().query::<&Text>().iter(app.world()).count();
+
+        app.update();
+        assert!(texts(&mut app) > 0, "the Comm tab drew nothing");
+        // Redrawn and closed in one frame.
+        app.world_mut().get_mut::<DockTabState>(window).unwrap().set_changed();
+        app.update();
+        assert!(app.world().get_entity(window).is_err());
+        let stranded = texts(&mut app);
+        assert!(stranded > 0, "nothing was left behind: this test no longer reproduces the stuck panel, find out why before trusting it");
+
+        app.add_systems(Update, sweep_tab_contents);
+        app.update();
+        assert_eq!(texts(&mut app), 0, "{stranded} lines of a closed window were left on screen");
+        assert_eq!(app.world_mut().query::<&DockTabContent>().iter(app.world()).count(), 0);
+    }
+
+    /// On the Comm tab with someone listed, a frame with no key pressed
+    /// leaves the window unchanged: it was being marked changed every frame,
+    /// which redrew the tab every frame.
+    #[test]
+    fn an_idle_comm_tab_is_not_redrawn_every_frame() {
+        use crate::resources::{Currency, DockTerms, Inventory};
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<crate::events::ShowNotification>()
+            .add_message::<jobs::SummitStepWon>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(MarketEvents {
+                dock_terms: Some(DockTerms { faction: None, name: "Haven".into(), standing: "Free Port", buy: 1.0, sell: 1.0 }),
+                ..Default::default()
+            })
+            .insert_resource(crate::celestial::galaxy::generate_galaxy_map(42))
+            .insert_resource(SystemStreamingManager { loaded_system: Some(0), ..default() })
+            .init_resource::<Contacts>()
+            .init_resource::<Jobs>()
+            .init_resource::<WorldSimulation>()
+            .init_resource::<BorderWar>()
+            .init_resource::<Inventory>()
+            .init_resource::<FactionStanding>()
+            .init_resource::<Currency>()
+            .init_resource::<Seen>()
+            .add_systems(Update, (dock_tab_keys, watch).chain());
+        // What a system after the keys sees of the window, frame by frame:
+        // the same view the redraw has.
+        #[derive(Resource, Default)]
+        struct Seen(Vec<bool>);
+        fn watch(windows: Query<Ref<DockTabState>, With<DockingOverlay>>, mut seen: ResMut<Seen>) {
+            if let Ok(state) = windows.single() {
+                seen.0.push(state.is_changed());
+            }
+        }
+        app.world_mut().resource_mut::<Contacts>().summit.hailed = true;
+        app.world_mut().spawn((DockingOverlay, DockTabState { tab: DockTab::Comm, tabs: true, contact: 0, item: 0 }));
+        for _ in 0..4 {
+            app.update();
+        }
+        let seen = app.world().resource::<Seen>().0.clone();
+        assert_eq!(seen, vec![true, false, false, false], "changed on the frame it opened and never again without a key");
+        // And with the Abbess not yet met, talking to her over the relay
+        // offers no work: the mission is to go to her.
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Enter);
+        app.update();
+        assert!(app.world().resource::<Jobs>().list.is_empty(), "she offered work before she had asked for anything");
+        assert!(!app.world().resource::<Contacts>().summit.commissioned);
     }
 
     /// The military market sells at a Friendly capital and nowhere else:
